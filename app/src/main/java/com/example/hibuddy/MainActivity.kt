@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.*
 import com.example.hibuddy.ui.theme.HiBuddyTheme
 import com.example.hibuddy.ui.screens.*
+import com.example.hibuddy.repository.AuthRepository
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,26 +46,41 @@ enum class AuthRoute {
 fun HiBuddyApp() {
     var isLoggedIn by remember { mutableStateOf(false) }
     var authRoute by remember { mutableStateOf(AuthRoute.LOGIN) }
+    val authRepository = remember { AuthRepository() }
 
     if (!isLoggedIn) {
         when (authRoute) {
             AuthRoute.LOGIN -> LoginScreen(
                 onLoginClick = { email, password ->
-                    // Sau này thay bằng Firebase Auth
-                    isLoggedIn = true
+                    authRepository.login(
+                        email = email,
+                        password = password,
+                        onSuccess = {
+                            isLoggedIn = true
+                        },
+                        onFailure = {
+                            println(it)
+                        }
+                    )
                 },
                 onRegisterClick = {
                     authRoute = AuthRoute.REGISTER
                 },
-                onForgotPasswordClick = {
-                    // Tạm thời chưa làm Firebase forgot password
-                }
+                onForgotPasswordClick = {}
             )
 
             AuthRoute.REGISTER -> RegisterScreen(
                 onRegisterClick = { fullName, email, password ->
-                    // Sau này thay bằng Firebase Register
-                    isLoggedIn = true
+                    authRepository.register(
+                        email = email,
+                        password = password,
+                        onSuccess = {
+                            isLoggedIn = true
+                        },
+                        onFailure = {
+                            println(it)
+                        }
+                    )
                 },
                 onLoginClick = {
                     authRoute = AuthRoute.LOGIN
