@@ -1,5 +1,7 @@
 package com.example.hibuddy
 
+import com.example.hibuddy.ui.auth.LoginScreen
+import com.example.hibuddy.ui.auth.RegisterScreen
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,8 +37,47 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen { DISCOVER, MATCHES, TASKS, PROFILE }
 
+enum class AuthRoute {
+    LOGIN, REGISTER
+}
+
 @Composable
 fun HiBuddyApp() {
+    var isLoggedIn by remember { mutableStateOf(false) }
+    var authRoute by remember { mutableStateOf(AuthRoute.LOGIN) }
+
+    if (!isLoggedIn) {
+        when (authRoute) {
+            AuthRoute.LOGIN -> LoginScreen(
+                onLoginClick = { email, password ->
+                    // Sau này thay bằng Firebase Auth
+                    isLoggedIn = true
+                },
+                onRegisterClick = {
+                    authRoute = AuthRoute.REGISTER
+                },
+                onForgotPasswordClick = {
+                    // Tạm thời chưa làm Firebase forgot password
+                }
+            )
+
+            AuthRoute.REGISTER -> RegisterScreen(
+                onRegisterClick = { fullName, email, password ->
+                    // Sau này thay bằng Firebase Register
+                    isLoggedIn = true
+                },
+                onLoginClick = {
+                    authRoute = AuthRoute.LOGIN
+                }
+            )
+        }
+    } else {
+        MainAppContent()
+    }
+}
+
+@Composable
+fun MainAppContent() {
     var currentScreen by remember { mutableStateOf(Screen.DISCOVER) }
     var notificationCount by remember { mutableStateOf(3) }
 
@@ -60,9 +101,9 @@ fun HiBuddyApp() {
             ) { screen ->
                 when (screen) {
                     Screen.DISCOVER -> DiscoverScreen()
-                    Screen.MATCHES  -> MatchesScreen()
-                    Screen.TASKS    -> TasksScreen()
-                    Screen.PROFILE  -> ProfileScreen()
+                    Screen.MATCHES -> MatchesScreen()
+                    Screen.TASKS -> TasksScreen()
+                    Screen.PROFILE -> ProfileScreen()
                 }
             }
         }
