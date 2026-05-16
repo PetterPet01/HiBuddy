@@ -22,6 +22,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.BorderStroke
+import com.example.hibuddy.viewmodel.ProfileViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.LaunchedEffect
 
 // Course Data Model specifically for NV-09
 data class CourseSuggestion(
@@ -37,8 +40,52 @@ val courseSuggestions = listOf(
 )
 
 @Composable
-fun ProfileScreen() {
-    val user = SampleData.users.first() // Load current user
+fun ProfileScreen(
+    viewModel: ProfileViewModel = viewModel()
+) {
+    val userProfile = viewModel.userProfile
+    val isLoading = viewModel.isLoading
+    val errorMessage = viewModel.errorMessage
+
+    LaunchedEffect(Unit) {
+        viewModel.loadCurrentUserProfile()
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D0D14)),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = Color(0xFF7C6AF7))
+        }
+        return
+    }
+
+    if (errorMessage.isNotEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D0D14)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(errorMessage, color = Color.White)
+        }
+        return
+    }
+
+    if (userProfile == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D0D14)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Không tìm thấy profile", color = Color.White)
+        }
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -46,7 +93,6 @@ fun ProfileScreen() {
             .background(Color(0xFF0D0D14))
             .verticalScroll(rememberScrollState())
     ) {
-        // --- Header & Settings ---
         Row(
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -55,7 +101,6 @@ fun ProfileScreen() {
             Icon(Icons.Filled.Settings, "Settings", tint = Color(0xFF8B8AAC))
         }
 
-        // --- Profile Info ---
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -64,50 +109,95 @@ fun ProfileScreen() {
                 modifier = Modifier
                     .size(100.dp)
                     .clip(CircleShape)
-                    .background(user.avatarColor.copy(alpha = 0.2f))
-                    .border(2.dp, user.avatarColor, CircleShape),
+                    .background(Color(0xFF7C6AF7).copy(alpha = 0.2f))
+                    .border(2.dp, Color(0xFF7C6AF7), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = user.avatarEmoji, fontSize = 48.sp)
+                Text("👤", fontSize = 48.sp)
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(user.name, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8))
-                if (user.isVerified) {
-                    Surface(shape = CircleShape, color = Color(0xFF7C6AF7)) {
-                        Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp).padding(2.dp))
-                    }
-                }
-            }
-            Text("${user.username} • ${user.university}", fontSize = 13.sp, color = Color(0xFF8B8AAC))
+
+            Text(
+                text = userProfile.fullName.ifBlank { "Chưa có tên" },
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF0EFF8)
+            )
+
+            Text(
+                text = userProfile.email,
+                fontSize = 13.sp,
+                color = Color(0xFF8B8AAC)
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Profile Stats
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                ProfileStatColumn(user.projectsCompleted.toString(), "Projects")
-                ProfileStatColumn("${user.matchScore}%", "Match Rate")
-                ProfileStatColumn(user.reputationStars.toString(), "Rep Score")
+                ProfileStatColumn("0", "Projects")
+                ProfileStatColumn("0%", "Match Rate")
+                ProfileStatColumn("0.0", "Rep Score")
             }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- Bio ---
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            Text("UNIVERSITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                userProfile.university.ifBlank { "Chưa cập nhật trường học" },
+                fontSize = 14.sp,
+                color = Color(0xFFB0AFC8)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("MAJOR", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                userProfile.major.ifBlank { "Chưa cập nhật chuyên ngành" },
+                fontSize = 14.sp,
+                color = Color(0xFFB0AFC8)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             Text("ABOUT ME", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
-            Text(user.bio, fontSize = 14.sp, color = Color(0xFFB0AFC8), lineHeight = 20.sp)
+            Text(
+                userProfile.bio.ifBlank { "Chưa có mô tả cá nhân" },
+                fontSize = 14.sp,
+                color = Color(0xFFB0AFC8),
+                lineHeight = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("SKILLS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                if (userProfile.skills.isEmpty()) "Chưa cập nhật kỹ năng" else userProfile.skills.joinToString(", "),
+                fontSize = 14.sp,
+                color = Color(0xFFB0AFC8)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text("INTERESTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                if (userProfile.interests.isEmpty()) "Chưa cập nhật sở thích" else userProfile.interests.joinToString(", "),
+                fontSize = 14.sp,
+                color = Color(0xFFB0AFC8)
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- AI Skill & Course Suggestions (NV-09) ---
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -117,14 +207,15 @@ fun ProfileScreen() {
                 Text("AI SUGGESTED COURSES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
                 Text("Refresh", fontSize = 11.sp, color = Color(0xFF7C6AF7))
             }
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             courseSuggestions.forEach { course ->
                 CourseRecommendationCard(course)
                 Spacer(modifier = Modifier.height(10.dp))
             }
         }
-        
+
         Spacer(modifier = Modifier.height(40.dp))
     }
 }

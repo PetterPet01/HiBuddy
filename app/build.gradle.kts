@@ -62,4 +62,6 @@ dependencies {
 
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 }

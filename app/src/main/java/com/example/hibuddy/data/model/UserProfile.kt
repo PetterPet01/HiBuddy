@@ -7,7 +7,7 @@ data class UserProfile(
     val university: String = "",
     val major: String = "",
     val bio: String = "",
+    val avatarUrl: String = "",
     val skills: List<String> = emptyList(),
-    val interests: List<String> = emptyList(),
-    val avatarUrl: String = ""
+    val interests: List<String> = emptyList()
 )
