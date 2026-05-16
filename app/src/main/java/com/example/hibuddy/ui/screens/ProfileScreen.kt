@@ -41,6 +41,7 @@ val courseSuggestions = listOf(
 
 @Composable
 fun ProfileScreen(
+    onLogout: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val userProfile = viewModel.userProfile
@@ -146,10 +147,10 @@ fun ProfileScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-            Text("UNIVERSITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
+            Text("ORGANIZATION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.sp)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                userProfile.university.ifBlank { "Chưa cập nhật trường học" },
+                userProfile.organization.ifBlank { "Chưa cập nhật trường học" },
                 fontSize = 14.sp,
                 color = Color(0xFFB0AFC8)
             )
@@ -214,6 +215,20 @@ fun ProfileScreen(
                 CourseRecommendationCard(course)
                 Spacer(modifier = Modifier.height(10.dp))
             }
+        }
+
+        Button(
+            onClick = onLogout,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .height(52.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFFF4D6D)
+            ),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Text("Logout")
         }
 
         Spacer(modifier = Modifier.height(40.dp))
