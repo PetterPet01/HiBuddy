@@ -24,7 +24,8 @@ import androidx.compose.ui.unit.*
 import com.example.hibuddy.ui.theme.HiBuddyTheme
 import com.example.hibuddy.ui.screens.*
 import com.example.hibuddy.repository.AuthRepository
-
+import com.example.hibuddy.data.model.UserProfile
+import com.example.hibuddy.repository.UserRepository
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +48,7 @@ fun HiBuddyApp() {
     var isLoggedIn by remember { mutableStateOf(false) }
     var authRoute by remember { mutableStateOf(AuthRoute.LOGIN) }
     val authRepository = remember { AuthRepository() }
-
+    val userRepository = remember { UserRepository() }
     if (!isLoggedIn) {
         when (authRoute) {
             AuthRoute.LOGIN -> LoginScreen(
@@ -74,8 +75,25 @@ fun HiBuddyApp() {
                     authRepository.register(
                         email = email,
                         password = password,
-                        onSuccess = {
-                            isLoggedIn = true
+                        onSuccess = { uid ->
+                            val userProfile = UserProfile(
+                                uid = uid,
+                                fullName = fullName,
+                                email = email,
+                                skills = emptyList(),
+                                interests = emptyList(),
+                                bio = ""
+                            )
+
+                            userRepository.saveUserProfile(
+                                userProfile = userProfile,
+                                onSuccess = {
+                                    isLoggedIn = true
+                                },
+                                onFailure = {
+                                    println(it)
+                                }
+                            )
                         },
                         onFailure = {
                             println(it)

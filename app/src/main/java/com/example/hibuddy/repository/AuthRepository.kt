@@ -9,13 +9,14 @@ class AuthRepository {
     fun register(
         email: String,
         password: String,
-        onSuccess: () -> Unit,
+        onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    onSuccess()
+                    val uid = auth.currentUser?.uid ?: ""
+                    onSuccess(uid)
                 } else {
                     onFailure(task.exception?.message ?: "Register failed")
                 }
