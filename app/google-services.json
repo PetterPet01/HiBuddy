@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "589323638309",
+    "project_id": "hibuddy-8b512",
+    "storage_bucket": "hibuddy-8b512.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:589323638309:android:7361f36a57375b66e2d1cc",
+        "android_client_info": {
+          "package_name": "com.example.hibuddy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEzapkgRnB4r_dW01oUWOkVT7mXNEV1i4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
