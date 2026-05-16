@@ -1,0 +1,22 @@
+{
+  "id": "phase1-push-safety-03",
+  "seq": "03",
+  "title": "Backend: Integrate Firebase Admin SDK and trigger pushes",
+  "status": "pending",
+  "depends_on": [
+    "02"
+  ],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [],
+  "reference_files": [
+    "backend/app/api/"
+  ],
+  "acceptance_criteria": [
+    "Firebase Admin SDK is initialized in backend",
+    "Push notifications are sent upon new match and new message"
+  ],
+  "deliverables": [
+    "backend/app/services/fcm_service.py"
+  ]
+}

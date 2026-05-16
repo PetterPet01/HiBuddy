@@ -2,7 +2,6 @@ package com.example.hibuddy.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,18 +20,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.data.remote.dto.*
+import com.example.hibuddy.ui.screens.matches.MatchesViewModel
 
 @Composable
-fun MatchesScreen() {
-    val newMatches = SampleData.matches.filter { it.isNewMatch }
-    val conversations = SampleData.matches.filter { !it.isNewMatch }
+fun MatchesScreen(
+    onChatClick: (matchId: String, userName: String) -> Unit = { _, _ -> },
+    viewModel: MatchesViewModel = viewModel(factory = MatchesViewModel.Factory)
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadMatches()
+        viewModel.loadInbox()
+    }
+
+    val matches = uiState.matches
+    val inbox = uiState.chatInbox
+    val newMatches = matches.filter { it.lastMessage == null }
+    val existingChats = inbox
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0D0D14))
     ) {
-        // Main Screen Header
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -46,38 +59,41 @@ fun MatchesScreen() {
             )
         }
 
+        if (uiState.isLoading && matches.isEmpty() && existingChats.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color(0xFF7C6AF7))
+            }
+            return@Column
+        }
+
         LazyColumn(
             contentPadding = PaddingValues(bottom = 16.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            // ── Match Queue (Horizontal Row) ─────────────────────────
             if (newMatches.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Match Queue (${newMatches.size})",
+                        text = "New Matches (${newMatches.size})",
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF8B8AAC)
                     )
-
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(newMatches) { match ->
-                            MatchQueueItem(match = match)
+                            MatchQueueItem(match = match, onClick = { onChatClick(match.id, match.userName ?: "") })
                         }
                     }
-
                     Spacer(modifier = Modifier.height(24.dp))
                     Divider(color = Color(0xFF1E1D2E), thickness = 1.dp)
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
 
-            // ── Conversations List ──────────────────────────────────
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
@@ -85,7 +101,7 @@ fun MatchesScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Conversations (Recent)",
+                        text = "Conversations (${existingChats.size})",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF8B8AAC)
@@ -93,58 +109,41 @@ fun MatchesScreen() {
                 }
             }
 
-            items(conversations) { match ->
-                ConversationRowItem(match = match)
+            if (existingChats.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("No conversations yet. Start swiping!", fontSize = 14.sp, color = Color(0xFF6B6A8C))
+                    }
+                }
+            } else {
+                items(existingChats) { chat ->
+                    ConversationRowItem(chat = chat, onClick = { onChatClick(chat.matchId, chat.userName) })
+                }
             }
         }
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Match Queue Item (Horizontal scroll)
-// ──────────────────────────────────────────────────────────────
 @Composable
-fun MatchQueueItem(match: MatchItem) {
+fun MatchQueueItem(match: com.example.hibuddy.data.remote.dto.MatchResponse, onClick: () -> Unit) {
+    val avatarColor = remember(match.id) {
+        val colors = listOf(Color(0xFF5B4FCF), Color(0xFFE03055), Color(0xFF06B6D4), Color(0xFF7C6AF7), Color(0xFF059669), Color(0xFFFF8C42))
+        colors[kotlin.math.abs(match.id.hashCode()) % colors.size]
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(72.dp).clickable { /* Open Chat/Profile */ }
+        modifier = Modifier.width(72.dp).clickable { onClick() }
     ) {
-        Box(
-            modifier = Modifier.size(72.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            // Background Track
-            CircularProgressIndicator(
-                progress = { 1f },
-                color = Color(0xFF2A2840),
-                modifier = Modifier.fillMaxSize(),
-                strokeWidth = 2.dp
-            )
-            // Yellow Progress Ring representing hours left (max 72)
-            CircularProgressIndicator(
-                progress = { match.hoursLeft / 72f },
-                color = Color(0xFFFFD166),
-                modifier = Modifier.fillMaxSize(),
-                strokeWidth = 2.dp,
-                strokeCap = StrokeCap.Round
-            )
-
-            // Avatar Frame
-            Box(
-                modifier = Modifier
-                    .size(62.dp)
-                    .clip(CircleShape)
-                    .background(match.avatarColor.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = match.avatarEmoji, fontSize = 32.sp)
+        Box(modifier = Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(progress = { 1f }, color = Color(0xFF2A2840), modifier = Modifier.fillMaxSize(), strokeWidth = 2.dp)
+            CircularProgressIndicator(progress = { 0.5f }, color = Color(0xFFFFD166), modifier = Modifier.fillMaxSize(), strokeWidth = 2.dp, strokeCap = StrokeCap.Round)
+            Box(modifier = Modifier.size(62.dp).clip(CircleShape).background(avatarColor.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                Text(text = (match.userName ?: "?").firstOrNull()?.uppercase() ?: "?", fontSize = 28.sp, color = Color.White)
             }
         }
-
         Spacer(modifier = Modifier.height(6.dp))
-
         Text(
-            text = match.name,
+            text = match.userName?.split(" ")?.lastOrNull() ?: match.userName ?: "User",
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFFF0EFF8),
@@ -154,148 +153,110 @@ fun MatchQueueItem(match: MatchItem) {
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Conversation Row Item (Vertical scroll)
-// ──────────────────────────────────────────────────────────────
 @Composable
-fun ConversationRowItem(match: MatchItem) {
+fun ConversationRowItem(chat: ChatInboxResponse, onClick: () -> Unit) {
+    val avatarColor = remember(chat.id) {
+        val colors = listOf(Color(0xFF5B4FCF), Color(0xFFE03055), Color(0xFF06B6D4), Color(0xFF7C6AF7), Color(0xFF059669), Color(0xFFFF8C42))
+        colors[kotlin.math.abs(chat.id.hashCode()) % colors.size]
+    }
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable { /* Open Chat */ },
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         color = Color.Transparent
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar Area (Conditional Styling)
-            Box(
-                modifier = Modifier.size(64.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!match.isEstablished) {
-                    // Show yellow progress ring if relationship is not established
-                    CircularProgressIndicator(
-                        progress = { 1f },
-                        color = Color(0xFF2A2840),
-                        modifier = Modifier.fillMaxSize(),
-                        strokeWidth = 2.dp
-                    )
-                    CircularProgressIndicator(
-                        progress = { match.hoursLeft / 72f },
-                        color = Color(0xFFFFD166),
-                        modifier = Modifier.fillMaxSize(),
-                        strokeWidth = 2.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-                }
-
-                // Avatar Frame inside
-                val innerAvatarSize = if (!match.isEstablished) 54.dp else 60.dp
+            Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
                 Box(
-                    modifier = Modifier
-                        .size(innerAvatarSize)
-                        .clip(CircleShape)
-                        .background(match.avatarColor.copy(alpha = 0.2f)),
+                    modifier = Modifier.size(56.dp).clip(CircleShape).background(avatarColor.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = match.avatarEmoji, fontSize = if (!match.isEstablished) 26.sp else 30.sp)
+                    Text(text = chat.userName.firstOrNull()?.uppercase() ?: "?", fontSize = 24.sp, color = Color.White)
                 }
-
-                // Yellow badge dot indicating un-established state
-                if (!match.isEstablished) {
+                if (chat.isUnread) {
                     Surface(
-                        modifier = Modifier.align(Alignment.BottomEnd).offset(2.dp, (-2).dp),
+                        modifier = Modifier.align(Alignment.TopEnd).offset((-2).dp, 2.dp),
                         shape = CircleShape,
-                        color = Color(0xFFFFD166),
+                        color = Color(0xFF7C6AF7),
                         border = BorderStroke(2.dp, Color(0xFF0D0D14))
                     ) {
-                        Box(modifier = Modifier.size(12.dp))
+                        Box(modifier = Modifier.size(10.dp))
                     }
                 }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Text Info
             Column(modifier = Modifier.weight(1f)) {
-                // Name & Tags row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = match.name,
+                        text = chat.userName,
                         fontSize = 16.sp,
-                        fontWeight = if (match.isUnread) FontWeight.Bold else FontWeight.SemiBold,
+                        fontWeight = if (chat.isUnread) FontWeight.Bold else FontWeight.SemiBold,
                         color = Color(0xFFF0EFF8),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-
-                    // Tags: "YOUR MOVE" vs "timeAgo"
-                    if (match.isYourMove) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFFFD166)
-                        ) {
-                            Text(
-                                text = "YOUR MOVE",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF4A3800)
-                            )
-                        }
-                    } else if (match.isEstablished) {
+                    if (chat.lastMessageTime != null) {
                         Text(
-                            text = match.timeAgo,
+                            text = formatRelativeTime(chat.lastMessageTime),
                             fontSize = 11.sp,
-                            color = if (match.isUnread) Color(0xFF7C6AF7) else Color(0xFF6B6A8C)
+                            color = Color(0xFF6B6A8C)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Message snippet
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = match.lastMessage,
+                        text = chat.lastMessage ?: "No messages yet",
                         fontSize = 14.sp,
-                        color = if (match.isUnread) Color(0xFFD0CFF0) else Color(0xFF8B8AAC),
+                        color = if (chat.isUnread) Color(0xFFD0CFF0) else Color(0xFF8B8AAC),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    // Normal Unread red dot
-                    if (match.isUnread && match.isEstablished) {
+                    if (chat.isUnread && chat.unreadCount > 0) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(Color(0xFFFF4D6D), CircleShape)
-                        )
+                        Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF7C6AF7)) {
+                            Text(
+                                "${chat.unreadCount}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                fontSize = 11.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                }
-
-                // Expiration timer string if not established
-                if (!match.isEstablished && match.hoursLeft > 0) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Conversation expires in ${match.hoursLeft} hours",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFFD166)
-                    )
                 }
             }
         }
+    }
+}
+
+private fun formatRelativeTime(isoTime: String): String {
+    return try {
+        val now = System.currentTimeMillis()
+        val msgTime = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()).parse(isoTime.take(19))?.time ?: return isoTime
+        val diff = now - msgTime
+        when {
+            diff < 60_000 -> "now"
+            diff < 3_600_000 -> "${diff / 60_000}m ago"
+            diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+            else -> "${diff / 86_400_000}d ago"
+        }
+    } catch (e: Exception) {
+        isoTime.take(10)
     }
 }

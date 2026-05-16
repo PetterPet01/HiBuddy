@@ -1,0 +1,22 @@
+{
+  "id": "phase1-push-safety-04",
+  "seq": "04",
+  "title": "Android: Implement FCM client and push notification service",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [],
+  "reference_files": [
+    "app/build.gradle.kts"
+  ],
+  "acceptance_criteria": [
+    "Firebase messaging dependencies added to build.gradle.kts",
+    "FirebaseMessagingService implemented to receive pushes",
+    "Device FCM token retrieved and sent to backend"
+  ],
+  "deliverables": [
+    "app/build.gradle.kts",
+    "app/src/main/java/com/example/hibuddy/fcm/MyFirebaseMessagingService.kt"
+  ]
+}

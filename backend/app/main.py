@@ -1,0 +1,72 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import get_settings
+from app.database import init_db
+from app.milvus_client import init_milvus_collections
+from app.redis_client import get_redis, close_redis
+from app.api.auth import router as auth_router
+from app.api.profile import router as profile_router
+from app.api.project import router as project_router
+from app.api.swipe import router as swipe_router
+from app.api.task import router as task_router
+from app.api.suggestion import router as suggestion_router
+from app.api.chat import router as chat_router
+from app.api.websocket import handle_websocket
+from app.api.upload import router as upload_router
+from app.api.search import router as search_router
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    try:
+        init_milvus_collections()
+    except Exception:
+        pass
+    await get_redis()
+    yield
+    await close_redis()
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)
+app.include_router(profile_router)
+app.include_router(project_router)
+app.include_router(swipe_router)
+app.include_router(task_router)
+app.include_router(suggestion_router)
+app.include_router(chat_router)
+app.include_router(upload_router)
+app.include_router(search_router)
+
+
+@app.websocket("/ws/chat/{match_id}")
+async def chat_websocket(websocket: WebSocket, match_id: str, token: str = ""):
+    await handle_websocket(websocket, match_id, token)
+
+
+@app.get("/")
+async def root():
+    return {"message": "HiBuddy API", "version": settings.APP_VERSION}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}

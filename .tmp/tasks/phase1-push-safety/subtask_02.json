@@ -1,0 +1,23 @@
+{
+  "id": "phase1-push-safety-02",
+  "seq": "02",
+  "title": "Backend: Create API endpoints for Trust/Safety and FCM token registration",
+  "status": "pending",
+  "depends_on": [
+    "01"
+  ],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [],
+  "reference_files": [
+    "backend/app/api/"
+  ],
+  "acceptance_criteria": [
+    "API endpoints for blocking and reporting users are implemented",
+    "API endpoint to register/update FCM token is implemented"
+  ],
+  "deliverables": [
+    "backend/app/api/endpoints/trust.py",
+    "backend/app/api/endpoints/fcm.py"
+  ]
+}

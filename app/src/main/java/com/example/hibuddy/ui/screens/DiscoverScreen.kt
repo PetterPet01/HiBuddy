@@ -13,55 +13,46 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.data.remote.dto.*
+import com.example.hibuddy.ui.screens.discover.DiscoverViewModel
 import kotlin.math.abs
-import kotlin.math.sign
 
-// ──────────────────────────────────────────────────────────────
-//  Discover Screen
-// ──────────────────────────────────────────────────────────────
+enum class CardMode { PEOPLE, PROJECTS }
 
 @Composable
-fun DiscoverScreen() {
-    var cardMode by remember { mutableStateOf(CardMode.PEOPLE) }
-    var selectedProject by remember { mutableStateOf(SampleData.myProjects.first()) }
+fun DiscoverScreen(
+    viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory),
+    onCreateProject: () -> Unit = {},
+) {
+    val uiState by viewModel.uiState.collectAsState()
 
-    // Separate card stacks for each mode
-    var peopleStack by remember { mutableStateOf(SampleData.users.toMutableList()) }
-    var projectStack by remember { mutableStateOf(SampleData.projects.toMutableList()) }
+    LaunchedEffect(Unit) {
+        viewModel.loadCards()
+    }
 
-    var superLikesLeft by remember { mutableStateOf(3) }
-    var likesLeft by remember { mutableStateOf(50) }
-    var lastAction by remember { mutableStateOf<SwipeAction?>(null) }
-    var showMatchDialog by remember { mutableStateOf(false) }
+    val cards = if (uiState.mode == "CONTRIBUTOR") uiState.projectCards else uiState.userCards
+    val cardIndex = uiState.currentCardIndex
+    val topCards = cards.drop(cardIndex)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0D0D14))
     ) {
-        // ── Header (Compact Switcher) ───────────────────────
         DiscoverHeader(
-            cardMode = cardMode,
-            onModeChange = { cardMode = it }
+            isPeopleMode = uiState.mode == "OWNER",
+            onToggle = {
+                val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
+                viewModel.switchMode(newMode)
+            },
+            onCreateProject = onCreateProject,
         )
 
-        // ── Project Context Blobs (Only for Project Owner) ──
-        if (cardMode == CardMode.PEOPLE) {
-            ProjectBlobsSelector(
-                projects = SampleData.myProjects,
-                selected = selectedProject,
-                onSelect = { selectedProject = it },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                label = "Recruiting for:"
-            )
-        }
-
-        // ── Card Stack ──────────────────────────────────────
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -69,215 +60,101 @@ fun DiscoverScreen() {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (cardMode == CardMode.PEOPLE) {
-                if (peopleStack.isEmpty()) {
-                    EmptyStackView(mode = cardMode)
-                } else {
-                    // Background cards (peek effect)
-                    if (peopleStack.size >= 3) {
-                        UserSwipeCard(
-                            user = peopleStack[2],
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset(y = 16.dp)
-                                .scale(0.92f)
-                                .alpha(0.5f)
-                        )
-                    }
-                    if (peopleStack.size >= 2) {
-                        UserSwipeCard(
-                            user = peopleStack[1],
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset(y = 8.dp)
-                                .scale(0.96f)
-                                .alpha(0.75f)
-                        )
-                    }
-                    // Top card (interactive)
-                    SwipeableUserCard(
-                        user = peopleStack[0],
-                        modifier = Modifier.fillMaxSize(),
-                        onSwipeLeft = {
-                            peopleStack = peopleStack.drop(1).toMutableList()
-                            lastAction = SwipeAction.PASS
-                            likesLeft = (likesLeft - 1).coerceAtLeast(0)
-                        },
-                        onSwipeRight = {
-                            if (likesLeft > 0) {
-                                peopleStack = peopleStack.drop(1).toMutableList()
-                                lastAction = SwipeAction.LIKE
-                                likesLeft--
-                                if (likesLeft % 5 == 0) showMatchDialog = true
-                            }
-                        },
-                        onSuperLike = {
-                            if (superLikesLeft > 0) {
-                                peopleStack = peopleStack.drop(1).toMutableList()
-                                lastAction = SwipeAction.SUPER_LIKE
-                                superLikesLeft--
-                            }
-                        }
+            if (uiState.isLoading && topCards.isEmpty()) {
+                CircularProgressIndicator(color = Color(0xFF7C6AF7))
+            } else if (topCards.isEmpty()) {
+                EmptyStackView(
+                    isPeopleMode = uiState.mode == "OWNER",
+                    onCreateProject = onCreateProject,
+                )
+            } else {
+                val first = topCards[0]
+                if (topCards.size >= 3 && uiState.mode == "OWNER") {
+                    UserSwipeCardStatic(
+                        card = topCards[2] as UserCardResponse,
+                        modifier = Modifier.fillMaxSize().offset(y = 16.dp).scale(0.92f).alpha(0.5f)
                     )
                 }
-            } else {
-                // Project mode
-                if (projectStack.isEmpty()) {
-                    EmptyStackView(mode = cardMode)
-                } else {
-                    if (projectStack.size >= 2) {
-                        ProjectSwipeCard(
-                            project = projectStack[1],
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset(y = 8.dp)
-                                .scale(0.96f)
-                                .alpha(0.7f)
+                if (topCards.size >= 2) {
+                    if (uiState.mode == "OWNER") {
+                        UserSwipeCardStatic(
+                            card = topCards[1] as UserCardResponse,
+                            modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.75f)
+                        )
+                    } else if (topCards.size >= 2 && uiState.mode == "CONTRIBUTOR") {
+                        ProjectSwipeCardStatic(
+                            card = topCards[1] as ProjectCardResponse,
+                            modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.7f)
                         )
                     }
-                    SwipeableProjectCard(
-                        project = projectStack[0],
+                }
+                if (uiState.mode == "OWNER") {
+                    SwipeableUserCard(
+                        card = first as UserCardResponse,
                         modifier = Modifier.fillMaxSize(),
-                        onSwipeLeft = {
-                            projectStack = projectStack.drop(1).toMutableList()
-                            lastAction = SwipeAction.PASS
-                        },
-                        onSwipeRight = {
-                            if (likesLeft > 0) {
-                                projectStack = projectStack.drop(1).toMutableList()
-                                lastAction = SwipeAction.LIKE
-                                likesLeft--
-                            }
-                        },
-                        onSuperLike = {
-                            if (superLikesLeft > 0) {
-                                projectStack = projectStack.drop(1).toMutableList()
-                                lastAction = SwipeAction.SUPER_LIKE
-                                superLikesLeft--
-                            }
-                        }
+                        onSwipeLeft = { viewModel.swipe("PASS") },
+                        onSwipeRight = { viewModel.swipe("LIKE") },
+                        onSuperLike = { viewModel.swipe("SUPER_LIKE") }
+                    )
+                } else {
+                    SwipeableProjectCard(
+                        card = first as ProjectCardResponse,
+                        modifier = Modifier.fillMaxSize(),
+                        onSwipeLeft = { viewModel.swipe("PASS") },
+                        onSwipeRight = { viewModel.swipe("LIKE") },
+                        onSuperLike = { viewModel.swipe("SUPER_LIKE") }
                     )
                 }
             }
         }
 
-        // ── Action Buttons ───────────────────────────────────
         ActionButtons(
-            onPass = {
-                if (cardMode == CardMode.PEOPLE && peopleStack.isNotEmpty()) {
-                    peopleStack = peopleStack.drop(1).toMutableList(); lastAction = SwipeAction.PASS
-                } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
-                    projectStack = projectStack.drop(1).toMutableList(); lastAction = SwipeAction.PASS
-                }
-            },
-            onSuperLike = {
-                if (superLikesLeft > 0) {
-                    if (cardMode == CardMode.PEOPLE && peopleStack.isNotEmpty()) {
-                        peopleStack = peopleStack.drop(1).toMutableList()
-                    } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
-                        projectStack = projectStack.drop(1).toMutableList()
-                    }
-                    lastAction = SwipeAction.SUPER_LIKE; superLikesLeft--
-                }
-            },
-            onLike = {
-                if (likesLeft > 0) {
-                    if (cardMode == CardMode.PEOPLE && peopleStack.isNotEmpty()) {
-                        peopleStack = peopleStack.drop(1).toMutableList()
-                    } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
-                        projectStack = projectStack.drop(1).toMutableList()
-                    }
-                    lastAction = SwipeAction.LIKE; likesLeft--
-                }
-            },
-            superLikesLeft = superLikesLeft,
-            likesLeft = likesLeft,
+            onPass = { viewModel.swipe("PASS") },
+            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+            onLike = { viewModel.swipe("LIKE") },
+            superLikesLeft = uiState.dailySuperlikesRemaining,
+            likesLeft = uiState.dailyLikesRemaining,
+            enabled = topCards.isNotEmpty()
         )
 
         Spacer(Modifier.height(4.dp))
     }
 
-    // ── Match Dialog ─────────────────────────────────────────
-    if (showMatchDialog) {
-        MatchDialog(onDismiss = { showMatchDialog = false })
+    if (uiState.matchedProjectId != null) {
+        MatchDialog(onDismiss = { viewModel.clearMatch() })
     }
 }
-
-// ──────────────────────────────────────────────────────────────
-//  Common Shared Components
-// ──────────────────────────────────────────────────────────────
-
-@Composable
-fun ProjectBlobsSelector(
-    projects: List<MyProject>,
-    selected: MyProject,
-    onSelect: (MyProject) -> Unit,
-    modifier: Modifier = Modifier,
-    label: String
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, fontSize = 12.sp, color = Color(0xFF6B6A8C))
-        Spacer(Modifier.width(10.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            projects.forEach { project ->
-                val isSelected = project == selected
-                Box(
-                    modifier = Modifier
-                        .size(if (isSelected) 22.dp else 16.dp)
-                        .clip(CircleShape)
-                        .background(project.color)
-                        .border(
-                            width = if (isSelected) 2.dp else 0.dp,
-                            color = if (isSelected) Color.White else Color.Transparent,
-                            shape = CircleShape
-                        )
-                        .clickable { onSelect(project) }
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = selected.title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = selected.color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-// ──────────────────────────────────────────────────────────────
-//  Header
-// ──────────────────────────────────────────────────────────────
-
-enum class CardMode { PEOPLE, PROJECTS }
-enum class SwipeAction { LIKE, PASS, SUPER_LIKE }
 
 @Composable
 fun DiscoverHeader(
-    cardMode: CardMode,
-    onModeChange: (CardMode) -> Unit
+    isPeopleMode: Boolean,
+    onToggle: () -> Unit,
+    onCreateProject: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (isPeopleMode) {
+            TextButton(
+                onClick = onCreateProject,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF7C6AF7))
+            ) {
+                Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Create Project", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C6AF7))
+            }
+        } else {
+            Spacer(Modifier.width(1.dp))
+        }
+
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = Color(0xFF1E1D2E),
-            modifier = Modifier.clickable {
-                onModeChange(if (cardMode == CardMode.PEOPLE) CardMode.PROJECTS else CardMode.PEOPLE)
-            }
+            modifier = Modifier.clickable { onToggle() }
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -285,9 +162,9 @@ fun DiscoverHeader(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = if (cardMode == CardMode.PEOPLE) "👑 Owner Mode" else "🛠️ Contributor Mode",
+                    text = if (isPeopleMode) "👑 Owner Mode" else "🛠️ Contributor Mode",
                     fontSize = 13.sp,
-                    color = if (cardMode == CardMode.PEOPLE) Color(0xFFFFD166) else Color(0xFF4CAF50),
+                    color = if (isPeopleMode) Color(0xFFFFD166) else Color(0xFF4CAF50),
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.width(8.dp))
@@ -302,13 +179,11 @@ fun DiscoverHeader(
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Swipeable User Card (with gesture detection)
-// ──────────────────────────────────────────────────────────────
+// ─── Swipeable User Card (API DTO) ────────────────────────────────────────
 
 @Composable
 fun SwipeableUserCard(
-    user: UserCard,
+    card: UserCardResponse,
     modifier: Modifier = Modifier,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
@@ -333,7 +208,7 @@ fun SwipeableUserCard(
         modifier = modifier
             .offset { IntOffset(animOffsetX.toInt(), offsetY.toInt()) }
             .rotate(rotation)
-            .pointerInput(user.id) {
+            .pointerInput(card.userId) {
                 detectDragGestures(
                     onDragStart = { isDragging = true },
                     onDragEnd = {
@@ -354,241 +229,113 @@ fun SwipeableUserCard(
                 )
             }
     ) {
-        UserSwipeCard(user = user, modifier = Modifier.fillMaxSize())
+        UserSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
 
-        // LIKE overlay
         if (likeAlpha > 0.05f) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .background(Color(0xFF4CAF50).copy(alpha = likeAlpha * 0.3f), RoundedCornerShape(24.dp))
-            )
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF4CAF50).copy(alpha = likeAlpha),
-            ) {
-                Text(
-                    "LIKE 💚", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White
-                )
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF4CAF50).copy(alpha = likeAlpha * 0.3f), RoundedCornerShape(24.dp)))
+            Surface(modifier = Modifier.align(Alignment.TopStart).padding(20.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFF4CAF50).copy(alpha = likeAlpha)) {
+                Text("LIKE", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
         }
-
-        // PASS overlay
         if (passAlpha > 0.05f) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .background(Color(0xFFFF4D6D).copy(alpha = passAlpha * 0.3f), RoundedCornerShape(24.dp))
-            )
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd).padding(20.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFFF4D6D).copy(alpha = passAlpha),
-            ) {
-                Text(
-                    "PASS 👋", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White
-                )
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFF4D6D).copy(alpha = passAlpha * 0.3f), RoundedCornerShape(24.dp)))
+            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(20.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFFF4D6D).copy(alpha = passAlpha)) {
+                Text("PASS", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
         }
-
-        // SUPER LIKE overlay
         if (superLikeAlpha > 0.05f) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .background(Color(0xFFFFD166).copy(alpha = superLikeAlpha * 0.3f), RoundedCornerShape(24.dp))
-            )
-            Surface(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFFFD166).copy(alpha = superLikeAlpha),
-            ) {
-                Text(
-                    "SUPER ⭐", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color(0xFF0D0D14)
-                )
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFD166).copy(alpha = superLikeAlpha * 0.3f), RoundedCornerShape(24.dp)))
+            Surface(modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFFFD166).copy(alpha = superLikeAlpha)) {
+                Text("SUPER", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color(0xFF0D0D14))
             }
         }
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  User Card (static, non-interactive version for stack)
-// ──────────────────────────────────────────────────────────────
-
 @Composable
-fun UserSwipeCard(user: UserCard, modifier: Modifier = Modifier) {
+fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
+    val avatarColor = remember(card.userId) {
+        val colors = listOf(Color(0xFF5B4FCF), Color(0xFFE03055), Color(0xFF06B6D4), Color(0xFF7C6AF7), Color(0xFF059669), Color(0xFFFF8C42))
+        colors[kotlin.math.abs(card.userId.hashCode()) % colors.size]
+    }
     Box(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .background(Color(0xFF16152A))
     ) {
-        // Avatar area gradient background
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            user.avatarColor.copy(alpha = 0.6f),
-                            Color(0xFF0D0D14)
-                        ),
-                        radius = 400f
-                    )
-                ),
+            modifier = Modifier.fillMaxWidth().height(260.dp).background(
+                Brush.radialGradient(colors = listOf(avatarColor.copy(alpha = 0.6f), Color(0xFF0D0D14)), radius = 400f)
+            ),
             contentAlignment = Alignment.Center
         ) {
-            // Avatar circle
             Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .background(user.avatarColor.copy(alpha = 0.3f), CircleShape)
-                    .border(2.dp, user.avatarColor, CircleShape),
+                modifier = Modifier.size(100.dp).background(avatarColor.copy(alpha = 0.3f), CircleShape).border(2.dp, avatarColor, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = user.avatarEmoji, fontSize = 48.sp)
+                Text(text = card.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 48.sp, color = Color.White)
             }
-
-            // Match score badge
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF0D0D14).copy(alpha = 0.8f),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), shape = RoundedCornerShape(20.dp), color = Color(0xFF0D0D14).copy(alpha = 0.8f)) {
+                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("🎯", fontSize = 12.sp)
-                    Text(
-                        text = "${user.matchScore}%",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = when {
-                            user.matchScore >= 90 -> Color(0xFF4CAF50)
-                            user.matchScore >= 75 -> Color(0xFF7C6AF7)
-                            else -> Color(0xFFFFD166)
-                        }
-                    )
+                    Text("${card.matchScore.toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = when {
+                        card.matchScore >= 90 -> Color(0xFF4CAF50)
+                        card.matchScore >= 75 -> Color(0xFF7C6AF7)
+                        else -> Color(0xFFFFD166)
+                    })
                 }
             }
-
-            // Verified badge
-            if (user.isVerified) {
-                Surface(
-                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF7C6AF7).copy(alpha = 0.9f),
-                ) {
-                    Text(
-                        text = "🎓 Verified",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+            if (card.verifiedStudent) {
+                Surface(modifier = Modifier.align(Alignment.TopStart).padding(16.dp), shape = RoundedCornerShape(20.dp), color = Color(0xFF7C6AF7).copy(alpha = 0.9f)) {
+                    Text("🎓 Verified", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
 
-        // Content section
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
-            // Name + university
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = user.name,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF0EFF8)
-                )
+        Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(card.displayName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8))
             }
             Text(
-                text = "${user.username}  ·  ${user.university}",
-                fontSize = 12.sp,
-                color = Color(0xFF6B6A8C)
+                "${card.university ?: ""}  ·  ${card.location ?: ""}",
+                fontSize = 12.sp, color = Color(0xFF6B6A8C)
             )
-
             Spacer(Modifier.height(10.dp))
-
-            // Bio
             Text(
-                text = user.bio,
-                fontSize = 13.sp,
-                color = Color(0xFFB0AFC8),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 19.sp
+                card.bio ?: "",
+                fontSize = 13.sp, color = Color(0xFFB0AFC8), maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp
             )
-
             Spacer(Modifier.height(12.dp))
-
-            // Roles
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                user.roles.forEach { role ->
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF7C6AF7).copy(alpha = 0.18f),
-                        border = BorderStroke(1.dp, Color(0xFF7C6AF7).copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = role,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            fontSize = 11.sp,
-                            color = Color(0xFF7C6AF7),
-                            fontWeight = FontWeight.SemiBold
-                        )
+                card.roles.take(3).forEach { role ->
+                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF7C6AF7).copy(alpha = 0.18f), border = BorderStroke(1.dp, Color(0xFF7C6AF7).copy(alpha = 0.4f))) {
+                        Text(role.roleName, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), fontSize = 11.sp, color = Color(0xFF7C6AF7), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-
             Spacer(Modifier.height(10.dp))
-
-            // Skills
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                user.skills.take(3).forEach { skill ->
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = skill.level.color.copy(alpha = 0.15f),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier.size(6.dp).background(skill.level.color, CircleShape)
-                            )
-                            Text(
-                                text = skill.name,
-                                fontSize = 11.sp,
-                                color = skill.level.color
-                            )
+                card.skills.take(3).forEach { skill ->
+                    val skillColor = when (skill.level) {
+                        "BEGINNER" -> Color(0xFF4ECDC4)
+                        "INTERMEDIATE" -> Color(0xFF7C6AF7)
+                        "ADVANCED" -> Color(0xFFFF6B6B)
+                        else -> Color(0xFF7C6AF7)
+                    }
+                    Surface(shape = RoundedCornerShape(6.dp), color = skillColor.copy(alpha = 0.15f)) {
+                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(6.dp).background(skillColor, CircleShape))
+                            Text(skill.skillName, fontSize = 11.sp, color = skillColor)
                         }
                     }
                 }
             }
-
             Spacer(Modifier.height(12.dp))
-
-            // Stats row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                StatChip(icon = "✅", value = "${user.projectsCompleted}", label = "Projects")
-                StatChip(icon = "⭐", value = "${user.reputationStars}", label = "Rep Score")
-                StatChip(icon = "📍", value = user.location.split(" ").first(), label = "Location")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                StatChip(icon = "✅", value = "${card.projectsCompleted}", label = "Projects")
+                StatChip(icon = "⭐", value = "${card.reputationScore}", label = "Rep Score")
+                StatChip(icon = "📍", value = card.location?.split(" ")?.firstOrNull() ?: "—", label = "Location")
             }
         }
     }
@@ -597,10 +344,7 @@ fun UserSwipeCard(user: UserCard, modifier: Modifier = Modifier) {
 @Composable
 fun StatChip(icon: String, value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text = icon, fontSize = 12.sp)
             Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8))
         }
@@ -608,13 +352,11 @@ fun StatChip(icon: String, value: String, label: String) {
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Project Card
-// ──────────────────────────────────────────────────────────────
+// ─── Swipeable Project Card (API DTO) ─────────────────────────────────────
 
 @Composable
 fun SwipeableProjectCard(
-    project: ProjectCard,
+    card: ProjectCardResponse,
     modifier: Modifier = Modifier,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
@@ -638,7 +380,7 @@ fun SwipeableProjectCard(
         modifier = modifier
             .offset { IntOffset(animOffsetX.toInt(), offsetY.toInt()) }
             .rotate(rotation)
-            .pointerInput(project.id) {
+            .pointerInput(card.projectId) {
                 detectDragGestures(
                     onDragStart = { isDragging = true },
                     onDragEnd = {
@@ -659,183 +401,88 @@ fun SwipeableProjectCard(
                 )
             }
     ) {
-        ProjectSwipeCard(project = project, modifier = Modifier.fillMaxSize())
+        ProjectSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
 
         if (likeAlpha > 0.05f) {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF4CAF50).copy(alpha = likeAlpha * 0.3f), RoundedCornerShape(24.dp)))
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF4CAF50).copy(alpha = likeAlpha),
-            ) { Text("APPLY 🚀", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White) }
+            Surface(modifier = Modifier.align(Alignment.TopStart).padding(20.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFF4CAF50).copy(alpha = likeAlpha)) {
+                Text("APPLY", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
         }
         if (passAlpha > 0.05f) {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFF4D6D).copy(alpha = passAlpha * 0.3f), RoundedCornerShape(24.dp)))
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd).padding(20.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFFF4D6D).copy(alpha = passAlpha),
-            ) { Text("SKIP 👋", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White) }
+            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(20.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFFF4D6D).copy(alpha = passAlpha)) {
+                Text("SKIP", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
         }
     }
 }
 
 @Composable
-fun ProjectSwipeCard(project: ProjectCard, modifier: Modifier = Modifier) {
+fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modifier) {
+    val accentColor = remember(card.projectId) {
+        val colors = listOf(Color(0xFF7C6AF7), Color(0xFF059669), Color(0xFFE03055), Color(0xFF06B6D4), Color(0xFFFF8C42))
+        colors[card.projectId.hashCode().let { kotlin.math.abs(it) % colors.size }]
+    }
     Box(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .background(Color(0xFF16152A))
     ) {
-        // Top accent stripe
+        Box(modifier = Modifier.fillMaxWidth().height(8.dp).background(Brush.horizontalGradient(listOf(accentColor, accentColor.copy(alpha = 0.3f)))))
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .background(Brush.horizontalGradient(listOf(project.accentColor, project.accentColor.copy(alpha = 0.3f))))
-        )
-
-        // Header area
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .padding(top = 8.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(project.accentColor.copy(alpha = 0.2f), Color.Transparent)
-                    )
-                ),
+            modifier = Modifier.fillMaxWidth().height(220.dp).padding(top = 8.dp).background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.2f), Color.Transparent))),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = project.field,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = project.accentColor,
-                    letterSpacing = 2.sp
-                )
+                Text(card.field, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor, letterSpacing = 2.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = project.title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFFF0EFF8),
-                    letterSpacing = (-0.5).sp
-                )
+                Text(card.title, fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFFF0EFF8), letterSpacing = (-0.5).sp)
             }
-
-            // Match score
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF0D0D14).copy(alpha = 0.8f),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), shape = RoundedCornerShape(20.dp), color = Color(0xFF0D0D14).copy(alpha = 0.8f)) {
+                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("🎯", fontSize = 12.sp)
-                    Text(
-                        text = "${project.matchScore}% fit",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = when {
-                            project.matchScore >= 90 -> Color(0xFF4CAF50)
-                            project.matchScore >= 75 -> Color(0xFF7C6AF7)
-                            else -> Color(0xFFFFD166)
-                        }
-                    )
+                    Text("${card.matchScore.toInt()}% fit", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = when {
+                        card.matchScore >= 90 -> Color(0xFF4CAF50)
+                        card.matchScore >= 75 -> Color(0xFF7C6AF7)
+                        else -> Color(0xFFFFD166)
+                    })
                 }
             }
         }
 
-        // Content
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            // Owner row
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier.size(30.dp).background(project.ownerColor.copy(alpha = 0.3f), CircleShape)
-                        .border(1.dp, project.ownerColor, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) { Text(project.ownerEmoji, fontSize = 16.sp) }
-                Text(
-                    text = "by ${project.ownerName}",
-                    fontSize = 13.sp,
-                    color = Color(0xFF8B8AAC)
-                )
+        Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.size(30.dp).background(accentColor.copy(alpha = 0.3f), CircleShape).border(1.dp, accentColor, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, color = Color.White)
+                }
+                Text("by ${card.ownerName}", fontSize = 13.sp, color = Color(0xFF8B8AAC))
                 Spacer(Modifier.weight(1f))
-                Text(
-                    text = "${project.slotsTotal - project.slotsFilled} slots left",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (project.slotsTotal - project.slotsFilled <= 1) Color(0xFFFF8C42) else Color(0xFF4CAF50)
-                )
+                val slotsLeft = card.totalSlots - card.filledSlots
+                Text("$slotsLeft slots left", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (slotsLeft <= 1) Color(0xFFFF8C42) else Color(0xFF4CAF50))
             }
-
             Spacer(Modifier.height(10.dp))
-
-            Text(
-                text = project.description,
-                fontSize = 13.sp,
-                color = Color(0xFFB0AFC8),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 19.sp
-            )
-
+            Text(card.description, fontSize = 13.sp, color = Color(0xFFB0AFC8), maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
             Spacer(Modifier.height(12.dp))
-
-            // Roles needed
-            Text(
-                text = "LOOKING FOR",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF5A5A7A),
-                letterSpacing = 1.5.sp
-            )
+            Text("LOOKING FOR", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5A5A7A), letterSpacing = 1.5.sp)
             Spacer(Modifier.height(6.dp))
-            project.rolesNeeded.forEach { slot ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            card.roleSlots.take(4).forEach { slot ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(6.dp).background(project.accentColor, CircleShape))
-                        Text(slot.role, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD0CFF0))
+                        Box(modifier = Modifier.size(6.dp).background(accentColor, CircleShape))
+                        Text(slot.roleName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD0CFF0))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        slot.skills.take(2).forEach { skill ->
-                            Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFF2A2840)) {
-                                Text(skill, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 10.sp, color = Color(0xFF8B8AAC))
-                            }
-                        }
+                        Text("${slot.filled}/${slot.count}", fontSize = 10.sp, color = Color(0xFF8B8AAC))
                     }
                 }
             }
-
             Spacer(Modifier.height(12.dp))
-
-            // Meta info
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                MetaTag("📅", project.timeline)
-                MetaTag("🏠", project.workMode)
-                MetaTag("🔥", project.commitment)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetaTag("🏠", card.workMode)
+                MetaTag("🔥", card.commitmentLevel)
+                if (card.startDate != null) MetaTag("📅", card.startDate.take(10))
             }
         }
     }
@@ -843,24 +490,15 @@ fun ProjectSwipeCard(project: ProjectCard, modifier: Modifier = Modifier) {
 
 @Composable
 fun MetaTag(icon: String, label: String) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = Color(0xFF1E1D2E),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF1E1D2E)) {
+        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(icon, fontSize = 11.sp)
             Text(label, fontSize = 11.sp, color = Color(0xFF8B8AAC))
         }
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Action Buttons
-// ──────────────────────────────────────────────────────────────
+// ─── Action Buttons ───────────────────────────────────────────────────────
 
 @Composable
 fun ActionButtons(
@@ -869,17 +507,15 @@ fun ActionButtons(
     onLike: () -> Unit,
     superLikesLeft: Int,
     likesLeft: Int,
+    enabled: Boolean = true
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Pass button
         FloatingActionButton(
-            onClick = onPass,
+            onClick = { if (enabled) onPass() },
             modifier = Modifier.size(56.dp),
             containerColor = Color(0xFF1E1D2E),
             shape = CircleShape,
@@ -888,24 +524,18 @@ fun ActionButtons(
             Icon(Icons.Filled.Close, "Pass", tint = Color(0xFFFF4D6D), modifier = Modifier.size(26.dp))
         }
 
-        // Super Like button (center, larger)
         FloatingActionButton(
-            onClick = onSuperLike,
+            onClick = { if (enabled) onSuperLike() },
             modifier = Modifier.size(52.dp),
             containerColor = Color(0xFF2A2840),
             shape = CircleShape,
             elevation = FloatingActionButtonDefaults.elevation(0.dp),
         ) {
-            Text(
-                text = "⭐",
-                fontSize = 22.sp,
-                color = if (superLikesLeft > 0) Color(0xFFFFD166) else Color(0xFF3A3A5A)
-            )
+            Text("⭐", fontSize = 22.sp, color = if (superLikesLeft > 0) Color(0xFFFFD166) else Color(0xFF3A3A5A))
         }
 
-        // Like button
         FloatingActionButton(
-            onClick = onLike,
+            onClick = { if (enabled) onLike() },
             modifier = Modifier.size(56.dp),
             containerColor = if (likesLeft > 0) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFF1E1D2E),
             shape = CircleShape,
@@ -917,38 +547,32 @@ fun ActionButtons(
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Empty State
-// ──────────────────────────────────────────────────────────────
+// ─── Empty State ──────────────────────────────────────────────────────────
 
 @Composable
-fun EmptyStackView(mode: CardMode) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier.padding(40.dp)
-    ) {
-        Text(if (mode == CardMode.PEOPLE) "🎉" else "🚀", fontSize = 64.sp)
+fun EmptyStackView(isPeopleMode: Boolean, onCreateProject: () -> Unit = {}) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(40.dp)) {
+        Text(if (isPeopleMode) "🎉" else "🚀", fontSize = 64.sp)
         Spacer(Modifier.height(16.dp))
-        Text(
-            text = "You've seen everyone!",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFFF0EFF8)
-        )
+        Text("You've seen everyone!", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8))
         Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Check back later or update your profile to expand your pool.",
-            fontSize = 14.sp,
-            color = Color(0xFF6B6A8C),
-            textAlign = TextAlign.Center
-        )
+        Text("Check back later or update your profile to expand your pool.", fontSize = 14.sp, color = Color(0xFF6B6A8C), textAlign = TextAlign.Center)
+        if (isPeopleMode) {
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = onCreateProject,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6AF7)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Create a New Project", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Match Dialog
-// ──────────────────────────────────────────────────────────────
+// ─── Match Dialog ─────────────────────────────────────────────────────────
 
 @Composable
 fun MatchDialog(onDismiss: () -> Unit) {
@@ -960,22 +584,11 @@ fun MatchDialog(onDismiss: () -> Unit) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("🎊", fontSize = 48.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "It's a Match!",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFFF0EFF8)
-                )
+                Text("It's a Match!", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFFF0EFF8))
             }
         },
         text = {
-            Text(
-                "A new chat has been opened. Reach out within 24h!",
-                fontSize = 14.sp,
-                color = Color(0xFF8B8AAC),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Text("A new chat has been opened. Go to Matches to start chatting!", fontSize = 14.sp, color = Color(0xFF8B8AAC), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         },
         confirmButton = {
             Button(
@@ -983,7 +596,7 @@ fun MatchDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6AF7)),
                 shape = RoundedCornerShape(12.dp)
-            ) { Text("Start Chatting →", fontWeight = FontWeight.Bold) }
+            ) { Text("Got it!", fontWeight = FontWeight.Bold) }
         },
     )
 }
