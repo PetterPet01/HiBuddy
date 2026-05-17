@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.Color
 
 data class UserCard(
     val id: Int,
+
+    val uid: String = "",
     val name: String,
     val username: String,
     val university: String,

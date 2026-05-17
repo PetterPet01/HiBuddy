@@ -23,6 +23,7 @@ import kotlin.math.sign
 import com.example.hibuddy.data.model.UserProfile
 import com.example.hibuddy.repository.UserRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.example.hibuddy.repository.MatchRepository
 
 // ──────────────────────────────────────────────────────────────
 //  Discover Screen
@@ -44,6 +45,7 @@ fun DiscoverScreen() {
     var showMatchDialog by remember { mutableStateOf(false) }
 
     val userRepository = remember { UserRepository() }
+    val matchRepository = remember { MatchRepository() }
 
     LaunchedEffect(Unit) {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
@@ -165,8 +167,24 @@ fun DiscoverScreen() {
                             lastAction = SwipeAction.PASS
                         },
                         onSwipeRight = {
-                            if (likesLeft > 0) {
-                                projectStack = projectStack.drop(1).toMutableList()
+                            if (likesLeft > 0 && peopleStack.isNotEmpty()) {
+                                val likedUser = peopleStack[0]
+                                val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+
+                                if (currentUid != null) {
+                                    matchRepository.likeUser(
+                                        fromUserId = currentUid,
+                                        toUserId = likedUser.uid,
+                                        onSuccess = {
+                                            println("Like saved")
+                                        },
+                                        onFailure = {
+                                            println(it)
+                                        }
+                                    )
+                                }
+
+                                peopleStack = peopleStack.drop(1).toMutableList()
                                 lastAction = SwipeAction.LIKE
                                 likesLeft--
                             }
@@ -237,6 +255,8 @@ fun UserProfile.toUserCard(index: Int): UserCard {
 
     return UserCard(
         id = index,
+
+        uid = uid,
 
         name = fullName.ifBlank {
             "Unnamed User"
