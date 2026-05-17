@@ -20,6 +20,9 @@ import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import kotlin.math.abs
 import kotlin.math.sign
+import com.example.hibuddy.data.model.UserProfile
+import com.example.hibuddy.repository.UserRepository
+import com.google.firebase.auth.FirebaseAuth
 
 // ──────────────────────────────────────────────────────────────
 //  Discover Screen
@@ -31,13 +34,32 @@ fun DiscoverScreen() {
     var selectedProject by remember { mutableStateOf(SampleData.myProjects.first()) }
 
     // Separate card stacks for each mode
-    var peopleStack by remember { mutableStateOf(SampleData.users.toMutableList()) }
+    var peopleStack by remember { mutableStateOf(mutableListOf<UserCard>()) }
+
     var projectStack by remember { mutableStateOf(SampleData.projects.toMutableList()) }
 
     var superLikesLeft by remember { mutableStateOf(3) }
     var likesLeft by remember { mutableStateOf(50) }
     var lastAction by remember { mutableStateOf<SwipeAction?>(null) }
     var showMatchDialog by remember { mutableStateOf(false) }
+
+    val userRepository = remember { UserRepository() }
+
+    LaunchedEffect(Unit) {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
+
+        userRepository.getDiscoverUsers(
+            currentUid = currentUid,
+            onSuccess = { users ->
+                peopleStack = users.mapIndexed { index, userProfile ->
+                    userProfile.toUserCard(index)
+                }.toMutableList()
+            },
+            onFailure = {
+                println(it)
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -201,6 +223,66 @@ fun DiscoverScreen() {
     if (showMatchDialog) {
         MatchDialog(onDismiss = { showMatchDialog = false })
     }
+}
+
+fun UserProfile.toUserCard(index: Int): UserCard {
+
+    val colors = listOf(
+        Color(0xFF7C6AF7),
+        Color(0xFFE03055),
+        Color(0xFF06B6D4),
+        Color(0xFF059669),
+        Color(0xFFFF8C42)
+    )
+
+    return UserCard(
+        id = index,
+
+        name = fullName.ifBlank {
+            "Unnamed User"
+        },
+
+        username = email,
+
+        university = organization.ifBlank {
+            "No organization"
+        },
+
+        bio = bio.ifBlank {
+            "No bio yet."
+        },
+
+        roles = listOf(
+            currentStatus.ifBlank {
+                "Member"
+            },
+
+            major.ifBlank {
+                "General"
+            }
+        ),
+
+        skills = skills.take(3).map { skillName ->
+            Skill(
+                name = skillName,
+                level = SkillLevel.INTERMEDIATE
+            )
+        },
+
+        isVerified = false,
+
+        avatarColor = colors[index % colors.size],
+
+        avatarEmoji = "👤",
+
+        matchScore = 80,
+
+        projectsCompleted = 0,
+
+        reputationStars = 0.0f,
+
+        location = "Vietnam"
+    )
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -37,4 +37,23 @@ class UserRepository {
                 onFailure(error.message ?: "Load profile failed")
             }
     }
+
+    fun getDiscoverUsers(
+        currentUid: String,
+        onSuccess: (List<UserProfile>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection("users")
+            .get()
+            .addOnSuccessListener { result ->
+                val users = result.documents
+                    .mapNotNull { it.toObject(UserProfile::class.java) }
+                    .filter { it.uid != currentUid }
+
+                onSuccess(users)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Load users failed")
+            }
+    }
 }
