@@ -16,6 +16,8 @@ from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill
 from app.models.chat import Chat, Notification, Message
 from app.services.embedding_service import encode_text
+from app.services.fcm_service import notify_user
+from app.services.presence_service import presence_manager
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -123,7 +125,7 @@ async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, targ
     return None
 
 
-async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner_id: UUID) -> Match:
+async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner_id: UUID) -> Match | None:
     existing = await db.execute(
         select(Match).where(
             Match.user_id == user_id,
@@ -162,6 +164,10 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
         related_id=str(match.id),
     )
     db.add(notif_owner)
+
+    import asyncio
+    asyncio.create_task(notify_user(db, user_id, "New Match!", "You matched with a project! Start chatting."))
+    asyncio.create_task(notify_user(db, owner_id, "New Match!", "A contributor matched with your project!"))
 
     return match
 
@@ -378,6 +384,8 @@ async def _discover_users(
 
 
 def _get_user_search_vector(user: User) -> list[float] | None:
+    if not settings.ENABLE_EMBEDDINGS:
+        return None
     try:
         parts = [
             user.full_name or "",
@@ -396,6 +404,8 @@ def _get_user_search_vector(user: User) -> list[float] | None:
 
 
 def _search_similar_projects(vector: list[float], limit: int, exclude_ids: set[str]) -> list[UUID] | None:
+    if not settings.ENABLE_MILVUS:
+        return None
     try:
         connect_milvus()
         collection = Collection("project_vectors")
@@ -426,6 +436,8 @@ def _search_similar_projects(vector: list[float], limit: int, exclude_ids: set[s
 
 
 def _search_similar_users(vector: list[float], limit: int, exclude_ids: set[str]) -> list[UUID] | None:
+    if not settings.ENABLE_MILVUS:
+        return None
     try:
         connect_milvus()
         collection = Collection("user_profile_vectors")
@@ -468,6 +480,8 @@ _embedding_cache: dict[str, list[float]] = {}
 
 
 def _get_or_compute_embedding(entity_type: str, entity_id: str, text: str) -> list[float] | None:
+    if not settings.ENABLE_EMBEDDINGS:
+        return None
     cache_key = f"{entity_type}:{entity_id}"
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
@@ -521,18 +535,35 @@ async def get_matches(db: AsyncSession, user: User) -> list[dict]:
 
     response = []
     for match in matches:
-        other_user = await db.get(User, match.user_id if match.owner_id == user.id else match.owner_id)
+        other_user_id = match.user_id if match.owner_id == user.id else match.owner_id
+        other_user = await db.get(User, other_user_id)
         project = await db.get(Project, match.project_id)
+        chat_result = await db.execute(select(Chat).where(Chat.match_id == match.id))
+        chat = chat_result.scalar_one_or_none()
 
-        last_message_result = await db.execute(
-            select(Message).join(Chat).where(Chat.match_id == match.id).order_by(Message.created_at.desc()).limit(1)
-        )
+        last_message = None
+        unread_count = 0
+        presence = presence_manager.get_presence(str(other_user_id))
+        if chat:
+            last_message_result = await db.execute(
+                select(Message).where(Message.chat_id == chat.id).order_by(Message.created_at.desc()).limit(1)
+            )
+            last_message = last_message_result.scalar_one_or_none()
+            unread_result = await db.execute(
+                select(func.count()).select_from(Message).where(
+                    Message.chat_id == chat.id,
+                    Message.sender_id != user.id,
+                    Message.is_read == False,
+                )
+            )
+            unread_count = unread_result.scalar() or 0
 
         response.append({
             "id": str(match.id),
             "user_id": str(match.user_id),
             "project_id": str(match.project_id),
             "owner_id": str(match.owner_id),
+            "other_user_id": str(other_user_id),
             "role_matched": match.role_matched,
             "match_score": match.match_score,
             "matched_at": match.matched_at,
@@ -540,10 +571,12 @@ async def get_matches(db: AsyncSession, user: User) -> list[dict]:
             "is_member_added": match.is_member_added,
             "user_name": other_user.full_name if other_user else "",
             "user_avatar": other_user.avatar_url if other_user else None,
+            "user_is_online": presence["is_online"],
+            "user_last_seen_at": presence["last_seen_at"],
             "project_title": project.title if project else "",
-            "last_message": None,
-            "last_message_time": None,
-            "is_unread": False,
+            "last_message": last_message.content[:100] if last_message else None,
+            "last_message_time": last_message.created_at.isoformat() if last_message else None,
+            "is_unread": unread_count > 0,
         })
 
     return response

@@ -12,6 +12,8 @@ from app.database import async_session
 from app.models.user import User
 from app.models.swipe import Match
 from app.models.chat import Chat, Message
+from app.services.presence_service import presence_manager
+from app.services.fcm_service import notify_user
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ class ConnectionManager:
             except Exception:
                 self.disconnect(user_id, chat_id)
 
+    def is_connected(self, user_id: str, chat_id: str) -> bool:
+        return chat_id in self.active_connections.get(user_id, {})
+
     async def send_notification(self, user_id: str, notification: dict):
         for ws in self.active_connections.get(user_id, {}).values():
             try:
@@ -48,6 +53,62 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def _allowed_presence_user_ids(db: AsyncSession, user_id: str, requested_user_ids: set[str]) -> set[str]:
+    if not requested_user_ids:
+        return set()
+
+    user_uuid = UUID(user_id)
+    matches_result = await db.execute(
+        select(Match).where(
+            ((Match.user_id == user_uuid) | (Match.owner_id == user_uuid)) &
+            (Match.is_unmatched == False)
+        )
+    )
+    allowed = set()
+    for match in matches_result.scalars():
+        other_user_id = str(match.user_id if match.owner_id == user_uuid else match.owner_id)
+        if other_user_id in requested_user_ids:
+            allowed.add(other_user_id)
+    return allowed
+
+
+async def handle_presence_websocket(websocket: WebSocket, token: str = Query(...)):
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        await websocket.close(code=4001)
+        return
+
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4001)
+        return
+
+    async with async_session() as db:
+        user = await db.get(User, UUID(user_id))
+        if not user or not user.is_active:
+            await websocket.close(code=4004)
+            return
+
+        connection_id = await presence_manager.connect_presence_socket(websocket, user_id)
+
+        try:
+            while True:
+                data = await websocket.receive_json()
+                message_type = data.get("type")
+                if message_type == "subscribe":
+                    raw_user_ids = data.get("user_ids") or []
+                    requested_user_ids = {str(item) for item in raw_user_ids if item}
+                    allowed_user_ids = await _allowed_presence_user_ids(db, user_id, requested_user_ids)
+                    await presence_manager.subscribe(connection_id, allowed_user_ids)
+                elif message_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+        except WebSocketDisconnect:
+            await presence_manager.disconnect(connection_id)
+        except Exception as e:
+            logger.error(f"Presence websocket error: {e}")
+            await presence_manager.disconnect(connection_id)
 
 
 async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Query(...)):
@@ -105,14 +166,31 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
             while True:
                 data = await websocket.receive_json()
 
-                if data["type"] == "message":
+                message_type = data.get("type")
+
+                if message_type == "message":
+                    content = (data.get("content") or "").strip()
+                    if not content:
+                        await websocket.send_json({"type": "error", "message": "Message cannot be empty"})
+                        continue
+                    if len(content) > 4000:
+                        await websocket.send_json({"type": "error", "message": "Message is too long"})
+                        continue
+
+                    client_message_id = data.get("client_message_id")
+                    if client_message_id is not None:
+                        client_message_id = str(client_message_id)[:128]
+
+                    recipient_is_active = manager.is_connected(other_user_id, match_id)
                     message = Message(
                         chat_id=chat.id,
                         sender_id=UUID(user_id),
-                        content=data["content"],
+                        content=content,
+                        is_read=recipient_is_active,
                     )
                     db.add(message)
                     await db.commit()
+                    await db.refresh(message)
 
                     msg_data = {
                         "type": "new_message",
@@ -121,9 +199,10 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                             "chat_id": str(chat.id),
                             "sender_id": user_id,
                             "content": message.content,
-                            "is_read": False,
+                            "is_read": recipient_is_active,
                             "created_at": message.created_at.isoformat(),
                             "sender_name": user.full_name,
+                            "client_message_id": client_message_id,
                         },
                     }
 
@@ -133,10 +212,35 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                         "data": msg_data["data"],
                     })
 
-                elif data["type"] == "typing":
+                    if recipient_is_active:
+                        await manager.send_message(user_id, match_id, {"type": "read_receipt", "by": other_user_id})
+
+                    if other_user_id not in manager.active_connections or match_id not in manager.active_connections[other_user_id]:
+                        import asyncio
+                        asyncio.create_task(notify_user(db, UUID(other_user_id), f"New message from {user.full_name}", message.content))
+
+                elif message_type == "typing":
                     await manager.send_message(other_user_id, match_id, {
                         "type": "typing",
                         "user_id": user_id,
+                    })
+
+                elif message_type == "read":
+                    unread_result = await db.execute(
+                        select(Message).where(
+                            Message.chat_id == chat.id,
+                            Message.sender_id != UUID(user_id),
+                            Message.is_read == False,
+                        )
+                    )
+                    unread_messages = unread_result.scalars().all()
+                    for msg in unread_messages:
+                        msg.is_read = True
+                    if unread_messages:
+                        await db.commit()
+                    await manager.send_message(other_user_id, match_id, {
+                        "type": "read_receipt",
+                        "by": user_id,
                     })
 
         except WebSocketDisconnect:

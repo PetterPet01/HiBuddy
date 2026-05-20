@@ -1,15 +1,52 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# OS files
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+Thumbs.db
+
+# Android Studio / IntelliJ local state
+*.iml
+.idea/
+!.idea/codeStyles/
+!.idea/codeStyles/*
+
+# Android / Gradle generated files
+.gradle/
+.kotlin/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
 local.properties
+
+# Python virtual environments
+.venv/
+.venv*/
+venv/
+env/
+
+# Python generated files and tooling caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+google-services.json
+service-account*.json
+*.keystore
+*.jks
+*.p12
+
+# Local agent/tool scratch files
+.agents/
+.codex/
+.junie/
+.kilo/
+.tmp/

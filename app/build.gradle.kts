@@ -4,6 +4,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val resolvedBaseUrl = providers.gradleProperty("HIBUDDY_BASE_URL")
+    .orElse("http://10.0.2.2:8000/")
+    .get()
+    .let { if (it.endsWith("/")) it else "$it/" }
+
 android {
     namespace = "com.example.hibuddy"
     compileSdk {
@@ -21,7 +26,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000\"")
+        buildConfigField("String", "BASE_URL", "\"$resolvedBaseUrl\"")
     }
 
     buildTypes {
@@ -68,6 +73,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

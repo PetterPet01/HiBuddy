@@ -1,3 +1,5 @@
+import socket
+
 from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
 from app.config import get_settings
 
@@ -5,10 +7,23 @@ settings = get_settings()
 
 
 def connect_milvus():
+    if not settings.ENABLE_MILVUS:
+        raise RuntimeError("Milvus is disabled")
+
+    try:
+        with socket.create_connection(
+            (settings.MILVUS_HOST, settings.MILVUS_PORT),
+            timeout=settings.MILVUS_CONNECT_TIMEOUT_SECONDS,
+        ):
+            pass
+    except OSError as exc:
+        raise RuntimeError("Milvus is unavailable") from exc
+
     connections.connect(
         alias="default",
         host=settings.MILVUS_HOST,
         port=settings.MILVUS_PORT,
+        timeout=settings.MILVUS_CONNECT_TIMEOUT_SECONDS,
     )
 
 

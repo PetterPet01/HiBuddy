@@ -269,6 +269,7 @@ data class MatchResponse(
     @SerializedName("user_id") val userId: String,
     @SerializedName("project_id") val projectId: String,
     @SerializedName("owner_id") val ownerId: String,
+    @SerializedName("other_user_id") val otherUserId: String? = null,
     @SerializedName("role_matched") val roleMatched: String?,
     @SerializedName("match_score") val matchScore: Double,
     @SerializedName("matched_at") val matchedAt: String,
@@ -276,6 +277,8 @@ data class MatchResponse(
     @SerializedName("is_member_added") val isMemberAdded: Boolean,
     @SerializedName("user_name") val userName: String?,
     @SerializedName("user_avatar") val userAvatar: String?,
+    @SerializedName("user_is_online") val userIsOnline: Boolean = false,
+    @SerializedName("user_last_seen_at") val userLastSeenAt: String? = null,
     @SerializedName("project_title") val projectTitle: String?,
     @SerializedName("last_message") val lastMessage: String?,
     @SerializedName("last_message_time") val lastMessageTime: String?,
@@ -409,8 +412,11 @@ data class MentorSuggestionResponse(
 data class ChatInboxResponse(
     val id: String,
     @SerializedName("match_id") val matchId: String,
+    @SerializedName("user_id") val userId: String,
     @SerializedName("user_name") val userName: String,
     @SerializedName("user_avatar") val userAvatar: String?,
+    @SerializedName("user_is_online") val userIsOnline: Boolean = false,
+    @SerializedName("user_last_seen_at") val userLastSeenAt: String? = null,
     @SerializedName("project_title") val projectTitle: String,
     @SerializedName("last_message") val lastMessage: String?,
     @SerializedName("last_message_time") val lastMessageTime: String?,
@@ -424,7 +430,8 @@ data class MessageResponse(
     @SerializedName("sender_id") val senderId: String,
     val content: String,
     @SerializedName("is_read") val isRead: Boolean,
-    @SerializedName("created_at") val createdAt: String
+    @SerializedName("created_at") val createdAt: String,
+    @SerializedName("sender_name") val senderName: String? = null
 )
 
 data class NotificationResponse(

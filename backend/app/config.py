@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -32,6 +36,9 @@ class Settings(BaseSettings):
 
     SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DIM: int = 384
+    ENABLE_EMBEDDINGS: bool = False
+    ENABLE_MILVUS: bool = False
+    MILVUS_CONNECT_TIMEOUT_SECONDS: float = 0.5
 
     SWIPE_DAILY_LIKE_LIMIT: int = 50
     SWIPE_DAILY_SUPERLIKE_LIMIT: int = 3
@@ -42,7 +49,7 @@ class Settings(BaseSettings):
     MAX_COURSE_SUGGESTIONS: int = 5
 
     class Config:
-        env_file = ".env"
+        env_file = str(BACKEND_DIR / ".env")
         env_file_encoding = "utf-8"
 
 

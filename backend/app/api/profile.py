@@ -2,6 +2,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.core.dependencies import get_current_user
@@ -17,6 +18,24 @@ from app.schemas.profile import (
 from app.services.embedding_service import upsert_user_vector
 
 router = APIRouter(prefix="/api/v1/profiles", tags=["profiles"])
+
+
+def _profile_embedding_options():
+    return (
+        selectinload(UserProfile.user).selectinload(User.roles),
+        selectinload(UserProfile.user).selectinload(User.skills),
+        selectinload(UserProfile.user).selectinload(User.interests),
+    )
+
+
+async def _get_profile_for_embedding(db: AsyncSession, user_id: UUID) -> UserProfile | None:
+    profile_result = await db.execute(
+        select(UserProfile)
+        .options(*_profile_embedding_options())
+        .where(UserProfile.user_id == user_id)
+        .execution_options(populate_existing=True)
+    )
+    return profile_result.scalar_one_or_none()
 
 
 @router.get("/me", response_model=ProfileResponse)
@@ -68,13 +87,14 @@ async def update_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    profile_result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == current_user.id)
-    )
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if not profile:
-        profile = UserProfile(user_id=current_user.id)
+        profile = UserProfile(user_id=current_user.id, display_name=current_user.full_name)
         db.add(profile)
+        await db.flush()
+        profile = await _get_profile_for_embedding(db, current_user.id)
+        if not profile:
+            raise HTTPException(status_code=500, detail="Failed to create profile")
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(profile, field, value)
@@ -93,10 +113,7 @@ async def hide_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    profile_result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == current_user.id)
-    )
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = True
         upsert_user_vector(profile)
@@ -108,10 +125,7 @@ async def unhide_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    profile_result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == current_user.id)
-    )
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = False
         upsert_user_vector(profile)
@@ -128,8 +142,7 @@ async def add_skill(
     db.add(skill)
     await db.flush()
 
-    profile_result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         upsert_user_vector(profile)
 
@@ -146,8 +159,7 @@ async def remove_skill(
     if skill and skill.user_id == current_user.id:
         await db.delete(skill)
 
-        profile_result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-        profile = profile_result.scalar_one_or_none()
+        profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
             upsert_user_vector(profile)
 
@@ -170,8 +182,7 @@ async def add_role(
     db.add(role)
     await db.flush()
 
-    profile_result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         upsert_user_vector(profile)
 
@@ -188,8 +199,7 @@ async def remove_role(
     if role and role.user_id == current_user.id:
         await db.delete(role)
 
-        profile_result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-        profile = profile_result.scalar_one_or_none()
+        profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
             upsert_user_vector(profile)
 
@@ -206,8 +216,7 @@ async def add_interest(
     db.add(interest)
     await db.flush()
 
-    profile_result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-    profile = profile_result.scalar_one_or_none()
+    profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         upsert_user_vector(profile)
 

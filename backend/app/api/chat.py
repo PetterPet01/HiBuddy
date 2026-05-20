@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +10,10 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.models.swipe import Match
 from app.models.chat import Chat, Message, Notification
+from app.models.project import Project
+from app.api.websocket import manager
 from app.services.notification_service import get_notifications, get_unread_notification_count
+from app.services.presence_service import presence_manager
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
@@ -31,6 +35,8 @@ async def get_inbox(
     for match in matches:
         other_user_id = match.user_id if match.owner_id == current_user.id else match.owner_id
         other_user = await db.get(User, other_user_id)
+        project = await db.get(Project, match.project_id)
+        presence = presence_manager.get_presence(str(other_user_id))
 
         chat_result = await db.execute(
             select(Chat).where(Chat.match_id == match.id)
@@ -59,16 +65,24 @@ async def get_inbox(
         chats.append({
             "id": str(chat.id) if chat else "",
             "match_id": str(match.id),
+            "user_id": str(other_user_id),
             "user_name": other_user.full_name if other_user else "",
             "user_avatar": other_user.avatar_url if other_user else None,
-            "project_title": "",
+            "user_is_online": presence["is_online"],
+            "user_last_seen_at": presence["last_seen_at"],
+            "project_title": project.title if project else "",
             "last_message": last_msg.content[:100] if last_msg else None,
             "last_message_time": last_msg.created_at.isoformat() if last_msg else None,
             "is_unread": unread_count > 0,
             "unread_count": unread_count,
+            "matched_at": match.matched_at.isoformat(),
         })
 
-    return chats
+    return sorted(
+        chats,
+        key=lambda item: item["last_message_time"] or item["matched_at"],
+        reverse=True,
+    )
 
 
 @router.get("/chat/{match_id}/messages")
@@ -86,22 +100,51 @@ async def get_messages(
     chat_result = await db.execute(select(Chat).where(Chat.match_id == match_id))
     chat = chat_result.scalar_one_or_none()
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
+        return []
 
-    query = select(Message).where(Message.chat_id == chat.id).order_by(Message.created_at.desc()).limit(limit)
+    limit = min(max(limit, 1), 100)
+    query = select(Message).where(Message.chat_id == chat.id)
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
+            query = query.where(Message.created_at < before_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid before timestamp")
+
+    query = query.order_by(Message.created_at.desc()).limit(limit)
     messages = (await db.execute(query)).scalars().all()
 
-    return [
-        {
+    unread_result = await db.execute(
+        select(Message).where(
+            Message.chat_id == chat.id,
+            Message.sender_id != current_user.id,
+            Message.is_read == False,
+        )
+    )
+    unread_messages = unread_result.scalars().all()
+    for msg in unread_messages:
+        msg.is_read = True
+    if unread_messages:
+        await db.commit()
+        other_user_id = match.user_id if match.owner_id == current_user.id else match.owner_id
+        await manager.send_message(str(other_user_id), str(match_id), {
+            "type": "read_receipt",
+            "by": str(current_user.id),
+        })
+
+    response = []
+    for msg in reversed(messages):
+        sender = await db.get(User, msg.sender_id)
+        response.append({
             "id": str(msg.id),
             "chat_id": str(msg.chat_id),
             "sender_id": str(msg.sender_id),
             "content": msg.content,
             "is_read": msg.is_read,
             "created_at": msg.created_at.isoformat(),
-        }
-        for msg in reversed(messages)
-    ]
+            "sender_name": sender.full_name if sender else None,
+        })
+    return response
 
 
 @router.get("/notifications")

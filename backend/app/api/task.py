@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -33,9 +33,23 @@ async def create_task(
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only project owner can create tasks")
 
+    assignee_uuid = UUID(data.assignee_id)
+    member_result = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == assignee_uuid,
+        )
+    )
+    if not member_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Assignee must be a member of the project")
+
     start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
     deadline = datetime.strptime(data.deadline, "%d/%m/%Y").replace(tzinfo=timezone.utc)
 
+    if start < project.start_date or start > project.end_date:
+        raise HTTPException(status_code=400, detail="Task start date must be within the project timeline")
+    if deadline < start:
+        raise HTTPException(status_code=400, detail="Deadline must be after the start date")
     if deadline < datetime.now(timezone.utc) + timedelta(days=1):
         raise HTTPException(status_code=400, detail="Deadline must be at least tomorrow")
     if deadline > project.end_date:
@@ -43,7 +57,7 @@ async def create_task(
 
     task = Task(
         project_id=project_id,
-        assignee_id=UUID(data.assignee_id),
+        assignee_id=assignee_uuid,
         creator_id=current_user.id,
         title=data.title,
         description=data.description,
@@ -65,8 +79,8 @@ async def create_task(
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskResponse])
 async def list_tasks(
     project_id: UUID,
-    status_filter: str | None = None,
-    assignee_id: UUID | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    assignee_id: UUID | None = Query(None, alias="assignee_id"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -144,7 +158,17 @@ async def update_task_status(
         if not project or project.owner_id != current_user.id:
             raise HTTPException(status_code=403, detail="Only owner can close tasks")
 
+    previous_status = task.status
     task.status = data.status
+    if previous_status != data.status:
+        db.add(TaskCheckoutHistory(
+            task_id=task.id,
+            action="STATUS_UPDATE",
+            actor_id=current_user.id,
+            previous_status=previous_status,
+            new_status=data.status,
+            notes=f"Status changed from {previous_status} to {data.status}",
+        ))
     return {"message": f"Task status updated to {data.status}"}
 
 
@@ -281,11 +305,21 @@ async def delete_task(
 @router.get("/projects/{project_id}/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    member_check = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user.id,
+        )
+    )
+    if not member_check.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a member of this project")
 
     members_result = await db.execute(
         select(ProjectMember).where(ProjectMember.project_id == project_id)

@@ -720,6 +720,12 @@ async def _seed_swipes(db: AsyncSession):
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def _seed_matches_and_chats(db: AsyncSession):
+    await _seed_matches(db)
+    await _seed_chats(db)
+    await _seed_messages(db)
+
+
+async def _seed_matches(db: AsyncSession):
     matches = [
         Match(id=MA1, user_id=U2, project_id=P1, owner_id=U1, role_matched="UI/UX Designer",
               match_score=92.5, matched_at=days_ago(4), is_unmatched=False, is_member_added=False),
@@ -733,6 +739,8 @@ async def _seed_matches_and_chats(db: AsyncSession):
     db.add_all(matches)
     await db.flush()
 
+
+async def _seed_chats(db: AsyncSession):
     chats = [
         Chat(id=CH1, match_id=MA1, created_at=days_ago(4)),
         Chat(id=CH2, match_id=MA2, created_at=days_ago(5)),
@@ -742,6 +750,8 @@ async def _seed_matches_and_chats(db: AsyncSession):
     db.add_all(chats)
     await db.flush()
 
+
+async def _seed_messages(db: AsyncSession):
     messages = [
         Message(id=MSG1,  chat_id=CH1, sender_id=U1, content="Hey Thu! I saw your portfolio, really impressive work on the EdTech dashboard design!", is_read=True,  created_at=days_ago(4)),
         Message(id=MSG2,  chat_id=CH1, sender_id=U2, content="Thank you Minh! I'm really excited about StudyMate. The AI-powered learning approach is exactly what I've been looking to work on.", is_read=True,  created_at=days_ago(4)),

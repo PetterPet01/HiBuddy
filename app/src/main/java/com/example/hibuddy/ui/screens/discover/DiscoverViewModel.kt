@@ -70,15 +70,29 @@ class DiscoverViewModel : ViewModel() {
             (card as UserCardResponse).userId
         }
         val targetType = if (state.mode == "CONTRIBUTOR") "PROJECT" else "USER"
+        val nextLikesRemaining = if (action == "LIKE" || action == "SUPER_LIKE") {
+            (state.dailyLikesRemaining - 1).coerceAtLeast(0)
+        } else {
+            state.dailyLikesRemaining
+        }
+        val nextSuperlikesRemaining = if (action == "SUPER_LIKE") {
+            (state.dailySuperlikesRemaining - 1).coerceAtLeast(0)
+        } else {
+            state.dailySuperlikesRemaining
+        }
+
+        _uiState.value = state.copy(
+            currentCardIndex = currentIndex + 1,
+            dailyLikesRemaining = nextLikesRemaining,
+            dailySuperlikesRemaining = nextSuperlikesRemaining,
+            error = null,
+        )
 
         viewModelScope.launch {
             swipeRepository.swipeAction(SwipeActionRequest(targetType, targetId, action)).fold(
                 onSuccess = { response ->
-                    val newState = _uiState.value.copy(currentCardIndex = currentIndex + 1)
                     if (response.matched) {
-                        _uiState.value = newState.copy(matchedProjectId = response.matchId)
-                    } else {
-                        _uiState.value = newState
+                        _uiState.value = _uiState.value.copy(matchedProjectId = response.matchId)
                     }
                 },
                 onFailure = { e ->

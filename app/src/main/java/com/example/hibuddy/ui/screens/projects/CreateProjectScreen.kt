@@ -12,12 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.data.remote.dto.RoleSlotRequest
+import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 
 data class RoleSlotEntry(
     val roleName: String = "",
@@ -33,6 +33,7 @@ fun CreateProjectScreen(
     viewModel: CreateProjectViewModel = viewModel(factory = CreateProjectViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colorScheme = MaterialTheme.colorScheme
 
     var title by remember { mutableStateOf("") }
     var field by remember { mutableStateOf("EdTech") }
@@ -64,16 +65,16 @@ fun CreateProjectScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D14))
+            .background(colorScheme.background)
     ) {
         TopAppBar(
-            title = { Text("Create Project", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8)) },
+            title = { Text("Create Project", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, "Back", tint = Color(0xFFF0EFF8))
+                    Icon(Icons.Filled.ArrowBack, "Back", tint = colorScheme.onSurface)
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13131F))
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface)
         )
 
         Column(
@@ -126,7 +127,7 @@ fun CreateProjectScreen(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
                 maxLines = 5,
-                supportingText = { Text("${description.length}/500", fontSize = 11.sp, color = Color(0xFF6B6A8C)) },
+                supportingText = { Text("${description.length}/500", fontSize = 11.sp, color = colorScheme.onSurfaceVariant) },
                 colors = textFieldColors()
             )
 
@@ -214,16 +215,16 @@ fun CreateProjectScreen(
                 }
             }
 
-            Text("Role Slots", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B8AAC))
+            Text("Role Slots", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurfaceVariant)
             roleSlots.forEachIndexed { index, slot ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
+                    colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Slot ${index + 1}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C6AF7))
+                            Text("Slot ${index + 1}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colorScheme.primary)
                             Spacer(Modifier.weight(1f))
                             if (roleSlots.size > 1) {
                                 IconButton(
@@ -232,7 +233,7 @@ fun CreateProjectScreen(
                                     },
                                     modifier = Modifier.size(32.dp)
                                 ) {
-                                    Icon(Icons.Filled.Close, "Remove", tint = Color(0xFFFF4D6D), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Filled.Close, "Remove", tint = colorScheme.error, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -277,9 +278,9 @@ fun CreateProjectScreen(
             }
 
             TextButton(onClick = { roleSlots = roleSlots + RoleSlotEntry() }) {
-                Icon(Icons.Filled.Add, null, tint = Color(0xFF7C6AF7), modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Add, null, tint = colorScheme.primary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Add Role Slot", color = Color(0xFF7C6AF7))
+                Text("Add Role Slot", color = colorScheme.primary)
             }
 
             OutlinedTextField(
@@ -325,19 +326,22 @@ fun CreateProjectScreen(
                 enabled = !uiState.isLoading && title.isNotBlank() && description.isNotBlank()
                         && startDate.isNotBlank() && endDate.isNotBlank()
                         && roleSlots.all { it.roleName.isNotBlank() },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6AF7)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colorScheme.primary,
+                    contentColor = colorScheme.onPrimary
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (uiState.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colorScheme.onPrimary)
                 } else {
-                    Text("Create Project", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Create Project", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             uiState.error?.let { error ->
-                Card(colors = CardDefaults.cardColors(containerColor = Color(0x33FF4D6D))) {
-                    Text(error, modifier = Modifier.padding(16.dp), color = Color(0xFFFF4D6D), fontSize = 14.sp)
+                Card(colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)) {
+                    Text(error, modifier = Modifier.padding(16.dp), color = colorScheme.onErrorContainer, fontSize = 14.sp)
                 }
             }
 
@@ -347,14 +351,4 @@ fun CreateProjectScreen(
 }
 
 @Composable
-private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = Color(0xFF7C6AF7),
-    unfocusedBorderColor = Color(0xFF2A2840),
-    focusedLabelColor = Color(0xFF7C6AF7),
-    unfocusedLabelColor = Color(0xFF6B6A8C),
-    cursorColor = Color(0xFF7C6AF7),
-    focusedTextColor = Color(0xFFF0EFF8),
-    unfocusedTextColor = Color(0xFFF0EFF8),
-    focusedContainerColor = Color(0xFF13131F),
-    unfocusedContainerColor = Color(0xFF13131F),
-)
+private fun textFieldColors() = hiBuddyTextFieldColors()

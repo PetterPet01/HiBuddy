@@ -29,6 +29,8 @@ class MatchResponse(BaseModel):
     is_member_added: bool
     user_name: str | None = None
     user_avatar: str | None = None
+    user_is_online: bool = False
+    user_last_seen_at: datetime | None = None
     project_title: str | None = None
     last_message: str | None = None
     last_message_time: datetime | None = None

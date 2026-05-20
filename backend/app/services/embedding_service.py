@@ -11,9 +11,12 @@ _model: SentenceTransformer | None = None
 
 
 def _get_model() -> SentenceTransformer:
+    if not settings.ENABLE_EMBEDDINGS:
+        raise RuntimeError("Embeddings are disabled")
+
     global _model
     if _model is None:
-        _model = SentenceTransformer(settings.SENTENCE_TRANSFORMER_MODEL)
+        _model = SentenceTransformer(settings.SENTENCE_TRANSFORMER_MODEL, local_files_only=True)
     return _model
 
 
@@ -43,6 +46,8 @@ def build_project_text(project) -> str:
 
 
 def encode_text(text: str) -> list[float]:
+    if not settings.ENABLE_EMBEDDINGS:
+        raise RuntimeError("Embeddings are disabled")
     model = _get_model()
     return model.encode(text).tolist()
 

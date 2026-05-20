@@ -6,19 +6,25 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import okhttp3.*
+import java.util.concurrent.TimeUnit
 
 class WebSocketManager {
     private val gson = Gson()
     private var webSocket: WebSocket? = null
     private val client = OkHttpClient.Builder()
-        .readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(25, TimeUnit.SECONDS)
         .build()
 
-    private val _events = MutableSharedFlow<WebSocketEvent>(replay = 0)
+    @Volatile
+    private var connected = false
+
+    private val _events = MutableSharedFlow<WebSocketEvent>(replay = 0, extraBufferCapacity = 64)
     val events: SharedFlow<WebSocketEvent> = _events
 
     fun connect(matchId: String, token: String) {
         disconnect()
+        connected = false
         val wsUrl = BuildConfig.BASE_URL
             .replace("http://", "ws://")
             .replace("https://", "wss://")
@@ -30,6 +36,7 @@ class WebSocketManager {
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                connected = true
                 _events.tryEmit(WebSocketEvent.Connected)
             }
 
@@ -55,6 +62,13 @@ class WebSocketManager {
                             val by = json.get("by")?.asString ?: return
                             _events.tryEmit(WebSocketEvent.ReadReceipt(by))
                         }
+                        "error" -> {
+                            val dataObject = if (data != null && data.isJsonObject) data.asJsonObject else null
+                            val message = json.get("message")?.asString
+                                ?: dataObject?.get("message")?.asString
+                                ?: "Chat connection error"
+                            _events.tryEmit(WebSocketEvent.Error(message))
+                        }
                         "notification" -> {
                             _events.tryEmit(WebSocketEvent.Notification(gson.toJson(data)))
                         }
@@ -63,29 +77,46 @@ class WebSocketManager {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                connected = false
                 _events.tryEmit(WebSocketEvent.Error(t.message ?: "Connection failed"))
+                _events.tryEmit(WebSocketEvent.Closed)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                connected = false
                 _events.tryEmit(WebSocketEvent.Closed)
             }
         })
     }
 
-    fun sendMessage(content: String) {
-        val json = gson.toJson(mapOf("type" to "message", "content" to content))
-        webSocket?.send(json)
+    fun sendMessage(content: String, clientMessageId: String): Boolean {
+        val json = gson.toJson(
+            mapOf(
+                "type" to "message",
+                "content" to content,
+                "client_message_id" to clientMessageId
+            )
+        )
+        return webSocket?.send(json) == true
     }
 
-    fun sendTyping() {
+    fun sendTyping(): Boolean {
         val json = gson.toJson(mapOf("type" to "typing"))
-        webSocket?.send(json)
+        return webSocket?.send(json) == true
+    }
+
+    fun sendReadReceipt(): Boolean {
+        val json = gson.toJson(mapOf("type" to "read"))
+        return webSocket?.send(json) == true
     }
 
     fun disconnect() {
+        connected = false
         webSocket?.close(1000, "User left")
         webSocket = null
     }
+
+    fun isConnected(): Boolean = connected
 }
 
 data class ChatMessage(
@@ -95,7 +126,8 @@ data class ChatMessage(
     val content: String = "",
     val is_read: Boolean = false,
     val created_at: String = "",
-    val sender_name: String = ""
+    val sender_name: String = "",
+    val client_message_id: String? = null
 )
 
 sealed class WebSocketEvent {

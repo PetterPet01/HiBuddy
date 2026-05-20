@@ -1,10 +1,14 @@
 package com.example.hibuddy
 
 import android.content.Context
+import com.example.hibuddy.data.local.ChatLocalDataSource
 import com.example.hibuddy.data.local.TokenManager
 import com.example.hibuddy.data.remote.ApiService
+import com.example.hibuddy.data.remote.AuthAuthenticator
 import com.example.hibuddy.data.remote.AuthInterceptor
+import com.example.hibuddy.data.remote.PresenceWebSocketManager
 import com.example.hibuddy.data.repository.*
+import com.example.hibuddy.ui.theme.ThemeManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -15,6 +19,8 @@ object ServiceLocator {
     private lateinit var appContext: Context
 
     val tokenManager: TokenManager by lazy { TokenManager(appContext) }
+    val chatLocalDataSource: ChatLocalDataSource by lazy { ChatLocalDataSource(appContext) }
+    val themeManager: ThemeManager by lazy { ThemeManager(appContext) }
 
     val authInterceptor: AuthInterceptor by lazy {
         AuthInterceptor { tokenManager.getAccessToken() }
@@ -23,6 +29,7 @@ object ServiceLocator {
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .authenticator(AuthAuthenticator(tokenManager, BuildConfig.BASE_URL))
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = HttpLoggingInterceptor.Level.BODY
@@ -43,6 +50,7 @@ object ServiceLocator {
     }
 
     val apiService: ApiService by lazy { retrofit.create(ApiService::class.java) }
+    val presenceWebSocketManager: PresenceWebSocketManager by lazy { PresenceWebSocketManager() }
 
     val authRepository: AuthRepository by lazy { AuthRepository(apiService, tokenManager) }
     val profileRepository: ProfileRepository by lazy { ProfileRepository(apiService) }
@@ -50,7 +58,7 @@ object ServiceLocator {
     val swipeRepository: SwipeRepository by lazy { SwipeRepository(apiService) }
     val taskRepository: TaskRepository by lazy { TaskRepository(apiService) }
     val suggestionRepository: SuggestionRepository by lazy { SuggestionRepository(apiService) }
-    val chatRepository: ChatRepository by lazy { ChatRepository(apiService) }
+    val chatRepository: ChatRepository by lazy { ChatRepository(apiService, chatLocalDataSource) }
 
     fun init(context: Context) {
         appContext = context.applicationContext

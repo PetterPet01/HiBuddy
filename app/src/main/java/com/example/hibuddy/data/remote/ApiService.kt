@@ -79,7 +79,9 @@ interface ApiService {
     suspend fun addMember(
         @Path("projectId") projectId: String,
         @Query("user_id") userId: String,
-        @Query("role") role: String
+        @Query("role") role: String,
+        @Query("role_slot_id") roleSlotId: String? = null,
+        @Query("match_id") matchId: String? = null
     ): GenericResponse
 
     @GET("api/v1/swipe/discover")
@@ -156,7 +158,8 @@ interface ApiService {
     @GET("api/v1/chat/{matchId}/messages")
     suspend fun getMessages(
         @Path("matchId") matchId: String,
-        @Query("limit") limit: Int = 50
+        @Query("limit") limit: Int = 50,
+        @Query("before") before: String? = null
     ): List<MessageResponse>
 
     @GET("api/v1/notifications")
@@ -167,4 +170,10 @@ interface ApiService {
 
     @GET("api/v1/notifications/unread-count")
     suspend fun getUnreadCount(): UnreadCountResponse
+
+    @POST("api/v1/trust/block")
+    suspend fun blockUser(@Body request: UserBlockRequest): GenericResponse
+
+    @POST("api/v1/trust/report")
+    suspend fun reportUser(@Body request: ReportRequest): GenericResponse
 }

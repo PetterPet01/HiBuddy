@@ -60,12 +60,13 @@ async def register_user(db: AsyncSession, data: UserRegister, background_tasks: 
     background_tasks.add_task(send_verification_email, str(data.email), verify_code)
 
     access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
+    refresh_token_delta = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(str(user.id), expires_delta=refresh_token_delta)
 
     rt = RefreshToken(
         user_id=user.id,
         token_hash=get_password_hash(refresh_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(timezone.utc) + refresh_token_delta,
     )
     db.add(rt)
 
@@ -104,16 +105,13 @@ async def login_user(db: AsyncSession, data: UserLogin) -> TokenResponse:
     user.last_login = datetime.now(timezone.utc)
 
     access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
-
-    token_expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    if data.remember_me:
-        token_expire = datetime.now(timezone.utc) + timedelta(days=30)
+    refresh_token_delta = timedelta(days=30 if data.remember_me else settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(str(user.id), expires_delta=refresh_token_delta)
 
     rt = RefreshToken(
         user_id=user.id,
         token_hash=get_password_hash(refresh_token),
-        expires_at=token_expire,
+        expires_at=datetime.now(timezone.utc) + refresh_token_delta,
     )
     db.add(rt)
 
@@ -130,7 +128,12 @@ async def refresh_access_token(db: AsyncSession, data: TokenRefresh) -> TokenRes
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     user_id = payload.get("sub")
-    user_result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    try:
+        user_uuid = UUID(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user_result = await db.execute(select(User).where(User.id == user_uuid))
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -142,27 +145,22 @@ async def refresh_access_token(db: AsyncSession, data: TokenRefresh) -> TokenRes
             RefreshToken.expires_at > datetime.now(timezone.utc),
         ).order_by(RefreshToken.created_at.desc())
     )
-    stored_token = token_result.scalar_one_or_none()
-    if not stored_token:
+    stored_tokens = token_result.scalars().all()
+    if not stored_tokens:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
 
-    if not verify_password(data.refresh_token, stored_token.token_hash):
-        stored_token.is_revoked = True
+    stored_token = next(
+        (token for token in stored_tokens if verify_password(data.refresh_token, token.token_hash)),
+        None,
+    )
+    if not stored_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     new_access = create_access_token(str(user.id))
-    new_refresh = create_refresh_token(str(user.id))
-
-    new_rt = RefreshToken(
-        user_id=user.id,
-        token_hash=get_password_hash(new_refresh),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    db.add(new_rt)
 
     return TokenResponse(
         access_token=new_access,
-        refresh_token=new_refresh,
+        refresh_token=data.refresh_token,
         user=UserResponse.model_validate(user),
     )
 

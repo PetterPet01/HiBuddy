@@ -27,12 +27,12 @@ class AuthViewModel : ViewModel() {
 
     fun register(
         fullName: String, username: String, email: String, dateOfBirth: String,
-        password: String, confirmPassword: String, phone: String? = null
+        password: String, confirmPassword: String, phone: String? = null, agreeTerms: Boolean = true
     ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             authRepository.register(
-                RegisterRequest(fullName, username, email, dateOfBirth, password, confirmPassword, phone, true)
+                RegisterRequest(fullName, username, email, dateOfBirth, password, confirmPassword, phone, agreeTerms)
             ).fold(
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(

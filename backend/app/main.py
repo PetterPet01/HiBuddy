@@ -13,9 +13,12 @@ from app.api.swipe import router as swipe_router
 from app.api.task import router as task_router
 from app.api.suggestion import router as suggestion_router
 from app.api.chat import router as chat_router
-from app.api.websocket import handle_websocket
+from app.api.endpoints.trust import router as trust_router
+from app.api.endpoints.fcm import router as fcm_router
+from app.api.websocket import handle_presence_websocket, handle_websocket
 from app.api.upload import router as upload_router
 from app.api.search import router as search_router
+from app.services.fcm_service import init_firebase
 
 settings = get_settings()
 
@@ -25,6 +28,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     try:
         init_milvus_collections()
+    except Exception:
+        pass
+    try:
+        init_firebase()
     except Exception:
         pass
     await get_redis()
@@ -55,11 +62,18 @@ app.include_router(suggestion_router)
 app.include_router(chat_router)
 app.include_router(upload_router)
 app.include_router(search_router)
+app.include_router(trust_router)
+app.include_router(fcm_router)
 
 
 @app.websocket("/ws/chat/{match_id}")
 async def chat_websocket(websocket: WebSocket, match_id: str, token: str = ""):
     await handle_websocket(websocket, match_id, token)
+
+
+@app.websocket("/ws/presence")
+async def presence_websocket(websocket: WebSocket, token: str = ""):
+    await handle_presence_websocket(websocket, token)
 
 
 @app.get("/")

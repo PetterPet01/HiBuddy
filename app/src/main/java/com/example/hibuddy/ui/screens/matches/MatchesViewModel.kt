@@ -5,9 +5,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.data.remote.dto.*
+import com.example.hibuddy.data.remote.PresenceState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class MatchesUiState(
@@ -22,9 +24,29 @@ class MatchesViewModel : ViewModel() {
 
     private val swipeRepository = ServiceLocator.swipeRepository
     private val chatRepository = ServiceLocator.chatRepository
+    private val presenceWebSocketManager = ServiceLocator.presenceWebSocketManager
 
     private val _uiState = MutableStateFlow(MatchesUiState())
     val uiState: StateFlow<MatchesUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            presenceWebSocketManager.presence.collect { presenceByUser ->
+                _uiState.update { state ->
+                    state.copy(
+                        matches = state.matches.map { match ->
+                            match.otherUserId
+                                ?.let { presenceByUser[it] }
+                                ?.let { presence -> match.withPresence(presence) } ?: match
+                        },
+                        chatInbox = state.chatInbox.map { chat ->
+                            presenceByUser[chat.userId]?.let { presence -> chat.withPresence(presence) } ?: chat
+                        }
+                    )
+                }
+            }
+        }
+    }
 
     fun loadMatches() {
         viewModelScope.launch {
@@ -32,6 +54,7 @@ class MatchesViewModel : ViewModel() {
             swipeRepository.getMatches().fold(
                 onSuccess = { matches ->
                     _uiState.value = _uiState.value.copy(isLoading = false, matches = matches)
+                    watchVisibleUsers()
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
@@ -46,6 +69,7 @@ class MatchesViewModel : ViewModel() {
                 onSuccess = { inbox ->
                     val unread = inbox.count { it.isUnread }
                     _uiState.value = _uiState.value.copy(chatInbox = inbox, unreadCount = unread)
+                    watchVisibleUsers()
                 },
                 onFailure = { }
             )
@@ -68,6 +92,29 @@ class MatchesViewModel : ViewModel() {
     }
 
     fun clearError() { _uiState.value = _uiState.value.copy(error = null) }
+
+    private fun watchVisibleUsers() {
+        val state = _uiState.value
+        val userIds = buildSet {
+            state.matches.mapNotNullTo(this) { it.otherUserId }
+            state.chatInbox.mapTo(this) { it.userId }
+        }
+        presenceWebSocketManager.watchUsers(userIds)
+    }
+
+    private fun MatchResponse.withPresence(presence: PresenceState): MatchResponse {
+        return copy(
+            userIsOnline = presence.isOnline,
+            userLastSeenAt = presence.lastSeenAt
+        )
+    }
+
+    private fun ChatInboxResponse.withPresence(presence: PresenceState): ChatInboxResponse {
+        return copy(
+            userIsOnline = presence.isOnline,
+            userLastSeenAt = presence.lastSeenAt
+        )
+    }
 
     companion object {
         val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {

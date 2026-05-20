@@ -23,6 +23,7 @@ class ProfileViewModel : ViewModel() {
 
     private val profileRepository = ServiceLocator.profileRepository
     private val suggestionRepository = ServiceLocator.suggestionRepository
+    private val apiService = ServiceLocator.apiService
 
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
@@ -150,7 +151,31 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    fun clearError() { _uiState.value = _uiState.value.copy(error = null) }
+    fun blockUser(userId: String, reason: String? = null) {
+        viewModelScope.launch {
+            try {
+                apiService.blockUser(UserBlockRequest(userId, reason))
+                _uiState.value = _uiState.value.copy(error = "User blocked successfully")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to block user")
+            }
+        }
+    }
+
+    fun reportUser(userId: String, reason: String, description: String? = null) {
+        viewModelScope.launch {
+            try {
+                apiService.reportUser(ReportRequest(userId, reason, description))
+                _uiState.value = _uiState.value.copy(error = "User reported successfully")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to report user")
+            }
+        }
+    }
+
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
     fun clearMessage() { _uiState.value = _uiState.value.copy(message = null) }
 
     companion object {

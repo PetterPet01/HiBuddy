@@ -3,12 +3,14 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.profile import UserProfile
+from app.models.swipe import Match
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectCardResponse,
     RoleSlotCreate, RoleSlotResponse, ProjectMemberResponse,
@@ -19,6 +21,16 @@ from app.config import get_settings
 
 settings = get_settings()
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
+
+
+async def _get_project_for_embedding(db: AsyncSession, project_id: UUID) -> Project | None:
+    project_result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.role_slots))
+        .where(Project.id == project_id)
+        .execution_options(populate_existing=True)
+    )
+    return project_result.scalar_one_or_none()
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -81,7 +93,8 @@ async def create_project(
 
     await db.flush()
 
-    embedding_id = upsert_project_vector(project)
+    project_for_embedding = await _get_project_for_embedding(db, project.id)
+    embedding_id = upsert_project_vector(project_for_embedding or project)
     if embedding_id:
         project.embedding_id = embedding_id
 
@@ -141,7 +154,8 @@ async def update_project(
             value = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=timezone.utc)
         setattr(project, field_name, value)
 
-    upsert_project_vector(project)
+    project_for_embedding = await _get_project_for_embedding(db, project.id)
+    upsert_project_vector(project_for_embedding or project)
 
     return await _build_project_response(db, project)
 
@@ -166,12 +180,18 @@ async def add_member(
     project_id: UUID,
     user_id: UUID,
     role: str,
+    role_slot_id: UUID | None = None,
+    match_id: UUID | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(Project, project_id)
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found or not authorized")
+
+    target_user = await db.get(User, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     existing = await db.execute(
         select(ProjectMember).where(
@@ -182,16 +202,61 @@ async def add_member(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="User is already a member")
 
+    member_count_result = await db.execute(
+        select(func.count()).select_from(ProjectMember).where(ProjectMember.project_id == project_id)
+    )
+    member_count = member_count_result.scalar() or 0
+    if member_count >= project.max_members:
+        raise HTTPException(status_code=400, detail="Project is already full")
+
+    slot = None
+    if role_slot_id:
+        slot = await db.get(ProjectRoleSlot, role_slot_id)
+        if not slot or slot.project_id != project_id:
+            raise HTTPException(status_code=404, detail="Role slot not found")
+    else:
+        slot_result = await db.execute(
+            select(ProjectRoleSlot).where(
+                ProjectRoleSlot.project_id == project_id,
+                ProjectRoleSlot.role_name == role,
+            )
+        )
+        slot = slot_result.scalar_one_or_none()
+
+    if slot and slot.filled >= slot.count:
+        raise HTTPException(status_code=400, detail="Selected role slot is already filled")
+
     member = ProjectMember(project_id=project_id, user_id=user_id, role=role)
     db.add(member)
+    await db.flush()
 
-    profile = await db.get(UserProfile, user_id)
-    if profile:
-        profile.projects_completed = (profile.projects_completed or 0) + 1
+    if slot:
+        slot.filled += 1
+
+    linked_match = None
+    match_query = select(Match).where(
+        Match.project_id == project_id,
+        Match.user_id == user_id,
+        Match.owner_id == current_user.id,
+        Match.is_unmatched == False,
+    )
+    if match_id:
+        match_query = match_query.where(Match.id == match_id)
+
+    linked_match_result = await db.execute(match_query.order_by(Match.matched_at.desc()))
+    linked_match = linked_match_result.scalar_one_or_none()
+    if linked_match:
+        linked_match.is_member_added = True
+        linked_match.role_matched = role
 
     await notify_member_added(db, user_id, project_id)
 
-    if len(project.members) >= project.max_members:
+    slots_result = await db.execute(
+        select(ProjectRoleSlot).where(ProjectRoleSlot.project_id == project_id)
+    )
+    slots = slots_result.scalars().all()
+    all_slots_filled = bool(slots) and all(s.filled >= s.count for s in slots)
+    if member_count + 1 >= project.max_members or all_slots_filled:
         project.status = "ACTIVE"
         delete_project_vector(project)
 

@@ -3,11 +3,15 @@ package com.example.hibuddy.data.repository
 import com.example.hibuddy.data.local.TokenManager
 import com.example.hibuddy.data.remote.ApiService
 import com.example.hibuddy.data.remote.dto.*
+import kotlinx.coroutines.flow.StateFlow
+import retrofit2.HttpException
 
 class AuthRepository(
     private val api: ApiService,
     private val tokenManager: TokenManager
 ) {
+    val authState: StateFlow<Boolean> = tokenManager.isLoggedIn
+
     suspend fun register(request: RegisterRequest): Result<TokenResponse> = runCatching {
         val response = api.register(request)
         tokenManager.saveTokens(response.accessToken, response.refreshToken)
@@ -23,11 +27,20 @@ class AuthRepository(
     }
 
     suspend fun refreshToken(): Result<TokenResponse> {
-        val rt = tokenManager.getRefreshToken() ?: return Result.failure(Exception("No refresh token"))
+        val rt = tokenManager.getRefreshToken()
+        if (rt.isNullOrBlank()) {
+            tokenManager.clearTokens()
+            return Result.failure(Exception("No refresh token"))
+        }
         return runCatching {
             val response = api.refreshToken(RefreshTokenRequest(rt))
             tokenManager.saveTokens(response.accessToken, response.refreshToken)
+            tokenManager.saveUserId(response.user.id)
             response
+        }.onFailure { error ->
+            if (error is HttpException && (error.code() == 401 || error.code() == 403)) {
+                tokenManager.clearTokens()
+            }
         }
     }
 
@@ -50,7 +63,7 @@ class AuthRepository(
 
     fun getAccessToken(): String? = tokenManager.getAccessToken()
     fun getUserId(): String? = tokenManager.getUserId()
-    fun isLoggedIn(): Boolean = !tokenManager.getAccessToken().isNullOrBlank()
+    fun isLoggedIn(): Boolean = authState.value
 
     suspend fun submitStudentVerification(request: StudentVerificationRequest): Result<GenericResponse> = runCatching {
         api.submitStudentVerification(request)

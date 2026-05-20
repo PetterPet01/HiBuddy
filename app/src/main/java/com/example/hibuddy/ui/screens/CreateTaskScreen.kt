@@ -2,9 +2,9 @@ package com.example.hibuddy.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -13,24 +13,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.data.remote.dto.*
-import com.example.hibuddy.ui.screens.tasks.TasksViewModel
 import com.example.hibuddy.ServiceLocator
+import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimpleCreateTaskScreen(
     projectId: String,
-    onBack: () -> Unit,
-    tasksViewModel: TasksViewModel = viewModel(factory = TasksViewModel.Factory)
+    onBack: () -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
+    var project by remember { mutableStateOf<ProjectResponse?>(null) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var assigneeId by remember { mutableStateOf("") }
@@ -39,31 +38,68 @@ fun SimpleCreateTaskScreen(
     var deadline by remember { mutableStateOf("") }
     var tag by remember { mutableStateOf("") }
     var roleRelated by remember { mutableStateOf("") }
+    var isProjectLoading by remember { mutableStateOf(true) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf(false) }
     var priorityExpanded by remember { mutableStateOf(false) }
+    var assigneeExpanded by remember { mutableStateOf(false) }
+    var roleExpanded by remember { mutableStateOf(false) }
 
     val priorities = listOf("LOW", "MEDIUM", "HIGH", "URGENT")
+    val members = project?.members.orEmpty()
+    val assignableMembers = members.filterNot { it.isOwner }.ifEmpty { members }
+    val availableRoles = project?.roleSlots
+        ?.filter { it.filled < it.count }
+        ?.map { it.roleName }
+        .orEmpty()
 
     LaunchedEffect(success) {
         if (success) onBack()
     }
 
+    LaunchedEffect(projectId) {
+        isProjectLoading = true
+        ServiceLocator.projectRepository.getProject(projectId).fold(
+            onSuccess = { loadedProject ->
+                project = loadedProject
+                val defaultMember = loadedProject.members.filterNot { it.isOwner }.ifEmpty { loadedProject.members }.firstOrNull()
+                if (assigneeId.isBlank()) {
+                    assigneeId = defaultMember?.userId.orEmpty()
+                }
+                if (roleRelated.isBlank()) {
+                    roleRelated = loadedProject.roleSlots.firstOrNull { it.filled < it.count }?.roleName.orEmpty()
+                }
+                isProjectLoading = false
+            },
+            onFailure = { e ->
+                error = e.message ?: "Failed to load project"
+                isProjectLoading = false
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D14))
+            .background(colorScheme.background)
     ) {
         TopAppBar(
-            title = { Text("Create Task", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF0EFF8)) },
+            title = { Text("Create Task", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, "Back", tint = Color(0xFFF0EFF8))
+                    Icon(Icons.Filled.ArrowBack, "Back", tint = colorScheme.onSurface)
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13131F))
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface)
         )
+
+        if (isProjectLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colorScheme.primary)
+            }
+            return@Column
+        }
 
         Column(
             modifier = Modifier
@@ -73,6 +109,23 @@ fun SimpleCreateTaskScreen(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            project?.let { activeProject ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(activeProject.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "${activeProject.members.size} members · ${activeProject.roleSlots.count { it.filled < it.count }} open roles",
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -92,14 +145,31 @@ fun SimpleCreateTaskScreen(
                 colors = darkTextFieldColors()
             )
 
-            OutlinedTextField(
-                value = assigneeId,
-                onValueChange = { assigneeId = it },
-                label = { Text("Assignee User ID") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                colors = darkTextFieldColors()
-            )
+            ExposedDropdownMenuBox(
+                expanded = assigneeExpanded,
+                onExpandedChange = { assigneeExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = assignableMembers.find { it.userId == assigneeId }?.displayName ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Assignee") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = assigneeExpanded) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    colors = darkTextFieldColors()
+                )
+                ExposedDropdownMenu(expanded = assigneeExpanded, onDismissRequest = { assigneeExpanded = false }) {
+                    assignableMembers.forEach { member ->
+                        DropdownMenuItem(
+                            text = { Text("${member.displayName} · ${member.role}") },
+                            onClick = {
+                                assigneeId = member.userId
+                                assigneeExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -136,8 +206,46 @@ fun SimpleCreateTaskScreen(
                     colors = darkTextFieldColors()
                 )
                 ExposedDropdownMenu(expanded = priorityExpanded, onDismissRequest = { priorityExpanded = false }) {
-                    priorities.forEach { p ->
-                        DropdownMenuItem(text = { Text(p) }, onClick = { priority = p; priorityExpanded = false })
+                    priorities.forEach { selectedPriority ->
+                        DropdownMenuItem(
+                            text = { Text(selectedPriority) },
+                            onClick = {
+                                priority = selectedPriority
+                                priorityExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = roleExpanded,
+                onExpandedChange = { roleExpanded = it && availableRoles.isNotEmpty() }
+            ) {
+                OutlinedTextField(
+                    value = roleRelated,
+                    onValueChange = { roleRelated = it },
+                    readOnly = availableRoles.isNotEmpty(),
+                    label = { Text("Related Role (optional)") },
+                    trailingIcon = {
+                        if (availableRoles.isNotEmpty()) {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = roleExpanded)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    colors = darkTextFieldColors()
+                )
+                if (availableRoles.isNotEmpty()) {
+                    ExposedDropdownMenu(expanded = roleExpanded, onDismissRequest = { roleExpanded = false }) {
+                        availableRoles.forEach { roleName ->
+                            DropdownMenuItem(
+                                text = { Text(roleName) },
+                                onClick = {
+                                    roleRelated = roleName
+                                    roleExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -150,17 +258,6 @@ fun SimpleCreateTaskScreen(
                 singleLine = true,
                 colors = darkTextFieldColors()
             )
-
-            OutlinedTextField(
-                value = roleRelated,
-                onValueChange = { roleRelated = it },
-                label = { Text("Related Role (optional)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                colors = darkTextFieldColors()
-            )
-
-            Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = {
@@ -181,30 +278,34 @@ fun SimpleCreateTaskScreen(
                             )
                         ).fold(
                             onSuccess = {
+                                isLoading = false
                                 success = true
                             },
                             onFailure = { e ->
                                 isLoading = false
-                                error = e.message
+                                error = e.message ?: "Failed to create task"
                             }
                         )
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !isLoading && title.isNotBlank() && assigneeId.isNotBlank() && startDate.isNotBlank() && deadline.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6AF7)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colorScheme.primary,
+                    contentColor = colorScheme.onPrimary
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colorScheme.onPrimary)
                 } else {
-                    Text("Create Task", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Create Task", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             error?.let {
-                Card(colors = CardDefaults.cardColors(containerColor = Color(0x33FF4D6D))) {
-                    Text(it, modifier = Modifier.padding(16.dp), color = Color(0xFFFF4D6D), fontSize = 14.sp)
+                Card(colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)) {
+                    Text(it, modifier = Modifier.padding(16.dp), color = colorScheme.onErrorContainer, fontSize = 14.sp)
                 }
             }
 
@@ -214,14 +315,4 @@ fun SimpleCreateTaskScreen(
 }
 
 @Composable
-fun darkTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = Color(0xFF7C6AF7),
-    unfocusedBorderColor = Color(0xFF2A2840),
-    focusedLabelColor = Color(0xFF7C6AF7),
-    unfocusedLabelColor = Color(0xFF6B6A8C),
-    cursorColor = Color(0xFF7C6AF7),
-    focusedTextColor = Color(0xFFF0EFF8),
-    unfocusedTextColor = Color(0xFFF0EFF8),
-    focusedContainerColor = Color(0xFF13131F),
-    unfocusedContainerColor = Color(0xFF13131F),
-)
+fun darkTextFieldColors() = hiBuddyTextFieldColors()

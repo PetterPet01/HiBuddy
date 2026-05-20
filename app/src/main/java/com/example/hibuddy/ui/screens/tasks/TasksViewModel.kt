@@ -16,6 +16,7 @@ data class TasksUiState(
     val selectedProjectId: String? = null,
     val tasks: List<TaskResponse> = emptyList(),
     val dashboard: DashboardResponse? = null,
+    val currentUserId: String = ServiceLocator.authRepository.getUserId() ?: "",
     val error: String? = null,
     val message: String? = null
 )
@@ -34,7 +35,10 @@ class TasksViewModel : ViewModel() {
             projectRepository.getMyProjects().fold(
                 onSuccess = { projects ->
                     _uiState.value = _uiState.value.copy(isLoading = false, projects = projects, selectedProjectId = projects.firstOrNull()?.id)
-                    projects.firstOrNull()?.id?.let { loadTasks(it) }
+                    projects.firstOrNull()?.id?.let {
+                        loadTasks(it)
+                        loadDashboard(it)
+                    }
                 },
                 onFailure = { e -> _uiState.value = _uiState.value.copy(isLoading = false, error = e.message) }
             )
@@ -75,6 +79,22 @@ class TasksViewModel : ViewModel() {
                     _uiState.value = _uiState.value.copy(message = "Checked out: ${response.checkoutStatus}")
                     val pid = _uiState.value.selectedProjectId
                     if (pid != null) loadTasks(pid)
+                },
+                onFailure = { e -> _uiState.value = _uiState.value.copy(error = e.message) }
+            )
+        }
+    }
+
+    fun confirmCheckout(taskId: String) {
+        viewModelScope.launch {
+            taskRepository.confirmCheckout(taskId).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(message = "Task approved and closed")
+                    val pid = _uiState.value.selectedProjectId
+                    if (pid != null) {
+                        loadTasks(pid)
+                        loadDashboard(pid)
+                    }
                 },
                 onFailure = { e -> _uiState.value = _uiState.value.copy(error = e.message) }
             )

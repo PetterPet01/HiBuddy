@@ -1,7 +1,13 @@
 package com.example.hibuddy.data.repository
 
+import com.example.hibuddy.data.local.CachedChatMessage
+import com.example.hibuddy.data.local.ChatLocalDataSource
 import com.example.hibuddy.data.remote.ApiService
 import com.example.hibuddy.data.remote.dto.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class ProfileRepository(private val api: ApiService) {
     suspend fun getMyProfile(): Result<ProfileResponse> = runCatching { api.getMyProfile() }
@@ -22,7 +28,13 @@ class ProjectRepository(private val api: ApiService) {
     suspend fun getMyProjects(): Result<List<ProjectResponse>> = runCatching { api.getMyProjects() }
     suspend fun getProject(id: String): Result<ProjectResponse> = runCatching { api.getProject(id) }
     suspend fun closeProject(id: String): Result<GenericResponse> = runCatching { api.closeProject(id) }
-    suspend fun addMember(projectId: String, userId: String, role: String): Result<GenericResponse> = runCatching { api.addMember(projectId, userId, role) }
+    suspend fun addMember(
+        projectId: String,
+        userId: String,
+        role: String,
+        roleSlotId: String? = null,
+        matchId: String? = null
+    ): Result<GenericResponse> = runCatching { api.addMember(projectId, userId, role, roleSlotId, matchId) }
 }
 
 class SwipeRepository(private val api: ApiService) {
@@ -53,10 +65,83 @@ class SuggestionRepository(private val api: ApiService) {
     suspend fun getMentorSuggestions(): Result<List<MentorSuggestionResponse>> = runCatching { api.getMentorSuggestions() }
 }
 
-class ChatRepository(private val api: ApiService) {
+class ChatRepository(
+    private val api: ApiService,
+    private val localDataSource: ChatLocalDataSource? = null
+) {
     suspend fun getInbox(): Result<List<ChatInboxResponse>> = runCatching { api.getInbox() }
-    suspend fun getMessages(matchId: String, limit: Int = 50): Result<List<MessageResponse>> = runCatching { api.getMessages(matchId, limit) }
+    suspend fun getMessages(
+        matchId: String,
+        limit: Int = 50,
+        before: String? = null
+    ): Result<List<MessageResponse>> = runCatching {
+        api.getMessages(matchId, limit, before).also { messages ->
+            cacheRemoteMessages(matchId, messages)
+        }
+    }
     suspend fun getNotifications(limit: Int = 20): Result<List<NotificationResponse>> = runCatching { api.getNotifications(limit) }
     suspend fun markNotificationRead(id: String): Result<GenericResponse> = runCatching { api.markNotificationRead(id) }
     suspend fun getUnreadCount(): Result<UnreadCountResponse> = runCatching { api.getUnreadCount() }
+
+    suspend fun getCachedMessages(matchId: String, limit: Int = 100): List<CachedChatMessage> = withContext(Dispatchers.IO) {
+        localDataSource?.getMessages(matchId, limit).orEmpty()
+    }
+
+    suspend fun cacheMessage(message: CachedChatMessage) = withContext(Dispatchers.IO) {
+        localDataSource?.upsertMessage(message)
+    }
+
+    suspend fun cacheMessages(messages: List<CachedChatMessage>) = withContext(Dispatchers.IO) {
+        localDataSource?.upsertMessages(messages)
+    }
+
+    suspend fun deletePendingByClientId(matchId: String, clientMessageId: String) = withContext(Dispatchers.IO) {
+        localDataSource?.deletePendingByClientId(matchId, clientMessageId)
+    }
+
+    suspend fun markMessageFailed(messageId: String) = withContext(Dispatchers.IO) {
+        localDataSource?.markMessageFailed(messageId)
+    }
+
+    suspend fun markMessageSending(messageId: String, clientMessageId: String) = withContext(Dispatchers.IO) {
+        localDataSource?.markMessageSending(messageId, clientMessageId)
+    }
+
+    suspend fun markOutgoingRead(matchId: String, currentUserId: String) = withContext(Dispatchers.IO) {
+        localDataSource?.markOutgoingRead(matchId, currentUserId)
+    }
+
+    private suspend fun cacheRemoteMessages(matchId: String, messages: List<MessageResponse>) {
+        cacheMessages(messages.map { it.toCachedMessage(matchId) })
+    }
+
+    private fun MessageResponse.toCachedMessage(matchId: String): CachedChatMessage {
+        return CachedChatMessage(
+            id = id,
+            matchId = matchId,
+            chatId = chatId,
+            senderId = senderId,
+            senderName = senderName,
+            content = content,
+            isRead = isRead,
+            createdAt = createdAt,
+            clientMessageId = null,
+            deliveryState = if (isRead) {
+                ChatLocalDataSource.DeliveryStateRead
+            } else {
+                ChatLocalDataSource.DeliveryStateSent
+            },
+            localSortTime = createdAt.toSortTime()
+        )
+    }
+
+    private fun String.toSortTime(): Long {
+        return try {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+                .parse(take(19))
+                ?.time ?: System.currentTimeMillis()
+        } catch (_: Exception) {
+            System.currentTimeMillis()
+        }
+    }
 }
