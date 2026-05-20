@@ -34,9 +34,7 @@ fun DiscoverScreen() {
     var cardMode by remember { mutableStateOf(CardMode.PEOPLE) }
     var selectedProject by remember { mutableStateOf(SampleData.myProjects.first()) }
 
-    // Separate card stacks for each mode
     var peopleStack by remember { mutableStateOf(mutableListOf<UserCard>()) }
-
     var projectStack by remember { mutableStateOf(SampleData.projects.toMutableList()) }
 
     var superLikesLeft by remember { mutableStateOf(3) }
@@ -63,18 +61,46 @@ fun DiscoverScreen() {
         )
     }
 
+    fun likeTopUser() {
+        if (likesLeft <= 0 || peopleStack.isEmpty()) return
+
+        val likedUser = peopleStack[0]
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+
+        if (currentUid != null && likedUser.uid.isNotBlank()) {
+            matchRepository.likeUser(
+                fromUserId = currentUid,
+                toUserId = likedUser.uid,
+                onSuccess = {
+                    println("Like saved")
+                },
+                onFailure = {
+                    println("Like failed: $it")
+                }
+            )
+        } else {
+            println("Like failed: currentUid or likedUser.uid is empty")
+        }
+
+        peopleStack = peopleStack.drop(1).toMutableList()
+        lastAction = SwipeAction.LIKE
+        likesLeft--
+
+        if (likesLeft % 5 == 0) {
+            showMatchDialog = true
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0D0D14))
     ) {
-        // ── Header (Compact Switcher) ───────────────────────
         DiscoverHeader(
             cardMode = cardMode,
             onModeChange = { cardMode = it }
         )
 
-        // ── Project Context Blobs (Only for Project Owner) ──
         if (cardMode == CardMode.PEOPLE) {
             ProjectBlobsSelector(
                 projects = SampleData.myProjects,
@@ -85,7 +111,6 @@ fun DiscoverScreen() {
             )
         }
 
-        // ── Card Stack ──────────────────────────────────────
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -97,7 +122,6 @@ fun DiscoverScreen() {
                 if (peopleStack.isEmpty()) {
                     EmptyStackView(mode = cardMode)
                 } else {
-                    // Background cards (peek effect)
                     if (peopleStack.size >= 3) {
                         UserSwipeCard(
                             user = peopleStack[2],
@@ -108,6 +132,7 @@ fun DiscoverScreen() {
                                 .alpha(0.5f)
                         )
                     }
+
                     if (peopleStack.size >= 2) {
                         UserSwipeCard(
                             user = peopleStack[1],
@@ -118,22 +143,16 @@ fun DiscoverScreen() {
                                 .alpha(0.75f)
                         )
                     }
-                    // Top card (interactive)
+
                     SwipeableUserCard(
                         user = peopleStack[0],
                         modifier = Modifier.fillMaxSize(),
                         onSwipeLeft = {
                             peopleStack = peopleStack.drop(1).toMutableList()
                             lastAction = SwipeAction.PASS
-                            likesLeft = (likesLeft - 1).coerceAtLeast(0)
                         },
                         onSwipeRight = {
-                            if (likesLeft > 0) {
-                                peopleStack = peopleStack.drop(1).toMutableList()
-                                lastAction = SwipeAction.LIKE
-                                likesLeft--
-                                if (likesLeft % 5 == 0) showMatchDialog = true
-                            }
+                            likeTopUser()
                         },
                         onSuperLike = {
                             if (superLikesLeft > 0) {
@@ -145,7 +164,6 @@ fun DiscoverScreen() {
                     )
                 }
             } else {
-                // Project mode
                 if (projectStack.isEmpty()) {
                     EmptyStackView(mode = cardMode)
                 } else {
@@ -159,6 +177,7 @@ fun DiscoverScreen() {
                                 .alpha(0.7f)
                         )
                     }
+
                     SwipeableProjectCard(
                         project = projectStack[0],
                         modifier = Modifier.fillMaxSize(),
@@ -167,24 +186,8 @@ fun DiscoverScreen() {
                             lastAction = SwipeAction.PASS
                         },
                         onSwipeRight = {
-                            if (likesLeft > 0 && peopleStack.isNotEmpty()) {
-                                val likedUser = peopleStack[0]
-                                val currentUid = FirebaseAuth.getInstance().currentUser?.uid
-
-                                if (currentUid != null) {
-                                    matchRepository.likeUser(
-                                        fromUserId = currentUid,
-                                        toUserId = likedUser.uid,
-                                        onSuccess = {
-                                            println("Like saved")
-                                        },
-                                        onFailure = {
-                                            println(it)
-                                        }
-                                    )
-                                }
-
-                                peopleStack = peopleStack.drop(1).toMutableList()
+                            if (likesLeft > 0) {
+                                projectStack = projectStack.drop(1).toMutableList()
                                 lastAction = SwipeAction.LIKE
                                 likesLeft--
                             }
@@ -201,13 +204,14 @@ fun DiscoverScreen() {
             }
         }
 
-        // ── Action Buttons ───────────────────────────────────
         ActionButtons(
             onPass = {
                 if (cardMode == CardMode.PEOPLE && peopleStack.isNotEmpty()) {
-                    peopleStack = peopleStack.drop(1).toMutableList(); lastAction = SwipeAction.PASS
+                    peopleStack = peopleStack.drop(1).toMutableList()
+                    lastAction = SwipeAction.PASS
                 } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
-                    projectStack = projectStack.drop(1).toMutableList(); lastAction = SwipeAction.PASS
+                    projectStack = projectStack.drop(1).toMutableList()
+                    lastAction = SwipeAction.PASS
                 }
             },
             onSuperLike = {
@@ -217,17 +221,18 @@ fun DiscoverScreen() {
                     } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
                         projectStack = projectStack.drop(1).toMutableList()
                     }
-                    lastAction = SwipeAction.SUPER_LIKE; superLikesLeft--
+
+                    lastAction = SwipeAction.SUPER_LIKE
+                    superLikesLeft--
                 }
             },
             onLike = {
-                if (likesLeft > 0) {
-                    if (cardMode == CardMode.PEOPLE && peopleStack.isNotEmpty()) {
-                        peopleStack = peopleStack.drop(1).toMutableList()
-                    } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty()) {
-                        projectStack = projectStack.drop(1).toMutableList()
-                    }
-                    lastAction = SwipeAction.LIKE; likesLeft--
+                if (cardMode == CardMode.PEOPLE) {
+                    likeTopUser()
+                } else if (cardMode == CardMode.PROJECTS && projectStack.isNotEmpty() && likesLeft > 0) {
+                    projectStack = projectStack.drop(1).toMutableList()
+                    lastAction = SwipeAction.LIKE
+                    likesLeft--
                 }
             },
             superLikesLeft = superLikesLeft,
@@ -237,7 +242,6 @@ fun DiscoverScreen() {
         Spacer(Modifier.height(4.dp))
     }
 
-    // ── Match Dialog ─────────────────────────────────────────
     if (showMatchDialog) {
         MatchDialog(onDismiss = { showMatchDialog = false })
     }

@@ -43,17 +43,36 @@ class UserRepository {
         onSuccess: (List<UserProfile>) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        db.collection("users")
+        db.collection("likes")
+            .whereEqualTo("fromUserId", currentUid)
             .get()
-            .addOnSuccessListener { result ->
-                val users = result.documents
-                    .mapNotNull { it.toObject(UserProfile::class.java) }
-                    .filter { it.uid != currentUid }
+            .addOnSuccessListener { likeResult ->
 
-                onSuccess(users)
+                val likedUserIds = likeResult.documents
+                    .mapNotNull { document ->
+                        document.getString("toUserId")
+                    }
+                    .toSet()
+
+                db.collection("users")
+                    .get()
+                    .addOnSuccessListener { userResult ->
+                        val users = userResult.documents
+                            .mapNotNull { document ->
+                                document.toObject(UserProfile::class.java)
+                            }
+                            .filter { user ->
+                                user.uid != currentUid && user.uid !in likedUserIds
+                            }
+
+                        onSuccess(users)
+                    }
+                    .addOnFailureListener { error ->
+                        onFailure(error.message ?: "Load users failed")
+                    }
             }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Load users failed")
+                onFailure(error.message ?: "Load liked users failed")
             }
     }
 }
