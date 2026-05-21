@@ -258,20 +258,6 @@ fun ProfileScreen(
             Text("Create Project")
         }
 
-        Button(
-            onClick = onMyProjectsClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1E1D2E)
-            ),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("My Projects")
-        }
-
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(

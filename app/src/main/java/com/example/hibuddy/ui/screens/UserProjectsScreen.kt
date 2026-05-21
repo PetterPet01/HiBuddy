@@ -13,13 +13,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.hibuddy.data.model.Project
 import com.example.hibuddy.repository.ProjectRepository
-import com.google.firebase.auth.FirebaseAuth
-import androidx.compose.foundation.clickable
 
 @Composable
-fun MyProjectsScreen(
+fun UserProjectsScreen(
+    userId: String,
     onBack: () -> Unit,
-    onViewApplicants: (String) -> Unit,
     onViewProjectDetail: (String) -> Unit
 ) {
     val repository = remember { ProjectRepository() }
@@ -28,17 +26,9 @@ fun MyProjectsScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
-
-        if (currentUid == null) {
-            errorMessage = "You must login first"
-            isLoading = false
-            return@LaunchedEffect
-        }
-
+    LaunchedEffect(userId) {
         repository.getRelatedProjects(
-            currentUid = currentUid,
+            currentUid = userId,
             onSuccess = { result ->
                 projects = result
                 isLoading = false
@@ -68,7 +58,7 @@ fun MyProjectsScreen(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "Projects",
+            text = "User Projects",
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.headlineSmall
@@ -86,7 +76,7 @@ fun MyProjectsScreen(
             }
 
             projects.isEmpty() -> {
-                Text("You have not joined or created any projects yet.", color = Color(0xFF8B8AAC))
+                Text("No projects found.", color = Color(0xFF8B8AAC))
             }
 
             else -> {
@@ -94,13 +84,9 @@ fun MyProjectsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(projects) { project ->
-                        MyProjectCard(
+                        UserProjectItem(
                             project = project,
-
-                            onViewApplicants = {
-                                onViewApplicants(project.projectId)
-                            },
-
+                            viewedUserId = userId,
                             onViewProjectDetail = {
                                 onViewProjectDetail(project.projectId)
                             }
@@ -113,35 +99,20 @@ fun MyProjectsScreen(
 }
 
 @Composable
-fun MyProjectCard(
+fun UserProjectItem(
     project: Project,
-    onViewApplicants: () -> Unit,
+    viewedUserId: String,
     onViewProjectDetail: () -> Unit
 ) {
-    val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-    val isOwner = project.ownerId == currentUid
-    val isMember = project.memberIds.contains(currentUid)
-
     val roleText = when {
-        isOwner -> "Owner"
-        isMember -> "Member"
+        project.ownerId == viewedUserId -> "Owner"
+        project.memberIds.contains(viewedUserId) -> "Member"
         else -> "Related"
     }
 
-    val roleColor = when {
-        isOwner -> Color(0xFFFFD166)   // vàng
-        isMember -> Color(0xFF4CAF50)  // xanh lá
-        else -> Color(0xFF8B8AAC)      // xám
-    }
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                onViewProjectDetail()
-            },
-
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-
         color = Color(0xFF16152A)
     ) {
         Column(
@@ -160,41 +131,28 @@ fun MyProjectCard(
                 color = Color(0xFF8B8AAC)
             )
 
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = project.description,
-                color = Color(0xFFB0AFC8),
-                maxLines = 2
-            )
-
             Spacer(Modifier.height(6.dp))
 
             Text(
                 text = roleText,
-                color = roleColor,
+                color = Color(0xFF7C6AF7),
                 fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            Text(
+                text = project.description.ifBlank { "No description yet." },
+                color = Color(0xFFB0AFC8),
+                maxLines = 2
             )
 
             Spacer(Modifier.height(12.dp))
 
-            if (isOwner) {
-                Button(
-                    onClick = onViewApplicants,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF7C6AF7)
-                    )
-                ) {
-                    Text("View Applicants")
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
             Button(
                 onClick = onViewProjectDetail,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1E1D2E)
+                    containerColor = Color(0xFF7C6AF7)
                 )
             ) {
                 Text("View Detail")

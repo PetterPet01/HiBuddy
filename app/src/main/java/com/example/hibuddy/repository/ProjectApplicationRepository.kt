@@ -64,9 +64,7 @@ class ProjectApplicationRepository {
         db.collection("project_applications")
             .document(applicationId)
             .update("status", status)
-            .addOnSuccessListener {
-                onSuccess()
-            }
+            .addOnSuccessListener { onSuccess() }
             .addOnFailureListener {
                 onFailure(it.message ?: "Update application failed")
             }
@@ -96,5 +94,25 @@ class ProjectApplicationRepository {
             onSuccess = onSuccess,
             onFailure = onFailure
         )
+    }
+
+    fun getApplicationsByApplicant(
+        applicantId: String,
+        onSuccess: (List<ProjectApplication>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection("project_applications")
+            .whereEqualTo("applicantId", applicantId)
+            .get()
+            .addOnSuccessListener { result ->
+                val applications = result.documents.mapNotNull {
+                    it.toObject(ProjectApplication::class.java)
+                }
+
+                onSuccess(applications)
+            }
+            .addOnFailureListener {
+                onFailure(it.message ?: "Load applications failed")
+            }
     }
 }

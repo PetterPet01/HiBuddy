@@ -18,64 +18,336 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
+import com.example.hibuddy.repository.ProjectRepository
+import com.example.hibuddy.repository.ProjectApplicationRepository
+import androidx.compose.foundation.clickable
 
 @Composable
-fun TasksScreen() {
-    var selectedProject by remember { mutableStateOf(SampleData.myProjects.first()) }
+fun TasksScreen(
+    onViewProjectDetail: (String) -> Unit
+) {
+    val projectRepository = remember { ProjectRepository() }
+    val applicationRepository = remember { ProjectApplicationRepository() }
 
-    // Filter tasks based on selected project title
-    val projectTasks = SampleData.tasks.filter { it.projectTitle == selectedProject.title }
+    var relatedProjects by remember {
+        mutableStateOf<List<com.example.hibuddy.data.model.Project>>(emptyList())
+    }
+
+    var applications by remember {
+        mutableStateOf<List<com.example.hibuddy.data.model.ProjectApplication>>(emptyList())
+    }
+
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    val ownedProjects = relatedProjects.filter {
+        it.ownerId == currentUid
+    }
+
+    val memberProjects = relatedProjects.filter {
+        it.ownerId != currentUid && it.memberIds.contains(currentUid)
+    }
+
+    Text(
+        text = "Owned Projects",
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 18.sp
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    ownedProjects.forEach { project ->
+        TaskProjectCard(
+            title = project.title,
+            subtitle = project.field,
+            status = "Owner",
+            statusColor = Color(0xFFFFD166),
+            onClick = {
+                onViewProjectDetail(project.projectId)
+            }
+        )
+
+        Spacer(Modifier.height(10.dp))
+    }
+
+    Spacer(Modifier.height(24.dp))
+
+    Text(
+        text = "Joined Projects",
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 18.sp
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    memberProjects.forEach { project ->
+        TaskProjectCard(
+            title = project.title,
+            subtitle = project.field,
+            status = "Member",
+            statusColor = Color(0xFF4CAF50),
+            onClick = {
+                onViewProjectDetail(project.projectId)
+            }
+        )
+
+        Spacer(Modifier.height(10.dp))
+    }
+
+    LaunchedEffect(Unit) {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+
+        if (currentUid == null) {
+            errorMessage = "You must login first"
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        projectRepository.getRelatedProjects(
+            currentUid = currentUid,
+            onSuccess = { projects ->
+                relatedProjects = projects
+
+                applicationRepository.getApplicationsByApplicant(
+                    applicantId = currentUid,
+                    onSuccess = { result ->
+                        applications = result
+                        isLoading = false
+                    },
+                    onFailure = { error ->
+                        errorMessage = error
+                        isLoading = false
+                    }
+                )
+            },
+            onFailure = { error ->
+                errorMessage = error
+                isLoading = false
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0D0D14))
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Project Tasks",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFFF0EFF8)
-                )
-                Spacer(Modifier.height(8.dp))
-                ProjectBlobsSelector(
-                    projects = SampleData.myProjects,
-                    selected = selectedProject,
-                    onSelect = { selectedProject = it },
-                    label = "Viewing:"
-                )
+        Text(
+            text = "Projects & Tasks",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFFF0EFF8)
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        if (isLoading) {
+            CircularProgressIndicator(color = Color(0xFF7C6AF7))
+            return@Column
+        }
+
+        if (errorMessage.isNotBlank()) {
+            Text(errorMessage, color = Color(0xFFFF4D6D))
+            return@Column
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        if (relatedProjects.isEmpty()) {
+            Text("You have no joined or owned projects yet.", color = Color(0xFF8B8AAC))
+        } else {
+            val currentUid =
+                FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+            val ownedProjects = relatedProjects.filter {
+                it.ownerId == currentUid
             }
-            IconButton(
-                onClick = { /* Open Create Task Modal */ },
-                modifier = Modifier.background(Color(0xFF1E1D2E), RoundedCornerShape(12.dp)).size(48.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = Color.White)
+
+            val joinedProjects = relatedProjects.filter {
+                it.ownerId != currentUid &&
+                        it.memberIds.contains(currentUid)
+            }
+            Text(
+                text = "Owned Projects",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            if (ownedProjects.isEmpty()) {
+
+                Text(
+                    "You don't own any projects yet.",
+                    color = Color(0xFF8B8AAC)
+                )
+
+            } else {
+
+                ownedProjects.forEach { project ->
+
+                    TaskProjectCard(
+                        title = project.title,
+
+                        subtitle = project.field,
+
+                        status = "Owner",
+
+                        statusColor = Color(0xFFFFD166),
+
+                        onClick = {
+                            onViewProjectDetail(project.projectId)
+                        }
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                text = "Joined Projects",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            if (joinedProjects.isEmpty()) {
+
+                Text(
+                    "You haven't joined any projects yet.",
+                    color = Color(0xFF8B8AAC)
+                )
+
+            } else {
+
+                joinedProjects.forEach { project ->
+
+                    TaskProjectCard(
+                        title = project.title,
+
+                        subtitle = project.field,
+
+                        status = "Member",
+
+                        statusColor = Color(0xFF4CAF50),
+
+                        onClick = {
+                            onViewProjectDetail(project.projectId)
+                        }
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+                }
             }
         }
 
-        // Kanban Board (Horizontal Scroll)
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            TaskStatus.values().forEach { status ->
-                KanbanColumn(
-                    status = status,
-                    tasks = projectTasks.filter { it.status == status }
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            text = "Application Status",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        if (applications.isEmpty()) {
+            Text("You have not applied to any projects yet.", color = Color(0xFF8B8AAC))
+        } else {
+            applications.forEach { application ->
+                ApplicationStatusCard(
+                    projectId = application.projectId,
+                    status = application.status
                 )
+
+                Spacer(Modifier.height(10.dp))
             }
+        }
+    }
+}
+
+@Composable
+fun TaskProjectCard(
+    title: String,
+    subtitle: String,
+    status: String,
+    statusColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                onClick()
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF16152A)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(title.ifBlank { "Untitled Project" }, color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(subtitle.ifBlank { "General" }, color = Color(0xFF8B8AAC))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = status,
+                color = statusColor,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = onClick,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6AF7))
+            ) {
+                Text("View Detail")
+            }
+        }
+    }
+}
+
+@Composable
+fun ApplicationStatusCard(
+    projectId: String,
+    status: String
+) {
+    val statusColor = when (status) {
+        "approved" -> Color(0xFF4CAF50)
+        "rejected" -> Color(0xFFFF4D6D)
+        else -> Color(0xFFFFD166)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF16152A)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Project ID", color = Color(0xFF8B8AAC), fontSize = 12.sp)
+            Text(projectId, color = Color.White, fontWeight = FontWeight.Bold)
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Status: ${status.uppercase()}",
+                color = statusColor,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

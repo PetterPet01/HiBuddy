@@ -16,7 +16,8 @@ fun ApplicantProfileScreen(
     applicantId: String,
     applicationId: String,
     onBack: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onViewProjects: (String) -> Unit
 ) {
     val applicationRepository = remember { ProjectApplicationRepository() }
     val projectRepository = remember { ProjectRepository() }
@@ -25,7 +26,12 @@ fun ApplicantProfileScreen(
 
     UserProfileScreen(
         userId = applicantId,
+
         onBack = onBack,
+
+        onProjectsClick = { viewedUserId ->
+            onViewProjects(viewedUserId)
+        },
         bottomContent = {
             if (errorMessage.isNotBlank()) {
                 Text(errorMessage, color = Color(0xFFFF4D6D))
@@ -37,14 +43,24 @@ fun ApplicantProfileScreen(
                     applicationRepository.approveApplication(
                         applicationId = applicationId,
                         onSuccess = {
+
                             projectRepository.addMemberToProject(
                                 projectId = projectId,
                                 userId = applicantId,
-                                onSuccess = onDone,
-                                onFailure = { errorMessage = it }
+
+                                onSuccess = {
+                                    onDone()
+                                },
+
+                                onFailure = {
+                                    errorMessage = it
+                                }
                             )
                         },
-                        onFailure = { errorMessage = it }
+
+                        onFailure = {
+                            errorMessage = it
+                        }
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -60,8 +76,14 @@ fun ApplicantProfileScreen(
                 onClick = {
                     applicationRepository.rejectApplication(
                         applicationId = applicationId,
-                        onSuccess = onDone,
-                        onFailure = { errorMessage = it }
+
+                        onSuccess = {
+                            onDone()
+                        },
+
+                        onFailure = {
+                            errorMessage = it
+                        }
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

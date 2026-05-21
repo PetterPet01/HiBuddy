@@ -48,7 +48,9 @@ enum class Screen {
     CREATE_PROJECT,
     MY_PROJECTS,
     PROJECT_APPLICANTS,
-    APPLICANT_PROFILE
+    APPLICANT_PROFILE,
+    PROJECT_DETAIL,
+    USER_PROJECTS
 }
 
 enum class AuthRoute {
@@ -150,6 +152,12 @@ fun MainAppContent(
     var selectedApplicantProjectId by remember { mutableStateOf("") }
     var selectedApplicantId by remember { mutableStateOf("") }
     var selectedApplicationId by remember { mutableStateOf("") }
+    var viewedUserProjectsId by remember {
+        mutableStateOf("")
+    }
+    var previousScreen by remember {
+        mutableStateOf(Screen.DISCOVER)
+    }
 
     Scaffold(
         bottomBar = {
@@ -172,12 +180,22 @@ fun MainAppContent(
                 when (screen) {
                     Screen.DISCOVER -> DiscoverScreen()
                     Screen.MATCHES -> MatchesScreen()
-                    Screen.TASKS -> TasksScreen()
+                    Screen.TASKS -> TasksScreen(
+                        onViewProjectDetail = { projectId ->
+                            selectedProjectId = projectId
+
+                            previousScreen = currentScreen
+
+                            currentScreen = Screen.PROJECT_DETAIL
+                        }
+                    )
                     Screen.PROFILE -> ProfileScreen(
                         onLogout = onLogout,
+
                         onCreateProjectClick = {
                             currentScreen = Screen.CREATE_PROJECT
                         },
+
                         onMyProjectsClick = {
                             currentScreen = Screen.MY_PROJECTS
                         }
@@ -195,6 +213,13 @@ fun MainAppContent(
                         onViewApplicants = { projectId ->
                             selectedProjectId = projectId
                             currentScreen = Screen.PROJECT_APPLICANTS
+                        },
+                        onViewProjectDetail = { projectId ->
+                            selectedProjectId = projectId
+
+                            previousScreen = currentScreen
+
+                            currentScreen = Screen.PROJECT_DETAIL
                         }
                     )
 
@@ -220,6 +245,36 @@ fun MainAppContent(
                         },
                         onDone = {
                             currentScreen = Screen.PROJECT_APPLICANTS
+                        },
+                        onViewProjects = { userId ->
+                            viewedUserProjectsId = userId
+                            currentScreen = Screen.USER_PROJECTS
+                        }
+                    )
+                    Screen.PROJECT_DETAIL -> ProjectDetailScreen(
+                        projectId = selectedProjectId,
+
+                        onBack = {
+                            currentScreen = previousScreen
+                        },
+
+                        onViewApplicants = { projectId ->
+                            selectedProjectId = projectId
+                            currentScreen = Screen.PROJECT_APPLICANTS
+                        }
+                    )
+
+                    Screen.USER_PROJECTS -> UserProjectsScreen(
+                        userId = viewedUserProjectsId,
+                        onBack = {
+                            currentScreen = Screen.APPLICANT_PROFILE
+                        },
+                        onViewProjectDetail = { projectId ->
+                            selectedProjectId = projectId
+
+                            previousScreen = currentScreen
+
+                            currentScreen = Screen.PROJECT_DETAIL
                         }
                     )
                 }

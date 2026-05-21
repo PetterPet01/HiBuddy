@@ -12,18 +12,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.hibuddy.data.model.UserProfile
 import com.example.hibuddy.repository.UserRepository
+import com.example.hibuddy.ui.screens.toUserCard
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.hibuddy.repository.ProjectRepository
+import androidx.compose.foundation.clickable
 
+enum class ProfileTab {
+    ABOUT,
+    PROJECTS,
+    REVIEWS
+}
 @Composable
 fun UserProfileScreen(
     userId: String,
     onBack: () -> Unit,
+    onProjectsClick: ((String) -> Unit)? = null,
     bottomContent: @Composable (() -> Unit)? = null
 ) {
+    var selectedTab by remember { mutableStateOf(ProfileTab.ABOUT) }
     val userRepository = remember { UserRepository() }
 
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
+    var projectCount by remember { mutableStateOf(0) }
+    val projectRepository = remember { ProjectRepository() }
 
     LaunchedEffect(userId) {
         userRepository.getUserProfile(
@@ -35,6 +49,16 @@ fun UserProfileScreen(
             onFailure = {
                 errorMessage = it
                 isLoading = false
+            }
+        )
+
+        projectRepository.getRelatedProjects(
+            currentUid = userId,
+            onSuccess = { result ->
+                projectCount = result.size
+            },
+            onFailure = { error ->
+                println(error)
             }
         )
     }
@@ -61,24 +85,39 @@ fun UserProfileScreen(
 
             else -> {
                 val user = userProfile!!
+                val userCard = user.toUserCard(0)
 
-                Text(
-                    text = user.fullName.ifBlank { "Unnamed User" },
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.headlineSmall
+                UserSwipeCard(
+                    user = userCard,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(560.dp)
                 )
-
-                Text(user.email, color = Color(0xFF8B8AAC))
 
                 Spacer(Modifier.height(20.dp))
 
-                ProfileInfoBlock("Organization", user.organization)
-                ProfileInfoBlock("Major", user.major)
-                ProfileInfoBlock("Current status", user.currentStatus)
-                ProfileInfoBlock("Bio", user.bio)
-                ProfileInfoBlock("Skills", user.skills.joinToString(", "))
-                ProfileInfoBlock("Interests", user.interests.joinToString(", "))
+                ProfileTabs(
+                    selectedTab = selectedTab,
+                    onTabSelected = {
+                        selectedTab = it
+                    }
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                when (selectedTab) {
+                    ProfileTab.ABOUT -> {
+                        AboutTab(user = user)
+                    }
+
+                    ProfileTab.PROJECTS -> {
+                        ProjectsTab(userId = user.uid)
+                    }
+
+                    ProfileTab.REVIEWS -> {
+                        ReviewsTab()
+                    }
+                }
 
                 Spacer(Modifier.height(24.dp))
 
@@ -108,4 +147,106 @@ fun ProfileInfoBlock(
         text = value.ifBlank { "Not updated" },
         color = Color(0xFFB0AFC8)
     )
+}
+
+@Composable
+fun ProfileTabs(
+    selectedTab: ProfileTab,
+    onTabSelected: (ProfileTab) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ProfileTabButton(
+            text = "About",
+            selected = selectedTab == ProfileTab.ABOUT,
+            onClick = { onTabSelected(ProfileTab.ABOUT) },
+            modifier = Modifier.weight(1f)
+        )
+
+        ProfileTabButton(
+            text = "Projects",
+            selected = selectedTab == ProfileTab.PROJECTS,
+            onClick = { onTabSelected(ProfileTab.PROJECTS) },
+            modifier = Modifier.weight(1f)
+        )
+
+        ProfileTabButton(
+            text = "Reviews",
+            selected = selectedTab == ProfileTab.REVIEWS,
+            onClick = { onTabSelected(ProfileTab.REVIEWS) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun ProfileTabButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(42.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) Color(0xFF7C6AF7) else Color(0xFF1E1D2E)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun AboutTab(user: UserProfile) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFF16152A)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            ProfileInfoBlock("Organization", user.organization)
+            ProfileInfoBlock("Major", user.major)
+            ProfileInfoBlock("Current status", user.currentStatus)
+            ProfileInfoBlock("Bio", user.bio)
+            ProfileInfoBlock("Skills", user.skills.joinToString(", "))
+            ProfileInfoBlock("Interests", user.interests.joinToString(", "))
+        }
+    }
+}
+
+@Composable
+fun ProjectsTab(userId: String) {
+    Text(
+        text = "Projects joined or owned by this user will be shown here.",
+        color = Color(0xFF8B8AAC)
+    )
+}
+
+@Composable
+fun ReviewsTab() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFF16152A)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "No reviews yet.",
+                color = Color(0xFF8B8AAC)
+            )
+        }
+    }
 }

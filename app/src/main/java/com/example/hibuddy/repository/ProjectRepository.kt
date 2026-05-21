@@ -2,6 +2,7 @@ package com.example.hibuddy.repository
 
 import com.example.hibuddy.data.model.Project
 import com.google.firebase.firestore.FirebaseFirestore
+
 import com.google.firebase.firestore.FieldValue
 
 class ProjectRepository {
@@ -108,22 +109,33 @@ class ProjectRepository {
         db.collection("projects")
             .get()
             .addOnSuccessListener { result ->
-
                 val projects = result.documents
-                    .mapNotNull {
-                        it.toObject(Project::class.java)
-                    }
+                    .mapNotNull { it.toObject(Project::class.java) }
                     .filter { project ->
-
                         project.ownerId == currentUid ||
-
                                 project.memberIds.contains(currentUid)
                     }
 
                 onSuccess(projects)
             }
             .addOnFailureListener {
-                onFailure(it.message ?: "Load projects failed")
+                onFailure(it.message ?: "Load related projects failed")
+            }
+    }
+
+    fun getProjectById(
+        projectId: String,
+        onSuccess: (Project?) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection("projects")
+            .document(projectId)
+            .get()
+            .addOnSuccessListener { document ->
+                onSuccess(document.toObject(Project::class.java))
+            }
+            .addOnFailureListener {
+                onFailure(it.message ?: "Load project failed")
             }
     }
 }
