@@ -25,6 +25,9 @@ import androidx.compose.foundation.BorderStroke
 import com.example.hibuddy.viewmodel.ProfileViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.clickable
+import com.example.hibuddy.repository.ProjectRepository
+import com.google.firebase.auth.FirebaseAuth
 
 // Course Data Model specifically for NV-09
 data class CourseSuggestion(
@@ -42,14 +45,32 @@ val courseSuggestions = listOf(
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit,
-    viewModel: ProfileViewModel = viewModel()
+    onCreateProjectClick: () -> Unit,
+    onMyProjectsClick: () -> Unit
 ) {
+    val viewModel: ProfileViewModel = viewModel()
+
     val userProfile = viewModel.userProfile
     val isLoading = viewModel.isLoading
     val errorMessage = viewModel.errorMessage
 
+    var projectCount by remember { mutableStateOf(0) }
+    val projectRepository = remember { ProjectRepository() }
+
     LaunchedEffect(Unit) {
         viewModel.loadCurrentUserProfile()
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+        if (currentUid != null) {
+            projectRepository.getRelatedProjects(
+                currentUid = currentUid,
+                onSuccess = { projects ->
+                    projectCount = projects.size
+                },
+                onFailure = {
+                    println(it)
+                }
+            )
+        }
     }
 
     if (isLoading) {
@@ -138,7 +159,13 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                ProfileStatColumn("0", "Projects")
+                ProfileStatColumn(
+                    value = projectCount.toString(),
+                    label = "Projects",
+                    modifier = Modifier.clickable {
+                        onMyProjectsClick()
+                    }
+                )
                 ProfileStatColumn("0%", "Match Rate")
                 ProfileStatColumn("0.0", "Rep Score")
             }
@@ -218,6 +245,36 @@ fun ProfileScreen(
         }
 
         Button(
+            onClick = onCreateProjectClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .height(52.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF7C6AF7)
+            ),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Text("Create Project")
+        }
+
+        Button(
+            onClick = onMyProjectsClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .height(52.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF1E1D2E)
+            ),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Text("My Projects")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
             onClick = onLogout,
             modifier = Modifier
                 .fillMaxWidth()
@@ -233,11 +290,19 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(40.dp))
     }
+
 }
 
 @Composable
-fun ProfileStatColumn(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+fun ProfileStatColumn(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
         Text(label, fontSize = 11.sp, color = Color(0xFF6B6A8C))
     }

@@ -24,6 +24,10 @@ import com.example.hibuddy.data.model.UserProfile
 import com.example.hibuddy.repository.UserRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.example.hibuddy.repository.MatchRepository
+import com.example.hibuddy.data.model.Project
+import com.example.hibuddy.repository.ProjectRepository
+import com.example.hibuddy.repository.ProjectApplicationRepository
+
 
 // ──────────────────────────────────────────────────────────────
 //  Discover Screen
@@ -35,7 +39,14 @@ fun DiscoverScreen() {
     var selectedProject by remember { mutableStateOf(SampleData.myProjects.first()) }
 
     var peopleStack by remember { mutableStateOf(mutableListOf<UserCard>()) }
-    var projectStack by remember { mutableStateOf(SampleData.projects.toMutableList()) }
+    var projectStack by remember {
+        mutableStateOf(mutableListOf<ProjectCard>())
+    }
+    val projectRepository = remember { ProjectRepository() }
+
+    val projectApplicationRepository = remember {
+        ProjectApplicationRepository()
+    }
 
     var superLikesLeft by remember { mutableStateOf(3) }
     var likesLeft by remember { mutableStateOf(50) }
@@ -53,6 +64,18 @@ fun DiscoverScreen() {
             onSuccess = { users ->
                 peopleStack = users.mapIndexed { index, userProfile ->
                     userProfile.toUserCard(index)
+                }.toMutableList()
+            },
+            onFailure = {
+                println(it)
+            }
+        )
+
+        projectRepository.getProjects(
+            currentUid = currentUid,
+            onSuccess = { projects ->
+                projectStack = projects.mapIndexed { index, project ->
+                    project.toProjectCard(index)
                 }.toMutableList()
             },
             onFailure = {
@@ -187,8 +210,33 @@ fun DiscoverScreen() {
                         },
                         onSwipeRight = {
                             if (likesLeft > 0) {
+
+                                val currentUid =
+                                    FirebaseAuth.getInstance().currentUser?.uid
+
+                                val project =
+                                    projectStack[0]
+
+                                if (currentUid != null) {
+
+                                    projectApplicationRepository.applyProject(
+                                        projectId = project.projectId,
+                                        applicantId = currentUid,
+
+                                        onSuccess = {
+                                            println("Project applied")
+                                        },
+
+                                        onFailure = {
+                                            println("Apply failed: $it")
+                                        }
+                                    )
+                                }
+
                                 projectStack = projectStack.drop(1).toMutableList()
+
                                 lastAction = SwipeAction.LIKE
+
                                 likesLeft--
                             }
                         },
@@ -306,6 +354,43 @@ fun UserProfile.toUserCard(index: Int): UserCard {
         reputationStars = 0.0f,
 
         location = "Vietnam"
+    )
+}
+
+fun Project.toProjectCard(index: Int): ProjectCard {
+    val colors = listOf(
+        Color(0xFF7C6AF7),
+        Color(0xFFE03055),
+        Color(0xFF06B6D4),
+        Color(0xFF059669),
+        Color(0xFFFF8C42)
+    )
+
+    return ProjectCard(
+        id = index,
+        projectId = projectId,
+        title = title.ifBlank { "Untitled Project" },
+        field = field.ifBlank { "General" },
+        description = description.ifBlank { "No description yet." },
+        ownerName = "Project Owner",
+        ownerEmoji = "👤",
+        ownerColor = colors[index % colors.size],
+        rolesNeeded = rolesNeeded.map { role ->
+            RoleSlot(
+                role = role,
+                count = 1,
+                filled = 0,
+                skills = skillsNeeded.take(2)
+            )
+        },
+        timeline = timeline.ifBlank { "Flexible" },
+        workMode = workMode.ifBlank { "Online" },
+        commitment = commitment.ifBlank { "Casual" },
+        slotsTotal = maxMembers,
+        slotsFilled = currentMembers,
+        matchScore = 80,
+        accentColor = colors[index % colors.size],
+        tags = tags
     )
 }
 

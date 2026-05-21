@@ -40,7 +40,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { DISCOVER, MATCHES, TASKS, PROFILE }
+enum class Screen {
+    DISCOVER,
+    MATCHES,
+    TASKS,
+    PROFILE,
+    CREATE_PROJECT,
+    MY_PROJECTS,
+    PROJECT_APPLICANTS,
+    APPLICANT_PROFILE
+}
 
 enum class AuthRoute {
     LOGIN, REGISTER, COMPLETE_PROFILE
@@ -136,7 +145,11 @@ fun MainAppContent(
     onLogout: () -> Unit
 ) {
     var currentScreen by remember { mutableStateOf(Screen.DISCOVER) }
+    var selectedProjectId by remember { mutableStateOf("") }
     var notificationCount by remember { mutableStateOf(3) }
+    var selectedApplicantProjectId by remember { mutableStateOf("") }
+    var selectedApplicantId by remember { mutableStateOf("") }
+    var selectedApplicationId by remember { mutableStateOf("") }
 
     Scaffold(
         bottomBar = {
@@ -161,7 +174,53 @@ fun MainAppContent(
                     Screen.MATCHES -> MatchesScreen()
                     Screen.TASKS -> TasksScreen()
                     Screen.PROFILE -> ProfileScreen(
-                        onLogout = onLogout
+                        onLogout = onLogout,
+                        onCreateProjectClick = {
+                            currentScreen = Screen.CREATE_PROJECT
+                        },
+                        onMyProjectsClick = {
+                            currentScreen = Screen.MY_PROJECTS
+                        }
+                    )
+                    Screen.CREATE_PROJECT -> CreateProjectScreen(
+                        onProjectCreated = {
+                            currentScreen = Screen.DISCOVER
+                        }
+                    )
+
+                    Screen.MY_PROJECTS -> MyProjectsScreen(
+                        onBack = {
+                            currentScreen = Screen.PROFILE
+                        },
+                        onViewApplicants = { projectId ->
+                            selectedProjectId = projectId
+                            currentScreen = Screen.PROJECT_APPLICANTS
+                        }
+                    )
+
+                    Screen.PROJECT_APPLICANTS -> ProjectApplicantsScreen(
+                        projectId = selectedProjectId,
+                        onBack = {
+                            currentScreen = Screen.MY_PROJECTS
+                        },
+                        onViewApplicantProfile = { projectId, applicantId, applicationId ->
+                            selectedApplicantProjectId = projectId
+                            selectedApplicantId = applicantId
+                            selectedApplicationId = applicationId
+                            currentScreen = Screen.APPLICANT_PROFILE
+                        }
+                    )
+
+                    Screen.APPLICANT_PROFILE -> ApplicantProfileScreen(
+                        projectId = selectedApplicantProjectId,
+                        applicantId = selectedApplicantId,
+                        applicationId = selectedApplicationId,
+                        onBack = {
+                            currentScreen = Screen.PROJECT_APPLICANTS
+                        },
+                        onDone = {
+                            currentScreen = Screen.PROJECT_APPLICANTS
+                        }
                     )
                 }
             }

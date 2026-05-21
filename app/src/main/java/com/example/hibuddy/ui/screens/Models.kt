@@ -39,6 +39,7 @@ enum class SkillLevel(val label: String, val color: Color) {
 
 data class ProjectCard(
     val id: Int,
+    val projectId: String,
     val title: String,
     val field: String,
     val description: String,
@@ -191,50 +192,6 @@ object SampleData {
         ),
     )
 
-    val projects = listOf(
-        ProjectCard(
-            id = 101,
-            title = "EduMatch AI",
-            field = "EdTech",
-            description = "AI-powered platform matching students with tutors based on learning style, schedule, and subject gap analysis. Targeting 10k users in Y1.",
-            ownerName = "Phạm Thu Hà",
-            ownerEmoji = "👩‍🚀",
-            ownerColor = Color(0xFF7C6AF7),
-            rolesNeeded = listOf(
-                RoleSlot("Backend Dev", 2, 1, listOf("FastAPI", "PostgreSQL")),
-                RoleSlot("ML Engineer", 1, 0, listOf("Recommendation", "NLP")),
-            ),
-            timeline = "Jun – Dec 2025",
-            workMode = "Hybrid",
-            commitment = "Serious",
-            slotsTotal = 3,
-            slotsFilled = 1,
-            matchScore = 91,
-            accentColor = Color(0xFF7C6AF7),
-            tags = listOf("AI", "Education", "Startup"),
-        ),
-        ProjectCard(
-            id = 102,
-            title = "GreenTrace",
-            field = "Climate Tech",
-            description = "Carbon footprint tracker for Vietnamese SMEs. IoT + mobile. Partnering with 2 corporations. Need a driven mobile dev & data eng.",
-            ownerName = "Vũ Đức Anh",
-            ownerEmoji = "🌿",
-            ownerColor = Color(0xFF059669),
-            rolesNeeded = listOf(
-                RoleSlot("Android Dev", 1, 0, listOf("Kotlin", "Jetpack Compose")),
-                RoleSlot("Data Engineer", 1, 0, listOf("Kafka", "dbt")),
-            ),
-            timeline = "Jul – Nov 2025",
-            workMode = "Online",
-            commitment = "Serious",
-            slotsTotal = 2,
-            slotsFilled = 0,
-            matchScore = 85,
-            accentColor = Color(0xFF059669),
-            tags = listOf("IoT", "Climate", "Mobile"),
-        ),
-    )
 
     val matches = listOf(
         // Match Queue (Top Row - No messages yet)
