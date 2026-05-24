@@ -51,6 +51,15 @@ fun RegisterScreen(
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     val passwordsMismatch = confirmPassword.isNotBlank() && confirmPassword != password
+    val isPasswordValid =
+        password.length >= 8 &&
+                password.any { it.isUpperCase() } &&
+                password.any { it.isLowerCase() } &&
+                password.any { it.isDigit() }
+
+    val passwordError =
+        password.isNotBlank() && !isPasswordValid
+
     val canSubmit = fullName.isNotBlank() &&
             username.isNotBlank() &&
             email.isNotBlank() &&
@@ -58,6 +67,7 @@ fun RegisterScreen(
             password.isNotBlank() &&
             confirmPassword.isNotBlank() &&
             !passwordsMismatch &&
+            isPasswordValid &&
             agreeTerms
 
     LaunchedEffect(uiState.isLoggedIn) {
@@ -133,6 +143,7 @@ fun RegisterScreen(
 
         AuthTextField(
             value = password,
+            isError = passwordError,
             onValueChange = {
                 password = it
                 if (uiState.error != null) viewModel.clearError()
@@ -162,7 +173,18 @@ fun RegisterScreen(
                 }
             },
             supportingText = {
-                Text("8+ chars with uppercase, lowercase, and a number.")
+                Text(
+                    text = if (passwordError) {
+                        "Password must contain uppercase, lowercase, number and 8+ chars."
+                    } else {
+                        "8+ chars with uppercase, lowercase, and a number."
+                    },
+                    color = if (passwordError) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
             }
         )
 
