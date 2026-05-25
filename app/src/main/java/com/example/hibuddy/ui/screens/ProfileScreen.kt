@@ -59,10 +59,51 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.data.remote.dto.CourseSuggestionResponse
+import com.example.hibuddy.data.remote.dto.MyFeedbackSummaryResponse
 import com.example.hibuddy.ui.theme.HiBuddyColors
 import com.example.hibuddy.ui.screens.auth.AuthViewModel
 import com.example.hibuddy.ui.screens.profile.EditProfileDialog
 import com.example.hibuddy.ui.screens.profile.ProfileViewModel
+
+@Composable
+private fun FeedbackSummarySection() {
+    var feedbackSummary by remember { mutableStateOf<MyFeedbackSummaryResponse?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        ServiceLocator.feedbackRepository.getMyFeedbackSummary()
+            .onSuccess { feedbackSummary = it }
+            .onFailure { isError = true }
+    }
+
+    val summary = feedbackSummary ?: return
+    if (isError || summary.totalFeedbacks <= 0) return
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Feedback received (${summary.totalFeedbacks})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            if (summary.weaknesses.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Needs improvement: ${summary.weaknesses.joinToString(", ")}",
+                    color = HiBuddyColors.warning,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun ProfileScreen(
@@ -133,6 +174,27 @@ fun ProfileScreen(
             return@Column
         }
 
+        // Message/error banners shown regardless of profile load state
+        uiState.message?.let { message ->
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                colors = CardDefaults.cardColors(containerColor = HiBuddyColors.successContainer)
+            ) {
+                Text(message, modifier = Modifier.padding(14.dp), color = HiBuddyColors.onSuccessContainer, fontSize = 13.sp)
+            }
+        }
+
+        uiState.error?.let { error ->
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)
+            ) {
+                Text(error, modifier = Modifier.padding(14.dp), color = colorScheme.onErrorContainer, fontSize = 13.sp)
+            }
+        }
+
         profile?.let { currentProfile ->
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -161,10 +223,12 @@ fun ProfileScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(
                     text = listOfNotNull(currentProfile.email, currentProfile.university, currentProfile.location)
                         .filter { it.isNotBlank() }
-                        .joinToString(" • "),
+                        .joinToString(" \u2022 "),
                     fontSize = 13.sp,
                     color = colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -197,35 +261,6 @@ fun ProfileScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(if (currentProfile.isHidden) "Hidden from Discover" else "Visible in Discover")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            ProfileSection(title = "SETTINGS") {
-                ThemeSettingRow(
-                    isDarkMode = isDarkMode,
-                    onToggle = { ServiceLocator.themeManager.setDarkMode(it) }
-                )
-            }
-
-            uiState.message?.let { message ->
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    colors = CardDefaults.cardColors(containerColor = HiBuddyColors.successContainer)
-                ) {
-                    Text(message, modifier = Modifier.padding(14.dp), color = HiBuddyColors.onSuccessContainer, fontSize = 13.sp)
-                }
-            }
-
-            uiState.error?.let { error ->
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)
-                ) {
-                    Text(error, modifier = Modifier.padding(14.dp), color = colorScheme.onErrorContainer, fontSize = 13.sp)
                 }
             }
 
@@ -291,7 +326,7 @@ fun ProfileScreen(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text(
-                                        "${skill.skillName} • ${skill.level}",
+                                        "${skill.skillName} \u2022 ${skill.level}",
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         fontSize = 12.sp,
                                         color = chipColor,
@@ -345,6 +380,21 @@ fun ProfileScreen(
                 )
             }
         }
+
+        // Feedback summary is independent of profile — shown even when profile fails to load
+        FeedbackSummarySection()
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Settings are always accessible, regardless of profile load state
+        ProfileSection(title = "SETTINGS") {
+            ThemeSettingRow(
+                isDarkMode = isDarkMode,
+                onToggle = { ServiceLocator.themeManager.setDarkMode(it) }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     GRACE_PERIOD_HOURS: int = 12
     MAX_COURSE_SUGGESTIONS: int = 5
 
+    MISTRAL_API_KEY: str = ""
+    MISTRAL_MODEL: str = "ministral-3b-2510"
+
     class Config:
         env_file = str(BACKEND_DIR / ".env")
         env_file_encoding = "utf-8"

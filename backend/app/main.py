@@ -18,6 +18,8 @@ from app.api.endpoints.fcm import router as fcm_router
 from app.api.websocket import handle_presence_websocket, handle_websocket
 from app.api.upload import router as upload_router
 from app.api.search import router as search_router
+from app.api.feedback import router as feedback_router
+from app.api.admin import router as admin_router
 from app.services.fcm_service import init_firebase
 
 settings = get_settings()
@@ -64,6 +66,8 @@ app.include_router(upload_router)
 app.include_router(search_router)
 app.include_router(trust_router)
 app.include_router(fcm_router)
+app.include_router(feedback_router)
+app.include_router(admin_router)
 
 
 @app.websocket("/ws/chat/{match_id}")

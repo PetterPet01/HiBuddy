@@ -145,3 +145,23 @@ class ChatRepository(
         }
     }
 }
+
+class FeedbackRepository(private val api: ApiService) {
+    suspend fun submitFeedback(projectId: String, memberId: String, request: FeedbackCreateRequest): Result<FeedbackResponse> =
+        runCatching { api.submitFeedback(projectId, memberId, request) }
+    suspend fun getMyFeedback(projectId: String): Result<MyFeedbackSummaryResponse> =
+        runCatching { api.getMyFeedback(projectId) }
+    suspend fun getMyFeedbackSummary(): Result<MyFeedbackSummaryResponse> =
+        runCatching { api.getMyFeedbackSummary() }
+    suspend fun getMembersToFeedback(projectId: String): Result<MembersToFeedbackResponse> =
+        runCatching { api.getMembersToFeedback(projectId) }
+}
+
+class NotificationRepository(private val api: ApiService) {
+    suspend fun getNotifications(limit: Int = 20): Result<List<NotificationResponse>> =
+        runCatching { api.getNotifications(limit) }
+    suspend fun markNotificationRead(id: String): Result<GenericResponse> =
+        runCatching { api.markNotificationRead(id) }
+    suspend fun getUnreadCount(): Result<UnreadCountResponse> =
+        runCatching { api.getUnreadCount() }
+}

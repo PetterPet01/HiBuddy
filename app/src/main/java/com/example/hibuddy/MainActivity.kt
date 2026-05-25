@@ -25,6 +25,8 @@ import com.example.hibuddy.ui.screens.DiscoverScreen
 import com.example.hibuddy.ui.screens.MatchesScreen
 import com.example.hibuddy.ui.screens.TasksScreen
 import com.example.hibuddy.ui.screens.ProfileScreen
+import com.example.hibuddy.ui.screens.FeedbackScreen
+import com.example.hibuddy.ui.screens.NotificationScreen
 import com.example.hibuddy.ui.screens.auth.LoginScreen
 import com.example.hibuddy.ui.screens.auth.RegisterScreen
 import com.example.hibuddy.ui.screens.auth.ForgotPasswordScreen
@@ -76,6 +78,9 @@ object Routes {
     const val CREATE_PROJECT = "main/create-project"
     const val CREATE_TASK = "main/create-task/{projectId}"
     fun createTask(projectId: String) = "main/create-task/$projectId"
+    const val NOTIFICATIONS = "main/notifications"
+    const val FEEDBACK = "main/feedback/{projectId}"
+    fun feedback(projectId: String) = "main/feedback/$projectId"
 }
 
 @Composable
@@ -141,6 +146,7 @@ fun HiBuddyApp() {
                         "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
                         "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
                         "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
             ) {
@@ -160,6 +166,7 @@ fun HiBuddyApp() {
                         "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
                         "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
                         "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
             ) {
@@ -179,6 +186,7 @@ fun HiBuddyApp() {
                         "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
                         "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
                         "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
             ) {
@@ -201,6 +209,7 @@ fun HiBuddyApp() {
                         "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
                         "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
                         "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
             ) {
@@ -266,6 +275,32 @@ fun HiBuddyApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+
+        composable(Routes.NOTIFICATIONS) {
+            NotificationScreen(
+                onBack = { navController.popBackStack() },
+                onNotificationClick = { type, relatedId ->
+                    when (type) {
+                        "PROJECT_COMPLETED_FEEDBACK", "FEEDBACK_RECEIVED" ->
+                            navController.navigate(Routes.feedback(relatedId ?: ""))
+                        "NEW_MATCH" ->
+                            navController.navigate(Routes.MATCHES)
+                        else -> Unit
+                    }
+                }
+            )
+        }
+
+        composable(
+            Routes.FEEDBACK,
+            arguments = listOf(navArgument("projectId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
+            FeedbackScreen(
+                projectId = projectId,
+                onBack = { navController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -299,6 +334,7 @@ fun HiBuddyBottomNav(
         Triple("matches", Icons.Filled.Favorite, "Matches"),
         Triple("tasks", Icons.AutoMirrored.Filled.Assignment, "Tasks"),
         Triple("profile", Icons.Filled.Person, "Profile"),
+        Triple("notifications", Icons.Filled.Notifications, "Notify"),
     )
 
     NavigationBar(

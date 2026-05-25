@@ -9,6 +9,7 @@ from sqlalchemy import select, func
 from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
 from app.models.chat import CourseSuggestion
 from app.models.profile import UserSkill, UserProfile, UserRole
+from app.models.feedback import AnonymousFeedback
 from app.models.user import User
 from app.config import get_settings
 
@@ -154,6 +155,21 @@ COURSE_CATALOG: list[dict[str, Any]] = [
 ]
 
 
+async def _get_feedback_weaknesses(db: AsyncSession, user_id: UUID) -> dict[str, float]:
+    result = await db.execute(
+        select(AnonymousFeedback).where(
+            AnonymousFeedback.target_id == user_id,
+            AnonymousFeedback.analyzed_weaknesses.isnot(None),
+        )
+    )
+    scores: dict[str, float] = defaultdict(float)
+    for fb in result.scalars():
+        if fb.analyzed_weaknesses:
+            for skill in fb.analyzed_weaknesses:
+                scores[skill] += 0.4
+    return dict(scores)
+
+
 async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[dict]:
     skill_scores: dict[str, float] = defaultdict(float)
 
@@ -191,6 +207,10 @@ async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[d
     )
     for skill in profile_skills_result.scalars():
         skill_scores[skill.skill_name] += 0.2
+
+    fb_weaknesses = await _get_feedback_weaknesses(db, user_id)
+    for skill, weight in fb_weaknesses.items():
+        skill_scores[skill] += weight
 
     dismissed_result = await db.execute(
         select(CourseSuggestion.course_id).where(

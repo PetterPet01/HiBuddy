@@ -59,6 +59,8 @@ object ServiceLocator {
     val taskRepository: TaskRepository by lazy { TaskRepository(apiService) }
     val suggestionRepository: SuggestionRepository by lazy { SuggestionRepository(apiService) }
     val chatRepository: ChatRepository by lazy { ChatRepository(apiService, chatLocalDataSource) }
+    val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository(apiService) }
+    val notificationRepository: NotificationRepository by lazy { NotificationRepository(apiService) }
 
     fun init(context: Context) {
         appContext = context.applicationContext

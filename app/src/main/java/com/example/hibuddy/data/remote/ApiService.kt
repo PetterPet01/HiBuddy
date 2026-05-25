@@ -176,4 +176,24 @@ interface ApiService {
 
     @POST("api/v1/trust/report")
     suspend fun reportUser(@Body request: ReportRequest): GenericResponse
+
+    @POST("api/v1/projects/{projectId}/feedback/{memberId}")
+    suspend fun submitFeedback(
+        @Path("projectId") projectId: String,
+        @Path("memberId") memberId: String,
+        @Body request: FeedbackCreateRequest
+    ): FeedbackResponse
+
+    @GET("api/v1/projects/{projectId}/my-feedback")
+    suspend fun getMyFeedback(
+        @Path("projectId") projectId: String
+    ): MyFeedbackSummaryResponse
+
+    @GET("api/v1/my-feedback-summary")
+    suspend fun getMyFeedbackSummary(): MyFeedbackSummaryResponse
+
+    @GET("api/v1/projects/{projectId}/members-to-feedback")
+    suspend fun getMembersToFeedback(
+        @Path("projectId") projectId: String
+    ): MembersToFeedbackResponse
 }

@@ -26,6 +26,7 @@ class Project(Base):
     max_members: Mapped[int] = mapped_column(Integer, nullable=False)
 
     status: Mapped[str] = mapped_column(String(20), default="RECRUITING")
+    review_status: Mapped[str] = mapped_column(String(20), default="APPROVED")
     additional_requirements: Mapped[str | None] = mapped_column(String(500), nullable=True)
     member_benefits: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

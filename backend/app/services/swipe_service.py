@@ -18,6 +18,11 @@ from app.models.chat import Chat, Notification, Message
 from app.services.embedding_service import encode_text
 from app.services.fcm_service import notify_user
 from app.services.presence_service import presence_manager
+from app.services.matching_service import (
+    calculate_project_score,
+    calculate_user_score,
+    calculate_match_score_for_pair,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -136,10 +141,18 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
     if existing.scalar_one_or_none():
         return None
 
+    contributor = await db.get(User, user_id, options=[selectinload(User.roles), selectinload(User.skills), selectinload(User.interests), selectinload(User.profile)])
+    project = await db.get(Project, project_id, options=[selectinload(Project.role_slots)])
+
+    computed_score = 0.0
+    if contributor and project:
+        computed_score = calculate_match_score_for_pair(contributor, project)
+
     match = Match(
         user_id=user_id,
         project_id=project_id,
         owner_id=owner_id,
+        match_score=computed_score,
     )
     db.add(match)
     await db.flush()
@@ -228,6 +241,19 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
     return exclude_user_ids, exclude_project_ids
 
 
+async def _get_owner_projects(db: AsyncSession, owner: User) -> list[Project]:
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.role_slots))
+        .where(
+            Project.owner_id == owner.id,
+            Project.status == "RECRUITING",
+            Project.review_status == "APPROVED",
+        )
+    )
+    return list(result.scalars().all())
+
+
 async def _discover_projects(
     db: AsyncSession, user: User, cursor: str | None, limit: int
 ) -> dict:
@@ -243,6 +269,7 @@ async def _discover_projects(
         .options(selectinload(Project.role_slots))
         .where(
             Project.status == "RECRUITING",
+            Project.review_status == "APPROVED",
             ~Project.id.in_([UUID(p) for p in exclude_project_ids if p] if exclude_project_ids else [UUID("00000000-0000-0000-0000-000000000000")]),
         )
     )
@@ -259,9 +286,7 @@ async def _discover_projects(
         total_filled = sum(s.filled for s in project.role_slots)
         total_slots = sum(s.count for s in project.role_slots)
 
-        skills_text = " ".join(s.skill_name for s in user.skills)
-        project_text = f"{project.title} {project.field} {' '.join(s.role_name for s in project.role_slots)}"
-        match_score = _calculate_text_similarity(skills_text, project_text)
+        match_score = calculate_project_score(user, project, owner)
 
         if vector:
             project_vec = _get_or_compute_embedding("project", str(project.id), _build_project_text(project))
@@ -331,6 +356,8 @@ async def _discover_users(
 
     profiles = (await db.execute(query)).scalars().all()
 
+    owner_projects = await _get_owner_projects(db, user)
+
     cards = []
     for profile in profiles:
         pu = await db.get(User, profile.user_id)
@@ -341,9 +368,7 @@ async def _discover_users(
             select(UserSkill).where(UserSkill.user_id == profile.user_id)
         )
 
-        owner_skills = " ".join(s.skill_name for s in user.skills)
-        target_text = f"{profile.display_name} {profile.bio or ''} {' '.join(r.role_name for r in roles.scalars())} {' '.join(s.skill_name for s in skills.scalars())}"
-        match_score = _calculate_text_similarity(owner_skills, target_text)
+        match_score = calculate_user_score(user, pu, profile, owner_projects)
 
         if vector:
             profile_vec = _get_or_compute_embedding("user", str(profile.user_id), _build_user_text(profile))
