@@ -10,7 +10,7 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+MISTRAL_URL = "https://mistral.24102006.xyz/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are a skill gap analyzer. Given anonymous peer feedback about a team member, identify the specific technical or soft skills the person is weak at and should improve.
 
@@ -20,8 +20,8 @@ Rules:
 - Max 5 skills. If none, return [].
 
 Example: "A code React component hay re-render, state chua tot" → ["React", "State Management", "Performance Optimization"]
-Example: "B giao tiep kem, khong bao gio bao cao tien do" → ["Communication", "Time Management"]"""
-
+Example: "B giao tiep kem, khong bao gio bao cao tien do" → ["Communication", "Time Management"]
+Example: "Ban la nguoi giao tiep tot, nhanh nhay, luon lam tot trong moi cong viec" → []"""
 MODERATION_SYSTEM_PROMPT = """You are a content moderation assistant. Given a project posting (title, description, goals, requirements), determine if the content violates community standards.
 
 Violation categories:

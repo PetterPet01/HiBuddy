@@ -12,7 +12,8 @@ async def main():
             .options(
                 selectinload(User.profile),
                 selectinload(User.roles),
-                selectinload(User.skills)
+                selectinload(User.skills),
+                selectinload(User.interests)
             )
             .limit(1)
         )

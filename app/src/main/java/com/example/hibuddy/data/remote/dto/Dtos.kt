@@ -185,6 +185,7 @@ data class ProjectResponse(
     @SerializedName("end_date") val endDate: String,
     @SerializedName("max_members") val maxMembers: Int,
     val status: String,
+    @SerializedName("review_status") val reviewStatus: String = "APPROVED",
     @SerializedName("additional_requirements") val additionalRequirements: String?,
     @SerializedName("member_benefits") val memberBenefits: String?,
     @SerializedName("role_slots") val roleSlots: List<RoleSlotResponse>,

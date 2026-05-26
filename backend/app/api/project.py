@@ -111,6 +111,33 @@ async def create_project(
             "Project %s flagged by moderation: %s",
             project.id, moderation["reasons"],
         )
+        try:
+            # Query all admins
+            admins_result = await db.execute(
+                select(User).where(User.role == "ADMIN")
+            )
+            admins = admins_result.scalars().all()
+
+            from app.models.chat import Notification
+            from app.services.fcm_service import notify_user
+            import asyncio
+
+            for admin in admins:
+                notif = Notification(
+                    user_id=admin.id,
+                    type="PROJECT_FLAGGED_ADMIN",
+                    title="Dự án cần phê duyệt",
+                    body=f"Dự án '{project.title}' chứa nội dung không an toàn cần được kiểm duyệt.",
+                    related_id=str(project.id),
+                )
+                db.add(notif)
+                asyncio.create_task(notify_user(
+                    db, admin.id,
+                    "Dự án cần phê duyệt",
+                    f"Dự án '{project.title}' chứa nội dung không an toàn cần được kiểm duyệt.",
+                ))
+        except Exception as e:
+            logger.error(f"Failed to notify admins for flagged project: {e}")
     else:
         project.review_status = "APPROVED"
         project_for_embedding = await _get_project_for_embedding(db, project.id)

@@ -36,7 +36,8 @@ async def get_current_user(
         .options(
             selectinload(User.profile),
             selectinload(User.roles),
-            selectinload(User.skills)
+            selectinload(User.skills),
+            selectinload(User.interests),
         )
         .where(User.id == UUID(user_id))
     )

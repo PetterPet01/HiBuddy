@@ -281,7 +281,11 @@ async def _discover_projects(
 
     cards = []
     for project in projects:
-        owner = await db.get(User, project.owner_id)
+        owner = await db.get(
+            User,
+            project.owner_id,
+            options=[selectinload(User.profile)]
+        )
 
         total_filled = sum(s.filled for s in project.role_slots)
         total_slots = sum(s.count for s in project.role_slots)
@@ -360,7 +364,16 @@ async def _discover_users(
 
     cards = []
     for profile in profiles:
-        pu = await db.get(User, profile.user_id)
+        pu = await db.get(
+            User,
+            profile.user_id,
+            options=[
+                selectinload(User.roles),
+                selectinload(User.skills),
+                selectinload(User.interests),
+                selectinload(User.profile),
+            ]
+        )
         roles = await db.execute(
             select(UserRole).where(UserRole.user_id == profile.user_id).order_by(UserRole.ordering).limit(3)
         )

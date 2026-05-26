@@ -148,8 +148,18 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(project.field, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colorScheme.primary)
-                        Surface(shape = RoundedCornerShape(8.dp), color = statusColor.copy(alpha = 0.2f)) {
-                            Text(project.status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                        if (project.reviewStatus == "FLAGGED" || project.reviewStatus == "PENDING") {
+                            Surface(shape = RoundedCornerShape(8.dp), color = HiBuddyColors.warning.copy(alpha = 0.2f)) {
+                                Text("CHỜ DUYỆT", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HiBuddyColors.warning)
+                            }
+                        } else if (project.reviewStatus == "REJECTED") {
+                            Surface(shape = RoundedCornerShape(8.dp), color = colorScheme.error.copy(alpha = 0.2f)) {
+                                Text("BỊ TỪ CHỐI", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorScheme.error)
+                            }
+                        } else {
+                            Surface(shape = RoundedCornerShape(8.dp), color = statusColor.copy(alpha = 0.2f)) {
+                                Text(project.status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -178,8 +188,60 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                         Text("Benefits: ${project.memberBenefits}", fontSize = 13.sp, color = colorScheme.onSurfaceVariant)
                     }
                     if (isOwner) {
-                        Spacer(Modifier.height(12.dp))
-                        Text("Owner tools are available in Members and Tasks.", fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
+                        if (project.reviewStatus == "FLAGGED" || project.reviewStatus == "PENDING") {
+                            Spacer(Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = HiBuddyColors.warningContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Info,
+                                        contentDescription = "Pending Review",
+                                        tint = HiBuddyColors.onWarningContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Nội dung có thể vi phạm nên đang được xem xét...",
+                                        fontSize = 12.sp,
+                                        color = HiBuddyColors.onWarningContainer
+                                    )
+                                }
+                            }
+                        } else if (project.reviewStatus == "REJECTED") {
+                            Spacer(Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Warning,
+                                        contentDescription = "Rejected",
+                                        tint = colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Dự án này đã bị từ chối phê duyệt do vi phạm tiêu chuẩn cộng đồng.",
+                                        fontSize = 12.sp,
+                                        color = colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Owner tools are available in Members and Tasks.", fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
