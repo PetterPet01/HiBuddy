@@ -15,7 +15,7 @@ from app.schemas.profile import (
     SkillCreate, RoleCreate, InterestCreate, SkillResponse, RoleResponse,
     InterestResponse, CompletedCourseCreate, CompletedCourseResponse,
 )
-from app.services.embedding_service import upsert_user_vector
+#from app.services.embedding_service import upsert_user_vector
 
 router = APIRouter(prefix="/api/v1/profiles", tags=["profiles"])
 
@@ -100,8 +100,8 @@ async def update_my_profile(
         setattr(profile, field, value)
 
     await db.flush()
-
-    embedding_id = upsert_user_vector(profile)
+    embedding_id = None
+    #embedding_id = upsert_user_vector(profile)
     if embedding_id:
         profile.embedding_id = embedding_id
 
@@ -116,7 +116,8 @@ async def hide_profile(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = True
-        upsert_user_vector(profile)
+        #upsert_user_vector(profile)
+        pass
     return {"message": "Profile hidden from swipe pool"}
 
 
@@ -128,7 +129,8 @@ async def unhide_profile(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = False
-        upsert_user_vector(profile)
+        #upsert_user_vector(profile)
+        pass
     return {"message": "Profile visible in swipe pool"}
 
 
@@ -138,13 +140,29 @@ async def add_skill(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    skill = UserSkill(user_id=current_user.id, skill_name=data.skill_name, level=data.level, needs_improvement=data.needs_improvement)
+    existing_result = await db.execute(
+        select(UserSkill).where(
+            UserSkill.user_id == current_user.id,
+            func.lower(UserSkill.skill_name) == data.skill_name.strip().lower(),
+        )
+    )
+    existing_skill = existing_result.scalar_one_or_none()
+    if existing_skill:
+        return SkillResponse.model_validate(existing_skill)
+
+    skill = UserSkill(
+        user_id=current_user.id,
+        skill_name=data.skill_name.strip(),
+        level=data.level,
+        needs_improvement=data.needs_improvement
+    )
     db.add(skill)
     await db.flush()
 
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
-        upsert_user_vector(profile)
+        pass
+        #upsert_user_vector(profile)
 
     return SkillResponse.model_validate(skill)
 
@@ -161,10 +179,10 @@ async def remove_skill(
 
         profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
-            upsert_user_vector(profile)
+            pass
+            #upsert_user_vector(profile)
 
     return {"message": "Skill removed"}
-
 
 @router.post("/me/roles", response_model=RoleResponse, status_code=201)
 async def add_role(
@@ -172,21 +190,37 @@ async def add_role(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    existing_result = await db.execute(
+        select(UserRole).where(
+            UserRole.user_id == current_user.id,
+            func.lower(UserRole.role_name) == data.role_name.strip().lower(),
+        )
+    )
+    existing_role = existing_result.scalar_one_or_none()
+    if existing_role:
+        return RoleResponse.model_validate(existing_role)
+
     count_result = await db.execute(
         select(func.count()).select_from(UserRole).where(UserRole.user_id == current_user.id)
     )
     if count_result.scalar() >= 3:
         raise HTTPException(status_code=400, detail="Maximum 3 roles allowed")
 
-    role = UserRole(user_id=current_user.id, role_name=data.role_name, ordering=data.ordering)
+    role = UserRole(
+        user_id=current_user.id,
+        role_name=data.role_name.strip(),
+        ordering=data.ordering
+    )
     db.add(role)
     await db.flush()
 
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
-        upsert_user_vector(profile)
+        pass
+        #upsert_user_vector(profile)
 
     return RoleResponse.model_validate(role)
+
 
 
 @router.delete("/me/roles/{role_id}")
@@ -201,10 +235,13 @@ async def remove_role(
 
         profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
-            upsert_user_vector(profile)
+            pass
+            #upsert_user_vector(profile)
 
     return {"message": "Role removed"}
 
+
+# ... existing code ...
 
 @router.post("/me/interests", response_model=InterestResponse, status_code=201)
 async def add_interest(
@@ -212,15 +249,31 @@ async def add_interest(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    interest = UserInterest(user_id=current_user.id, interest_name=data.interest_name)
+    existing_result = await db.execute(
+        select(UserInterest).where(
+            UserInterest.user_id == current_user.id,
+            func.lower(UserInterest.interest_name) == data.interest_name.strip().lower(),
+        )
+    )
+    existing_interest = existing_result.scalar_one_or_none()
+    if existing_interest:
+        return InterestResponse.model_validate(existing_interest)
+
+    interest = UserInterest(
+        user_id=current_user.id,
+        interest_name=data.interest_name.strip()
+    )
     db.add(interest)
     await db.flush()
 
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
-        upsert_user_vector(profile)
+        pass
+        #upsert_user_vector(profile)
 
     return InterestResponse.model_validate(interest)
+
+# ... existing code ...
 
 
 @router.delete("/me/interests/{interest_id}")

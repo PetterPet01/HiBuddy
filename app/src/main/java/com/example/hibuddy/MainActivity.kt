@@ -33,6 +33,8 @@ import com.example.hibuddy.ui.screens.projects.CreateProjectScreen
 import com.example.hibuddy.ui.screens.projects.ProjectDetailScreen
 import com.example.hibuddy.ui.screens.SimpleCreateTaskScreen
 import kotlinx.coroutines.launch
+import com.example.hibuddy.ui.screens.profile.CompleteProfileScreen
+import androidx.compose.runtime.saveable.rememberSaveable
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +71,8 @@ object Routes {
     const val TASKS = "main/tasks"
     const val PROFILE = "main/profile"
     const val CHAT = "main/chat/{matchId}/{userName}/{targetUserId}"
+    const val COMPLETE_PROFILE = "auth/complete-profile/{from}"
+    fun completeProfile(from: String) = "auth/complete-profile/$from"
     fun chat(matchId: String, userName: String, targetUserId: String) =
         "main/chat/$matchId/${Uri.encode(userName)}/${Uri.encode(targetUserId)}"
     const val PROJECT_DETAIL = "main/project/{projectId}"
@@ -82,6 +86,9 @@ object Routes {
 fun HiBuddyApp() {
     val navController = rememberNavController()
     val isLoggedIn by ServiceLocator.authRepository.authState.collectAsState()
+    var dismissProfileCompletionHint by rememberSaveable {
+        mutableStateOf(false)
+    }
     val startDestination = remember {
         if (ServiceLocator.authRepository.isLoggedIn()) Routes.DISCOVER else Routes.LOGIN
     }
@@ -104,6 +111,43 @@ fun HiBuddyApp() {
         navController = navController,
         startDestination = startDestination
     ) {
+        composable(
+            Routes.COMPLETE_PROFILE,
+            arguments = listOf(
+                navArgument("from") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+
+            val from = backStackEntry.arguments?.getString("from") ?: "signup"
+
+            CompleteProfileScreen(
+                onSkip = {
+                    if (from == "signup") {
+                        navController.navigate(Routes.DISCOVER) {
+                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.popBackStack()
+                    }
+                },
+
+                onComplete = {
+                    if (from == "signup") {
+                        navController.navigate(Routes.DISCOVER) {
+                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.popBackStack(
+                            Routes.PROFILE,
+                            false
+                        )
+                    }
+                }
+            )
+        }
+
         composable(Routes.LOGIN) {
             LoginScreen(
                 onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
@@ -121,7 +165,7 @@ fun HiBuddyApp() {
                 onNavigateBack = { navController.popBackStack() },
                 onRegisterSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
-                    navController.navigate(Routes.DISCOVER) {
+                    navController.navigate(Routes.completeProfile("signup")) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 }
@@ -210,6 +254,13 @@ fun HiBuddyApp() {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                    },
+                    onCompleteProfile = {
+                        navController.navigate(Routes.completeProfile("profile"))
+                    },
+                    dismissCompletionHint = dismissProfileCompletionHint,
+                    onDismissCompletionHint = {
+                        dismissProfileCompletionHint = true
                     }
                 )
             }
