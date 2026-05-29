@@ -35,6 +35,10 @@ import com.example.hibuddy.ui.screens.SimpleCreateTaskScreen
 import kotlinx.coroutines.launch
 import com.example.hibuddy.ui.screens.profile.CompleteProfileScreen
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.hibuddy.ui.screens.admin.AdminScreen
+import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
+import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
+import com.example.hibuddy.ui.screens.admin.UserManagementScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,6 +84,10 @@ object Routes {
     const val CREATE_PROJECT = "main/create-project"
     const val CREATE_TASK = "main/create-task/{projectId}"
     fun createTask(projectId: String) = "main/create-task/$projectId"
+    const val ADMIN = "main/admin"
+    const val ADMIN_STUDENT_VERIFICATIONS = "main/admin/student-verifications"
+    const val STUDENT_VERIFICATION = "main/profile/student-verification"
+    const val ADMIN_USER_MANAGEMENT = "main/admin/users"
 }
 
 @Composable
@@ -258,6 +266,12 @@ fun HiBuddyApp() {
                     onCompleteProfile = {
                         navController.navigate(Routes.completeProfile("profile"))
                     },
+                    onOpenAdmin = {
+                        navController.navigate(Routes.ADMIN)
+                    },
+                    onOpenStudentVerification = {
+                        navController.navigate(Routes.STUDENT_VERIFICATION)
+                    },
                     dismissCompletionHint = dismissProfileCompletionHint,
                     onDismissCompletionHint = {
                         dismissProfileCompletionHint = true
@@ -315,6 +329,40 @@ fun HiBuddyApp() {
             SimpleCreateTaskScreen(
                 projectId = projectId,
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ADMIN) {
+            AdminScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onOpenStudentVerifications = {
+                    navController.navigate(Routes.ADMIN_STUDENT_VERIFICATIONS)
+                },
+                onOpenUserManagement = {
+                    navController.navigate(Routes.ADMIN_USER_MANAGEMENT)
+                }
+            )
+        }
+        composable(Routes.ADMIN_STUDENT_VERIFICATIONS) {
+            StudentVerificationScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.STUDENT_VERIFICATION) {
+            SubmitStudentVerificationScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.ADMIN_USER_MANAGEMENT) {
+            UserManagementScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
             )
         }
     }

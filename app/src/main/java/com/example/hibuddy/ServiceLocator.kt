@@ -14,6 +14,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import com.example.hibuddy.data.repository.AdminRepository
 
 object ServiceLocator {
     private lateinit var appContext: Context
@@ -59,6 +60,9 @@ object ServiceLocator {
     val taskRepository: TaskRepository by lazy { TaskRepository(apiService) }
     val suggestionRepository: SuggestionRepository by lazy { SuggestionRepository(apiService) }
     val chatRepository: ChatRepository by lazy { ChatRepository(apiService, chatLocalDataSource) }
+    val adminRepository by lazy {
+        AdminRepository(apiService)
+    }
 
     fun init(context: Context) {
         appContext = context.applicationContext

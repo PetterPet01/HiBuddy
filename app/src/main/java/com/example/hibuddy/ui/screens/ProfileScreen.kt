@@ -69,6 +69,8 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 fun ProfileScreen(
     onLogout: () -> Unit = {},
     onCompleteProfile: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
+    onOpenStudentVerification: () -> Unit = {},
     dismissCompletionHint: Boolean,
     onDismissCompletionHint: () -> Unit,
     profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory),
@@ -311,6 +313,31 @@ fun ProfileScreen(
                     isDarkMode = isDarkMode,
                     onToggle = { ServiceLocator.themeManager.setDarkMode(it) }
                 )
+            }
+
+            if (!currentProfile.verifiedStudent) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onOpenStudentVerification,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text("Xác thực sinh viên")
+                }
+            }
+            if (ServiceLocator.authRepository.isAdmin()) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onOpenAdmin,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text("Admin Dashboard")
+                }
             }
             if (isProfileIncomplete) {
                 Spacer(modifier = Modifier.height(20.dp))

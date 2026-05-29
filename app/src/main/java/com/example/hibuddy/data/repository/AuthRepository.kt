@@ -16,6 +16,7 @@ class AuthRepository(
         val response = api.register(request)
         tokenManager.saveTokens(response.accessToken, response.refreshToken)
         tokenManager.saveUserId(response.user.id)
+        tokenManager.saveUserRole(response.user.role)
         response
     }
 
@@ -23,6 +24,7 @@ class AuthRepository(
         val response = api.login(request)
         tokenManager.saveTokens(response.accessToken, response.refreshToken)
         tokenManager.saveUserId(response.user.id)
+        tokenManager.saveUserRole(response.user.role)
         response
     }
 
@@ -68,4 +70,6 @@ class AuthRepository(
     suspend fun submitStudentVerification(request: StudentVerificationRequest): Result<GenericResponse> = runCatching {
         api.submitStudentVerification(request)
     }
+    fun getUserRole(): String? = tokenManager.getUserRole()
+    fun isAdmin(): Boolean = tokenManager.isAdmin()
 }

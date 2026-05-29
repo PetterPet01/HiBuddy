@@ -305,4 +305,37 @@ class ProfileViewModel : ViewModel() {
             )
         }
     }
+    fun submitStudentVerification(
+        fullName: String,
+        studentEmail: String,
+        university: String,
+        studentId: String,
+        academicYear: String
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
+
+            try {
+                apiService.submitStudentVerification(
+                    StudentVerificationRequest(
+                        fullName = fullName,
+                        studentEmail = studentEmail,
+                        university = university,
+                        studentId = studentId,
+                        academicYear = academicYear
+                    )
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    message = "Đã gửi yêu cầu xác thực sinh viên"
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Gửi xác thực thất bại"
+                )
+            }
+        }
+    }
 }

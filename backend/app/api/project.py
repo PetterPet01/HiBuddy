@@ -15,7 +15,7 @@ from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectCardResponse,
     RoleSlotCreate, RoleSlotResponse, ProjectMemberResponse,
 )
-from app.services.embedding_service import upsert_project_vector, delete_project_vector
+#from app.services.embedding_service import upsert_project_vector, delete_project_vector
 from app.services.notification_service import notify_member_added
 from app.config import get_settings
 
@@ -94,7 +94,8 @@ async def create_project(
     await db.flush()
 
     project_for_embedding = await _get_project_for_embedding(db, project.id)
-    embedding_id = upsert_project_vector(project_for_embedding or project)
+    embedding_id = None
+    #embedding_id = upsert_project_vector(project_for_embedding or project)
     if embedding_id:
         project.embedding_id = embedding_id
 
@@ -155,7 +156,8 @@ async def update_project(
         setattr(project, field_name, value)
 
     project_for_embedding = await _get_project_for_embedding(db, project.id)
-    upsert_project_vector(project_for_embedding or project)
+    #upsert_project_vector(project_for_embedding or project)
+    pass
 
     return await _build_project_response(db, project)
 
@@ -171,7 +173,7 @@ async def close_project(
         raise HTTPException(status_code=404, detail="Project not found or not authorized")
 
     project.status = "CLOSED"
-    delete_project_vector(project)
+    #delete_project_vector(project)
     return {"message": "Project closed"}
 
 
@@ -258,7 +260,7 @@ async def add_member(
     all_slots_filled = bool(slots) and all(s.filled >= s.count for s in slots)
     if member_count + 1 >= project.max_members or all_slots_filled:
         project.status = "ACTIVE"
-        delete_project_vector(project)
+        #delete_project_vector(project)
 
     return {"message": "Member added successfully"}
 
