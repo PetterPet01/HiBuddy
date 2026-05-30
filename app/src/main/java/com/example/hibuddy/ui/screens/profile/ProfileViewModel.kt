@@ -166,7 +166,7 @@ class ProfileViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 apiService.reportUser(ReportRequest(userId, reason, description))
-                _uiState.value = _uiState.value.copy(error = "User reported successfully")
+                _uiState.value = _uiState.value.copy(message = "Report submitted successfully")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to report user")
             }

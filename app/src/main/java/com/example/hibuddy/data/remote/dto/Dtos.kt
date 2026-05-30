@@ -464,3 +464,23 @@ data class AdminUserResponse(
 data class RejectStudentRequest(
     val reason: String
 )
+
+data class AdminReportResponse(
+    val id: String,
+
+    val reporter_id: String,
+    val reported_id: String,
+
+    val reason: String,
+    val description: String?,
+
+    val status: String,
+    val created_at: String,
+
+    val reporter_name: String?,
+    val reported_name: String?
+)
+
+data class ResolveReportRequest(
+    val action: String
+)

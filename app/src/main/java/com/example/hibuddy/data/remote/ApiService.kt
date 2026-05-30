@@ -202,4 +202,12 @@ interface ApiService {
     suspend fun unbanUserByAdmin(
         @Path("userId") userId: String
     ): AdminUserResponse
+    @GET("api/v1/admin/reports")
+    suspend fun getAdminReports(): List<AdminReportResponse>
+
+    @POST("api/v1/admin/reports/{reportId}/resolve")
+    suspend fun resolveReport(
+        @Path("reportId") reportId: String,
+        @Body request: ResolveReportRequest
+    ): AdminReportResponse
 }

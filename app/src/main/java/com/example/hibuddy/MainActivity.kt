@@ -39,6 +39,7 @@ import com.example.hibuddy.ui.screens.admin.AdminScreen
 import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
 import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
 import com.example.hibuddy.ui.screens.admin.UserManagementScreen
+import com.example.hibuddy.ui.screens.admin.ReportManagementScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,6 +89,7 @@ object Routes {
     const val ADMIN_STUDENT_VERIFICATIONS = "main/admin/student-verifications"
     const val STUDENT_VERIFICATION = "main/profile/student-verification"
     const val ADMIN_USER_MANAGEMENT = "main/admin/users"
+    const val ADMIN_REPORT_MANAGEMENT = "main/admin/reports"
 }
 
 @Composable
@@ -339,6 +341,9 @@ fun HiBuddyApp() {
                 onOpenStudentVerifications = {
                     navController.navigate(Routes.ADMIN_STUDENT_VERIFICATIONS)
                 },
+                onOpenReportManagement = {
+                    navController.navigate(Routes.ADMIN_REPORT_MANAGEMENT)
+                },
                 onOpenUserManagement = {
                     navController.navigate(Routes.ADMIN_USER_MANAGEMENT)
                 }
@@ -360,6 +365,13 @@ fun HiBuddyApp() {
         }
         composable(Routes.ADMIN_USER_MANAGEMENT) {
             UserManagementScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.ADMIN_REPORT_MANAGEMENT) {
+            ReportManagementScreen(
                 onBack = {
                     navController.popBackStack()
                 }

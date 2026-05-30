@@ -1,8 +1,10 @@
 package com.example.hibuddy.data.repository
 
 import com.example.hibuddy.data.remote.ApiService
+import com.example.hibuddy.data.remote.dto.AdminReportResponse
 import com.example.hibuddy.data.remote.dto.AdminUserResponse
 import com.example.hibuddy.data.remote.dto.RejectStudentRequest
+import com.example.hibuddy.data.remote.dto.ResolveReportRequest
 
 class AdminRepository(private val api: ApiService) {
 
@@ -14,6 +16,7 @@ class AdminRepository(private val api: ApiService) {
 
     suspend fun rejectStudentVerification(userId: String, reason: String): Result<AdminUserResponse> =
         runCatching { api.rejectStudentVerification(userId, RejectStudentRequest(reason)) }
+
     suspend fun getUsers(): Result<List<AdminUserResponse>> =
         runCatching { api.getAdminUsers() }
 
@@ -22,4 +25,10 @@ class AdminRepository(private val api: ApiService) {
 
     suspend fun unbanUser(userId: String): Result<AdminUserResponse> =
         runCatching { api.unbanUserByAdmin(userId) }
+
+    suspend fun getReports(): Result<List<AdminReportResponse>> =
+        runCatching { api.getAdminReports() }
+
+    suspend fun resolveReport(reportId: String, action: String): Result<AdminReportResponse> =
+        runCatching { api.resolveReport(reportId, ResolveReportRequest(action)) }
 }

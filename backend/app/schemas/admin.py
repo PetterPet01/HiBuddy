@@ -1,6 +1,6 @@
 from uuid import UUID
 from pydantic import BaseModel
-
+from datetime import datetime
 
 class AdminUserResponse(BaseModel):
     id: UUID
@@ -22,3 +22,22 @@ class AdminUserResponse(BaseModel):
 
 class RejectStudentRequest(BaseModel):
     reason: str
+
+class AdminReportResponse(BaseModel):
+    id: UUID
+    reporter_id: UUID
+    reported_id: UUID
+    reason: str
+    description: str | None = None
+    status: str
+    created_at: datetime
+
+    reporter_name: str | None = None
+    reported_name: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ResolveReportRequest(BaseModel):
+    action: str  # "DISMISS" hoặc "BAN"

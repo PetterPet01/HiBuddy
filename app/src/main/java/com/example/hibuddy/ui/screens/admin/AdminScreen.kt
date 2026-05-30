@@ -11,7 +11,8 @@ import androidx.compose.ui.unit.dp
 fun AdminScreen(
     onBack: () -> Unit = {},
     onOpenStudentVerifications: () -> Unit = {},
-    onOpenUserManagement: () -> Unit = {}
+    onOpenUserManagement: () -> Unit = {},
+    onOpenReportManagement: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -36,19 +37,19 @@ fun AdminScreen(
         Spacer(Modifier.height(12.dp))
 
         Button(
-            onClick = { },
+            onClick = onOpenUserManagement,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Xử lý report")
+            Text("Khóa tài khoản")
         }
 
         Spacer(Modifier.height(12.dp))
 
         Button(
-            onClick = onOpenUserManagement,
+            onClick = onOpenReportManagement,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Khóa tài khoản")
+            Text("Xử lý report")
         }
 
         Spacer(Modifier.height(24.dp))
