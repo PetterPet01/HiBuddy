@@ -40,6 +40,7 @@ import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
 import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
 import com.example.hibuddy.ui.screens.admin.UserManagementScreen
 import com.example.hibuddy.ui.screens.admin.ReportManagementScreen
+import androidx.compose.runtime.rememberCoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,12 +96,17 @@ object Routes {
 @Composable
 fun HiBuddyApp() {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
     val isLoggedIn by ServiceLocator.authRepository.authState.collectAsState()
     var dismissProfileCompletionHint by rememberSaveable {
         mutableStateOf(false)
     }
     val startDestination = remember {
-        if (ServiceLocator.authRepository.isLoggedIn()) Routes.DISCOVER else Routes.LOGIN
+        if (ServiceLocator.authRepository.isLoggedIn()) {
+            if (ServiceLocator.authRepository.isAdmin()) Routes.ADMIN else Routes.DISCOVER
+        } else {
+            Routes.LOGIN
+        }
     }
 
     LaunchedEffect(isLoggedIn) {
@@ -164,8 +170,16 @@ fun HiBuddyApp() {
                 onNavigateToForgotPassword = { navController.navigate(Routes.FORGOT) },
                 onLoginSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
-                    navController.navigate(Routes.DISCOVER) {
+
+                    val destination = if (ServiceLocator.authRepository.isAdmin()) {
+                        Routes.ADMIN
+                    } else {
+                        Routes.DISCOVER
+                    }
+
+                    navController.navigate(destination) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             )
@@ -335,8 +349,15 @@ fun HiBuddyApp() {
         }
         composable(Routes.ADMIN) {
             AdminScreen(
-                onBack = {
-                    navController.popBackStack()
+                onLogout = {
+                    scope.launch {
+                        ServiceLocator.presenceWebSocketManager.disconnect()
+                        ServiceLocator.authRepository.logout()
+
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 },
                 onOpenStudentVerifications = {
                     navController.navigate(Routes.ADMIN_STUDENT_VERIFICATIONS)

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 data class AuthUiState(
     val isLoading: Boolean = false,
@@ -50,14 +51,33 @@ class AuthViewModel : ViewModel() {
     fun login(username: String, password: String, rememberMe: Boolean = false) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
             authRepository.login(LoginRequest(username, password, rememberMe)).fold(
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
-                        isLoading = false, isLoggedIn = true, currentUser = response.user
+                        isLoading = false,
+                        isLoggedIn = true,
+                        currentUser = response.user
                     )
                 },
                 onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                    val errorMessage = when (e) {
+                        is HttpException -> {
+                            when (e.code()) {
+                                403 -> "Tài khoản đã bị khóa"
+                                423 -> "Tài khoản bị khóa tạm thời do đăng nhập sai quá nhiều lần"
+                                401 -> "Sai tài khoản hoặc mật khẩu"
+                                else -> "Đăng nhập thất bại (${e.code()})"
+                            }
+                        }
+
+                        else -> e.message ?: "Đăng nhập thất bại"
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = errorMessage
+                    )
                 }
             )
         }

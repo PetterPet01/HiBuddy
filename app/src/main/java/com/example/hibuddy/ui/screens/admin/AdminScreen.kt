@@ -9,10 +9,10 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun AdminScreen(
-    onBack: () -> Unit = {},
+    onLogout: () -> Unit = {},
     onOpenStudentVerifications: () -> Unit = {},
-    onOpenUserManagement: () -> Unit = {},
-    onOpenReportManagement: () -> Unit = {}
+    onOpenReportManagement: () -> Unit = {},
+    onOpenUserManagement: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -55,10 +55,10 @@ fun AdminScreen(
         Spacer(Modifier.height(24.dp))
 
         OutlinedButton(
-            onClick = onBack,
+            onClick = onLogout,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text("Logout")
         }
     }
 }

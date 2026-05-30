@@ -106,7 +106,7 @@ fun LoginScreen(
             supportingText = if (loginError) {
                 {
                     Text(
-                        text = "Incorrect username or password.",
+                        text = uiState.error ?: "Đăng nhập thất bại",
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -142,10 +142,6 @@ fun LoginScreen(
             enabled = canSubmit,
             onClick = { viewModel.login(username.trim(), password, rememberMe) }
         )
-
-        uiState.error?.let { error ->
-            AuthMessage(text = error, isError = true)
-        }
 
         AuthFooterAction(
             prompt = "New to HiBuddy?",
