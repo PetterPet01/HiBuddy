@@ -47,6 +47,8 @@ fun LoginScreen(
 
     val canSubmit = username.isNotBlank() && password.isNotBlank()
 
+    val loginError = uiState.error != null
+
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) onLoginSuccess()
     }
@@ -71,6 +73,7 @@ fun LoginScreen(
 
         AuthTextField(
             value = password,
+            isError = loginError,
             onValueChange = {
                 password = it
                 if (uiState.error != null) viewModel.clearError()
@@ -98,6 +101,17 @@ fun LoginScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            },
+
+            supportingText = if (loginError) {
+                {
+                    Text(
+                        text = uiState.error ?: "Đăng nhập thất bại",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            } else {
+                null
             }
         )
 
@@ -128,10 +142,6 @@ fun LoginScreen(
             enabled = canSubmit,
             onClick = { viewModel.login(username.trim(), password, rememberMe) }
         )
-
-        uiState.error?.let { error ->
-            AuthMessage(text = error, isError = true)
-        }
 
         AuthFooterAction(
             prompt = "New to HiBuddy?",

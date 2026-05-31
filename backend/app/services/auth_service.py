@@ -100,6 +100,12 @@ async def login_user(db: AsyncSession, data: UserLogin) -> TokenResponse:
         await db.flush()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been banned"
+        )
+
     user.login_attempts = 0
     user.locked_until = None
     user.last_login = datetime.now(timezone.utc)

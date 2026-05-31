@@ -443,7 +443,44 @@ data class NotificationResponse(
     @SerializedName("related_id") val relatedId: String?,
     @SerializedName("created_at") val createdAt: String
 )
-
 data class UnreadCountResponse(
     val count: Int
+)
+data class AdminUserResponse(
+    val id: String,
+    val username: String,
+    val email: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("verified_student") val verifiedStudent: Boolean,
+    @SerializedName("student_email") val studentEmail: String?,
+    val university: String?,
+    @SerializedName("student_id") val studentId: String?,
+    @SerializedName("verification_status") val verificationStatus: String,
+    @SerializedName("verification_rejection_reason") val verificationRejectionReason: String?,
+    val role: String,
+    @SerializedName("is_active") val isActive: Boolean
+)
+
+data class RejectStudentRequest(
+    val reason: String
+)
+
+data class AdminReportResponse(
+    val id: String,
+
+    val reporter_id: String,
+    val reported_id: String,
+
+    val reason: String,
+    val description: String?,
+
+    val status: String,
+    val created_at: String,
+
+    val reporter_name: String?,
+    val reported_name: String?
+)
+
+data class ResolveReportRequest(
+    val action: String
 )

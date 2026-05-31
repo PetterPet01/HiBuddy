@@ -33,6 +33,14 @@ import com.example.hibuddy.ui.screens.projects.CreateProjectScreen
 import com.example.hibuddy.ui.screens.projects.ProjectDetailScreen
 import com.example.hibuddy.ui.screens.SimpleCreateTaskScreen
 import kotlinx.coroutines.launch
+import com.example.hibuddy.ui.screens.profile.CompleteProfileScreen
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.hibuddy.ui.screens.admin.AdminScreen
+import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
+import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
+import com.example.hibuddy.ui.screens.admin.UserManagementScreen
+import com.example.hibuddy.ui.screens.admin.ReportManagementScreen
+import androidx.compose.runtime.rememberCoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +77,8 @@ object Routes {
     const val TASKS = "main/tasks"
     const val PROFILE = "main/profile"
     const val CHAT = "main/chat/{matchId}/{userName}/{targetUserId}"
+    const val COMPLETE_PROFILE = "auth/complete-profile/{from}"
+    fun completeProfile(from: String) = "auth/complete-profile/$from"
     fun chat(matchId: String, userName: String, targetUserId: String) =
         "main/chat/$matchId/${Uri.encode(userName)}/${Uri.encode(targetUserId)}"
     const val PROJECT_DETAIL = "main/project/{projectId}"
@@ -76,14 +86,27 @@ object Routes {
     const val CREATE_PROJECT = "main/create-project"
     const val CREATE_TASK = "main/create-task/{projectId}"
     fun createTask(projectId: String) = "main/create-task/$projectId"
+    const val ADMIN = "main/admin"
+    const val ADMIN_STUDENT_VERIFICATIONS = "main/admin/student-verifications"
+    const val STUDENT_VERIFICATION = "main/profile/student-verification"
+    const val ADMIN_USER_MANAGEMENT = "main/admin/users"
+    const val ADMIN_REPORT_MANAGEMENT = "main/admin/reports"
 }
 
 @Composable
 fun HiBuddyApp() {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
     val isLoggedIn by ServiceLocator.authRepository.authState.collectAsState()
+    var dismissProfileCompletionHint by rememberSaveable {
+        mutableStateOf(false)
+    }
     val startDestination = remember {
-        if (ServiceLocator.authRepository.isLoggedIn()) Routes.DISCOVER else Routes.LOGIN
+        if (ServiceLocator.authRepository.isLoggedIn()) {
+            if (ServiceLocator.authRepository.isAdmin()) Routes.ADMIN else Routes.DISCOVER
+        } else {
+            Routes.LOGIN
+        }
     }
 
     LaunchedEffect(isLoggedIn) {
@@ -104,14 +127,59 @@ fun HiBuddyApp() {
         navController = navController,
         startDestination = startDestination
     ) {
+        composable(
+            Routes.COMPLETE_PROFILE,
+            arguments = listOf(
+                navArgument("from") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+
+            val from = backStackEntry.arguments?.getString("from") ?: "signup"
+
+            CompleteProfileScreen(
+                onSkip = {
+                    if (from == "signup") {
+                        navController.navigate(Routes.DISCOVER) {
+                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.popBackStack()
+                    }
+                },
+
+                onComplete = {
+                    if (from == "signup") {
+                        navController.navigate(Routes.DISCOVER) {
+                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.popBackStack(
+                            Routes.PROFILE,
+                            false
+                        )
+                    }
+                }
+            )
+        }
+
         composable(Routes.LOGIN) {
             LoginScreen(
                 onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
                 onNavigateToForgotPassword = { navController.navigate(Routes.FORGOT) },
                 onLoginSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
-                    navController.navigate(Routes.DISCOVER) {
+
+                    val destination = if (ServiceLocator.authRepository.isAdmin()) {
+                        Routes.ADMIN
+                    } else {
+                        Routes.DISCOVER
+                    }
+
+                    navController.navigate(destination) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             )
@@ -121,7 +189,7 @@ fun HiBuddyApp() {
                 onNavigateBack = { navController.popBackStack() },
                 onRegisterSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
-                    navController.navigate(Routes.DISCOVER) {
+                    navController.navigate(Routes.completeProfile("signup")) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 }
@@ -210,6 +278,19 @@ fun HiBuddyApp() {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                    },
+                    onCompleteProfile = {
+                        navController.navigate(Routes.completeProfile("profile"))
+                    },
+                    onOpenAdmin = {
+                        navController.navigate(Routes.ADMIN)
+                    },
+                    onOpenStudentVerification = {
+                        navController.navigate(Routes.STUDENT_VERIFICATION)
+                    },
+                    dismissCompletionHint = dismissProfileCompletionHint,
+                    onDismissCompletionHint = {
+                        dismissProfileCompletionHint = true
                     }
                 )
             }
@@ -264,6 +345,57 @@ fun HiBuddyApp() {
             SimpleCreateTaskScreen(
                 projectId = projectId,
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ADMIN) {
+            AdminScreen(
+                onLogout = {
+                    scope.launch {
+                        ServiceLocator.presenceWebSocketManager.disconnect()
+                        ServiceLocator.authRepository.logout()
+
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                },
+                onOpenStudentVerifications = {
+                    navController.navigate(Routes.ADMIN_STUDENT_VERIFICATIONS)
+                },
+                onOpenReportManagement = {
+                    navController.navigate(Routes.ADMIN_REPORT_MANAGEMENT)
+                },
+                onOpenUserManagement = {
+                    navController.navigate(Routes.ADMIN_USER_MANAGEMENT)
+                }
+            )
+        }
+        composable(Routes.ADMIN_STUDENT_VERIFICATIONS) {
+            StudentVerificationScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.STUDENT_VERIFICATION) {
+            SubmitStudentVerificationScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.ADMIN_USER_MANAGEMENT) {
+            UserManagementScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.ADMIN_REPORT_MANAGEMENT) {
+            ReportManagementScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
             )
         }
     }

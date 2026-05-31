@@ -176,4 +176,38 @@ interface ApiService {
 
     @POST("api/v1/trust/report")
     suspend fun reportUser(@Body request: ReportRequest): GenericResponse
+
+    @GET("api/v1/admin/student-verifications")
+    suspend fun getStudentVerifications(): List<AdminUserResponse>
+
+    @POST("api/v1/admin/student-verifications/{userId}/approve")
+    suspend fun approveStudentVerification(
+        @Path("userId") userId: String
+    ): AdminUserResponse
+
+    @POST("api/v1/admin/student-verifications/{userId}/reject")
+    suspend fun rejectStudentVerification(
+        @Path("userId") userId: String,
+        @Body request: RejectStudentRequest
+    ): AdminUserResponse
+    @GET("api/v1/admin/users")
+    suspend fun getAdminUsers(): List<AdminUserResponse>
+
+    @POST("api/v1/admin/users/{userId}/ban")
+    suspend fun banUserByAdmin(
+        @Path("userId") userId: String
+    ): AdminUserResponse
+
+    @POST("api/v1/admin/users/{userId}/unban")
+    suspend fun unbanUserByAdmin(
+        @Path("userId") userId: String
+    ): AdminUserResponse
+    @GET("api/v1/admin/reports")
+    suspend fun getAdminReports(): List<AdminReportResponse>
+
+    @POST("api/v1/admin/reports/{reportId}/resolve")
+    suspend fun resolveReport(
+        @Path("reportId") reportId: String,
+        @Body request: ResolveReportRequest
+    ): AdminReportResponse
 }

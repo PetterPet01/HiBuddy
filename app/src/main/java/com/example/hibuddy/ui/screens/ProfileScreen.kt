@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -51,7 +50,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -63,10 +61,18 @@ import com.example.hibuddy.ui.theme.HiBuddyColors
 import com.example.hibuddy.ui.screens.auth.AuthViewModel
 import com.example.hibuddy.ui.screens.profile.EditProfileDialog
 import com.example.hibuddy.ui.screens.profile.ProfileViewModel
-
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.material.icons.automirrored.filled.Logout
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit = {},
+    onCompleteProfile: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
+    onOpenStudentVerification: () -> Unit = {},
+    dismissCompletionHint: Boolean,
+    onDismissCompletionHint: () -> Unit,
     profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory),
     authViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
 ) {
@@ -74,7 +80,16 @@ fun ProfileScreen(
     val isDarkMode by ServiceLocator.themeManager.isDarkMode.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
     val profile = uiState.profile
+    val isProfileIncomplete =
+        profile != null &&
+                (
+                        profile.roles.isEmpty() ||
+                                profile.skills.isEmpty()
+                        )
     var showEditDialog by remember { mutableStateOf(false) }
+
+    val shouldShowCompletionHint =
+        isProfileIncomplete && !dismissCompletionHint
 
     LaunchedEffect(Unit) {
         profileViewModel.loadProfile()
@@ -110,20 +125,102 @@ fun ProfileScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Profile", fontSize = 26.sp, fontWeight = FontWeight.Black, color = colorScheme.onBackground)
+
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = { profileViewModel.refreshSuggestions() }) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Refresh Suggestions", tint = colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { showEditDialog = true }, enabled = profile != null) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit Profile", tint = colorScheme.onBackground)
+
+                IconButton(
+                    onClick = {
+                        onDismissCompletionHint()
+                        onCompleteProfile()
+                    }
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Edit / Complete Profile",
+                        tint = if (isProfileIncomplete) {
+                            colorScheme.primary
+                        } else {
+                            colorScheme.onBackground
+                        }
+                    )
                 }
+
                 IconButton(onClick = {
                     authViewModel.logout()
                     onLogout()
                 }) {
-                    Icon(Icons.Filled.Logout, contentDescription = "Logout", tint = colorScheme.error)
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = colorScheme.error)
                 }
             }
+        }
+        if (shouldShowCompletionHint) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 26.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = colorScheme.primaryContainer,
+                        tonalElevation = 4.dp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .width(240.dp)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Complete your profile",
+                                color = colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            IconButton(
+                                onClick = { onDismissCompletionHint() },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Canvas(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 38.dp)
+                            .size(width = 18.dp, height = 10.dp)
+                    ) {
+                        val path = Path().apply {
+                            moveTo(size.width / 2f, 0f)
+                            lineTo(0f, size.height)
+                            lineTo(size.width, size.height)
+                            close()
+                        }
+                        drawPath(
+                            path = path,
+                            color = colorScheme.primaryContainer
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         if (uiState.isLoading && profile == null) {
@@ -134,6 +231,14 @@ fun ProfileScreen(
         }
 
         profile?.let { currentProfile ->
+            val uniqueRoles = currentProfile.roles
+                .distinctBy { it.roleName.trim().lowercase() }
+
+            val uniqueSkills = currentProfile.skills
+                .distinctBy { it.skillName.trim().lowercase() }
+
+            val uniqueInterests = currentProfile.interests
+                .distinctBy { it.interestName.trim().lowercase() }
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     modifier = Modifier
@@ -178,7 +283,7 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     ProfileStatColumn("${currentProfile.projectsCompleted}", "Projects")
-                    ProfileStatColumn("${currentProfile.roles.size}", "Roles")
+                    ProfileStatColumn("${uniqueRoles.size}", "Roles")
                     ProfileStatColumn(String.format("%.1f", currentProfile.reputationScore), "Rep Score")
                 }
 
@@ -197,6 +302,7 @@ fun ProfileScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(if (currentProfile.isHidden) "Hidden from Discover" else "Visible in Discover")
+
                 }
             }
 
@@ -207,6 +313,34 @@ fun ProfileScreen(
                     isDarkMode = isDarkMode,
                     onToggle = { ServiceLocator.themeManager.setDarkMode(it) }
                 )
+            }
+
+            if (!currentProfile.verifiedStudent) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onOpenStudentVerification,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text("Xác thực sinh viên")
+                }
+            }
+            if (ServiceLocator.authRepository.isAdmin()) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onOpenAdmin,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text("Admin Dashboard")
+                }
+            }
+            if (isProfileIncomplete) {
+                Spacer(modifier = Modifier.height(20.dp))
             }
 
             uiState.message?.let { message ->
@@ -244,10 +378,62 @@ fun ProfileScreen(
                 }
             }
 
-            if (currentProfile.roles.isNotEmpty()) {
+            if (
+                !currentProfile.githubUrl.isNullOrBlank() ||
+                !currentProfile.portfolioUrl.isNullOrBlank() ||
+                !currentProfile.facebookUrl.isNullOrBlank()
+            ) {
+                Spacer(modifier = Modifier.height(20.dp))
+                ProfileSection(title = "LINKS") {
+                    currentProfile.githubUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        ProfileInfoRow(label = "GitHub", value = url)
+                    }
+
+                    currentProfile.portfolioUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ProfileInfoRow(label = "Portfolio", value = url)
+                    }
+
+                    currentProfile.facebookUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ProfileInfoRow(label = "Facebook", value = url)
+                    }
+                }
+            }
+
+            if (uniqueInterests.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+                ProfileSection(title = "INTERESTS") {
+                    uniqueInterests.chunked(2).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            rowItems.forEach { interest ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        interest.interestName,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            if (rowItems.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            if (uniqueRoles.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
                 ProfileSection(title = "ROLES") {
-                    currentProfile.roles.chunked(2).forEach { rowItems ->
+                    uniqueRoles.chunked(2).forEach { rowItems ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                             rowItems.forEach { role ->
                                 Surface(
@@ -273,10 +459,10 @@ fun ProfileScreen(
                 }
             }
 
-            if (currentProfile.skills.isNotEmpty()) {
+            if (uniqueSkills.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
                 ProfileSection(title = "SKILLS") {
-                    currentProfile.skills.chunked(2).forEach { rowItems ->
+                    uniqueSkills.chunked(2).forEach { rowItems ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                             rowItems.forEach { skill ->
                                 val chipColor = when (skill.level) {
@@ -307,6 +493,8 @@ fun ProfileScreen(
                     }
                 }
             }
+
+// ... existing code ...
 
             if (uiState.courseSuggestions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
@@ -363,6 +551,34 @@ private fun ProfileSection(
         )
         Spacer(modifier = Modifier.height(10.dp))
         content()
+    }
+}
+
+@Composable
+private fun ProfileInfoRow(
+    label: String,
+    value: String
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
     }
 }
 

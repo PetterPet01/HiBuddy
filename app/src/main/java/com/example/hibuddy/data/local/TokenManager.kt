@@ -32,4 +32,12 @@ class TokenManager(context: Context) {
     }
 
     fun getUserId(): String? = prefs.getString("user_id", null)
+
+    fun saveUserRole(role: String) {
+        prefs.edit().putString("user_role", role).apply()
+    }
+
+    fun getUserRole(): String? = prefs.getString("user_role", null)
+
+    fun isAdmin(): Boolean = getUserRole() == "ADMIN"
 }

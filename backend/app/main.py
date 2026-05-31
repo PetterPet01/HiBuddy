@@ -4,12 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.milvus_client import init_milvus_collections
+#from app.milvus_client import init_milvus_collections
 from app.redis_client import get_redis, close_redis
 from app.api.auth import router as auth_router
 from app.api.profile import router as profile_router
 from app.api.project import router as project_router
-from app.api.swipe import router as swipe_router
+#from app.api.swipe import router as swipe_router
 from app.api.task import router as task_router
 from app.api.suggestion import router as suggestion_router
 from app.api.chat import router as chat_router
@@ -19,6 +19,7 @@ from app.api.websocket import handle_presence_websocket, handle_websocket
 from app.api.upload import router as upload_router
 from app.api.search import router as search_router
 from app.services.fcm_service import init_firebase
+from app.api.endpoints import admin
 
 settings = get_settings()
 
@@ -27,7 +28,8 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     await init_db()
     try:
-        init_milvus_collections()
+        pass
+        #init_milvus_collections()
     except Exception:
         pass
     try:
@@ -56,7 +58,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(profile_router)
 app.include_router(project_router)
-app.include_router(swipe_router)
+#app.include_router(swipe_router)
 app.include_router(task_router)
 app.include_router(suggestion_router)
 app.include_router(chat_router)
@@ -64,6 +66,7 @@ app.include_router(upload_router)
 app.include_router(search_router)
 app.include_router(trust_router)
 app.include_router(fcm_router)
+app.include_router(admin.router)
 
 
 @app.websocket("/ws/chat/{match_id}")

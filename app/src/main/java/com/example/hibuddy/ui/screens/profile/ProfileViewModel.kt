@@ -166,10 +166,18 @@ class ProfileViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 apiService.reportUser(ReportRequest(userId, reason, description))
-                _uiState.value = _uiState.value.copy(error = "User reported successfully")
+                _uiState.value = _uiState.value.copy(message = "Report submitted successfully")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to report user")
             }
+        }
+    }
+    fun addInterest(interestName: String) {
+        viewModelScope.launch {
+            profileRepository.addInterest(InterestRequest(interestName)).fold(
+                onSuccess = { loadProfile() },
+                onFailure = { e -> _uiState.value = _uiState.value.copy(error = e.message) }
+            )
         }
     }
 
@@ -182,6 +190,152 @@ class ProfileViewModel : ViewModel() {
         val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = ProfileViewModel() as T
+        }
+    }
+    // ... existing code ...
+
+    fun saveCompleteProfile(
+        displayName: String?,
+        bio: String?,
+        location: String?,
+        mode: String?,
+        portfolioUrl: String?,
+        githubUrl: String?,
+        shortTermGoal: String?,
+        roles: List<String>,
+        skills: Map<String, String>,
+        interests: List<String>,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            val normalizedRoles = roles
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase() }
+
+            val normalizedSkills = skills
+                .mapKeys { it.key.trim() }
+                .filterKeys { it.isNotBlank() }
+                .entries
+                .distinctBy { it.key.lowercase() }
+                .associate { it.key to it.value }
+
+            val normalizedInterests = interests
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase() }
+
+            profileRepository.updateProfile(
+                ProfileUpdateRequest(
+                    displayName = displayName,
+                    bio = bio,
+                    location = location,
+                    portfolioUrl = portfolioUrl,
+                    githubUrl = githubUrl,
+                    shortTermGoal = shortTermGoal,
+                    mode = mode
+                )
+            ).fold(
+                onSuccess = { updatedProfile ->
+
+                    val existingRoles =
+                        updatedProfile.roles.map { it.roleName.trim().lowercase() }.toSet()
+
+                    normalizedRoles.forEach { role ->
+                        if (role.lowercase() !in existingRoles) {
+                            runCatching {
+                                profileRepository.addRole(RoleRequest(role))
+                            }
+                        }
+                    }
+
+                    val existingSkills =
+                        updatedProfile.skills.map { it.skillName.trim().lowercase() }.toSet()
+
+                    normalizedSkills.forEach { (skill, level) ->
+                        if (skill.lowercase() !in existingSkills) {
+                            runCatching {
+                                profileRepository.addSkill(
+                                    SkillRequest(skill, level, false)
+                                )
+                            }
+                        }
+                    }
+
+                    val existingInterests =
+                        updatedProfile.interests.map { it.interestName.trim().lowercase() }.toSet()
+
+                    normalizedInterests.forEach { interest ->
+                        if (interest.lowercase() !in existingInterests) {
+                            runCatching {
+                                profileRepository.addInterest(
+                                    InterestRequest(interest)
+                                )
+                            }
+                        }
+                    }
+
+                    profileRepository.getMyProfile().fold(
+                        onSuccess = { latestProfile ->
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                profile = latestProfile,
+                                message = "Profile saved"
+                            )
+                            onSuccess()
+                        },
+                        onFailure = {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                profile = updatedProfile,
+                                message = "Profile saved"
+                            )
+                            onSuccess()
+                        }
+                    )
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to save profile"
+                    )
+                }
+            )
+        }
+    }
+    fun submitStudentVerification(
+        fullName: String,
+        studentEmail: String,
+        university: String,
+        studentId: String,
+        academicYear: String
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
+
+            try {
+                apiService.submitStudentVerification(
+                    StudentVerificationRequest(
+                        fullName = fullName,
+                        studentEmail = studentEmail,
+                        university = university,
+                        studentId = studentId,
+                        academicYear = academicYear
+                    )
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    message = "Đã gửi yêu cầu xác thực sinh viên"
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Gửi xác thực thất bại"
+                )
+            }
         }
     }
 }
