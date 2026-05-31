@@ -48,8 +48,9 @@ class Settings(BaseSettings):
     GRACE_PERIOD_HOURS: int = 12
     MAX_COURSE_SUGGESTIONS: int = 5
 
+    MISTRAL_URL: str = "https://mistral.24102006.xyz/v1/chat/completions"
     MISTRAL_API_KEY: str = ""
-    MISTRAL_MODEL: str = "ministral-3b-2510"
+    MISTRAL_MODEL: str = "open-mistral-7b"
 
     class Config:
         env_file = str(BACKEND_DIR / ".env")

@@ -10,7 +10,7 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-MISTRAL_URL = "https://mistral.24102006.xyz/v1/chat/completions"
+MISTRAL_URL = settings.MISTRAL_URL
 
 SYSTEM_PROMPT = """You are a skill gap analyzer. Given anonymous peer feedback about a team member, identify the specific technical or soft skills the person is weak at and should improve.
 
@@ -40,18 +40,15 @@ Rules:
 
 
 async def _call_mistral(system_prompt: str, user_prompt: str, max_tokens: int = 300) -> str | None:
-    if not settings.MISTRAL_API_KEY:
-        logger.warning("MISTRAL_API_KEY not configured")
-        return None
-
     try:
+        headers = {"Content-Type": "application/json"}
+        if settings.MISTRAL_API_KEY:
+            headers["Authorization"] = f"Bearer {settings.MISTRAL_API_KEY}"
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 MISTRAL_URL,
-                headers={
-                    "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json={
                     "model": settings.MISTRAL_MODEL,
                     "messages": [
@@ -91,12 +88,8 @@ async def moderate_project_content(title: str, description: str, specific_goal: 
     """Check project content for community standards violations using Mistral.
 
     Returns {"is_flagged": bool, "categories": list[str], "reasons": list[str]}.
-    On error or missing API key, returns {"is_flagged": False, "categories": [], "reasons": []} (fail-open).
+    On error, returns {"is_flagged": False, "categories": [], "reasons": []} (fail-open).
     """
-    if not settings.MISTRAL_API_KEY:
-        logger.warning("MISTRAL_API_KEY not configured — skipping moderation")
-        return {"is_flagged": False, "categories": [], "reasons": []}
-
     project_text = f"Title: {title}\nDescription: {description}\n"
     if specific_goal:
         project_text += f"Specific Goal: {specific_goal}\n"

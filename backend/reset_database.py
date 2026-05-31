@@ -18,13 +18,17 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, inspect, literal, select, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.schema import CreateColumn
+from sqlalchemy.sql.schema import Column, Table
 
 from app.config import get_settings
 from app.database import Base
 from app.models.chat import Chat, CourseSuggestion, Message, Notification, RefreshToken
 from app.models.fcm_token import FCMToken
+from app.models.feedback import AnonymousFeedback
 from app.models.profile import (
     UserCompletedCourse,
     UserInterest,
@@ -70,22 +74,32 @@ from seed_data import (
 Model = type[Base]
 SeedStep = tuple[str, Callable[[AsyncSession], Awaitable[None]]]
 
-BASE_DOMAINS = ("users", "projects", "tasks", "swipes", "matches", "messages", "notifications")
+BASE_DOMAINS = (
+    "users",
+    "projects",
+    "tasks",
+    "swipes",
+    "matches",
+    "messages",
+    "notifications",
+    "feedback",
+)
 DOMAIN_CHOICES = (*BASE_DOMAINS, "all")
 
 DOMAIN_DESCRIPTIONS = {
     "users": "Users, profiles, skills, interests, completed courses, auth/session rows, FCM tokens, blocks, and reports. Forces all seeded app data to reset.",
-    "projects": "Projects, role slots, members, tasks, and project evaluations. Forces swipes, matches, messages, and notifications to reset.",
+    "projects": "Projects, role slots, members, tasks, project evaluations, and anonymous feedback. Forces swipes, matches, messages, and notifications to reset.",
     "tasks": "Tasks and task checkout history. Also resets notifications because seeded notifications reference tasks.",
     "swipes": "Swipe actions used by discovery and match scenarios.",
     "matches": "Swipes, matches, chats, messages, and notifications.",
     "messages": "Chat messages only. Requires existing seeded chats and users unless matches/users are reset too.",
     "notifications": "Notification rows only.",
+    "feedback": "Anonymous peer feedback rows and analyzed weakness payloads.",
 }
 
 RESET_IMPLICATIONS = {
-    "users": {"projects", "tasks", "swipes", "matches", "messages", "notifications"},
-    "projects": {"tasks", "swipes", "matches", "messages", "notifications"},
+    "users": {"projects", "tasks", "swipes", "matches", "messages", "notifications", "feedback"},
+    "projects": {"tasks", "swipes", "matches", "messages", "notifications", "feedback"},
     "tasks": {"notifications"},
     "matches": {"swipes", "messages", "notifications"},
 }
@@ -95,6 +109,7 @@ TABLES_BY_DOMAIN: dict[str, tuple[Model, ...]] = {
     "matches": (Chat, Match),
     "swipes": (SwipeAction,),
     "notifications": (Notification,),
+    "feedback": (AnonymousFeedback,),
     "tasks": (TaskCheckoutHistory, Task),
     "projects": (ProjectEvaluation, ProjectMember, ProjectRoleSlot, Project),
     "users": (
@@ -116,6 +131,7 @@ DELETE_ORDER: tuple[Model, ...] = (
     Message,
     Chat,
     Notification,
+    AnonymousFeedback,
     CourseSuggestion,
     RefreshToken,
     FCMToken,
@@ -278,6 +294,91 @@ def mask_database_url(url: str) -> str:
     return urlunsplit((parsed.scheme, f"{auth}{host}", parsed.path, parsed.query, parsed.fragment))
 
 
+def qualified_table_name(conn: Connection, table: Table) -> str:
+    preparer = conn.dialect.identifier_preparer
+    table_name = preparer.quote(table.name)
+    if table.schema:
+        return f"{preparer.quote_schema(table.schema)}.{table_name}"
+    return table_name
+
+
+def scalar_python_default(column: Column) -> object | None:
+    default = column.default
+    if default is None or not getattr(default, "is_scalar", False):
+        return None
+    return default.arg
+
+
+def literal_default(conn: Connection, value: object) -> str:
+    return str(
+        literal(value).compile(
+            dialect=conn.dialect,
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+
+def column_definition(conn: Connection, column: Column, table: Table) -> tuple[str, str | None]:
+    definition = str(CreateColumn(column).compile(dialect=conn.dialect))
+    cleanup_sql = None
+
+    if column.server_default is None and not column.nullable:
+        default_value = scalar_python_default(column)
+        if default_value is None:
+            row_count = conn.execute(select(func.count()).select_from(table)).scalar_one()
+            if row_count:
+                raise RuntimeError(
+                    f"Cannot add non-null column {table.name}.{column.name} without a default "
+                    f"because {table.name} already has {row_count} row(s). Add a real migration "
+                    "or clear the table before syncing schema."
+                )
+        else:
+            default_sql = literal_default(conn, default_value)
+            not_null = " NOT NULL"
+            if definition.endswith(not_null):
+                definition = f"{definition[:-len(not_null)]} DEFAULT {default_sql}{not_null}"
+            else:
+                definition = f"{definition} DEFAULT {default_sql}"
+            cleanup_sql = (
+                f"ALTER TABLE {qualified_table_name(conn, table)} "
+                f"ALTER COLUMN {conn.dialect.identifier_preparer.quote(column.name)} DROP DEFAULT"
+            )
+
+    return definition, cleanup_sql
+
+
+def sync_metadata_columns(conn: Connection) -> list[str]:
+    """Apply small additive schema updates that create_all() skips.
+
+    This keeps the reset script useful for local/dev databases after model-only
+    changes while still refusing unsafe non-null additions that need a migration.
+    """
+    inspector = inspect(conn)
+    updates: list[str] = []
+
+    for table in Base.metadata.sorted_tables:
+        if table.name not in inspector.get_table_names(schema=table.schema):
+            continue
+
+        existing_columns = {
+            column["name"]
+            for column in inspector.get_columns(table.name, schema=table.schema)
+        }
+        for column in table.columns:
+            if column.name in existing_columns:
+                continue
+
+            definition, cleanup_sql = column_definition(conn, column, table)
+            conn.execute(text(f"ALTER TABLE {qualified_table_name(conn, table)} ADD COLUMN {definition}"))
+            if cleanup_sql:
+                conn.execute(text(cleanup_sql))
+
+            existing_columns.add(column.name)
+            updates.append(f"added {table.name}.{column.name}")
+
+    return updates
+
+
 async def missing_ids(db: AsyncSession, model: Model, ids: Iterable[object]) -> list[str]:
     expected = set(ids)
     result = await db.execute(select(model.id).where(model.id.in_(expected)))
@@ -355,12 +456,20 @@ def print_plan(
     seed_steps: list[SeedStep],
     counts: dict[str, int],
     execute: bool,
+    schema_updates: list[str] | None = None,
 ) -> None:
     print(f"Database: {mask_database_url(database_url)}")
     print(f"Requested reset domains: {', '.join(ordered_domains(requested)) or '(none)'}")
     if kept:
         print(f"Requested keep domains: {', '.join(ordered_domains(kept))}")
     print(f"Effective reset domains: {', '.join(ordered_domains(effective)) or '(none)'}")
+    if schema_updates is not None:
+        print("Schema updates:")
+        if schema_updates:
+            for update in schema_updates:
+                print(f"  {update}")
+        else:
+            print("  none")
     print("Tables to clear:")
     for model in tables:
         name = table_name(model)
@@ -401,11 +510,13 @@ async def run_reset(args: argparse.Namespace) -> None:
 
     engine = create_async_engine(database_url, echo=False)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    schema_updates: list[str] | None = None
 
     try:
         if args.yes:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                schema_updates = await conn.run_sync(sync_metadata_columns)
 
         async with session_factory() as db:
             counts_before = await count_tables(db, tables)
@@ -418,6 +529,7 @@ async def run_reset(args: argparse.Namespace) -> None:
                 seed_steps=seed_steps,
                 counts=counts_before,
                 execute=args.yes,
+                schema_updates=schema_updates,
             )
 
             if not args.yes:

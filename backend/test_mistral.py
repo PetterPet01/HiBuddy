@@ -42,10 +42,12 @@ UNDERLINE = "\033[4m"
 GREEN = "\033[38;2;46;204;113m"
 CYAN = "\033[38;2;52;152;219m"
 YELLOW = "\033[38;2;241;196;15m"
-RED = "\033;2;231;76;60m"
+RED = "\033[38;2;231;76;60m"
 PURPLE = "\033[38;2;155;89;182m"
 DARK_GRAY = "\033[38;2;127;140;141m"
 LIGHT_GRAY = "\033[38;2;220;220;220m"
+
+DEFAULT_MISTRAL_URL = "https://mistral.24102006.xyz/v1/chat/completions"
 
 def print_header(title: str):
     print(f"\n{BOLD}{PURPLE}================================================================{RESET}")
@@ -90,30 +92,58 @@ except ImportError as e:
     print_debug("Using direct API communication logic instead.")
 
 
-async def test_env_config():
-    """Verify and print environment configuration."""
-    print_sub_header("Environment Configuration Check")
-
-    api_key = os.getenv("MISTRAL_API_KEY")
-    model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+def get_mistral_client_config():
+    """Return endpoint/model/auth settings for direct test-client calls."""
+    api_key = os.getenv("MISTRAL_API_KEY") or None
+    model = os.getenv("MISTRAL_MODEL", "open-mistral-7b")
+    endpoint = os.getenv("MISTRAL_URL", DEFAULT_MISTRAL_URL)
 
     if service_imported:
         try:
             settings = get_settings()
-            api_key = settings.MISTRAL_API_KEY
-            model = settings.MISTRAL_MODEL
+            api_key = settings.MISTRAL_API_KEY or api_key
+            model = settings.MISTRAL_MODEL or model
+            endpoint = settings.MISTRAL_URL or endpoint
+        except Exception as e:
+            print_debug(f"Could not load app settings, using environment/default Mistral config: {e}")
+
+    return endpoint, model, api_key
+
+
+def build_mistral_headers(api_key: str | None = None) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+async def test_env_config():
+    """Verify and print environment configuration."""
+    print_sub_header("Environment Configuration Check")
+
+    if service_imported:
+        try:
+            endpoint, model, api_key = get_mistral_client_config()
             print_success("Successfully imported application configuration settings!")
         except Exception as e:
             print_error(f"Error loading app settings: {e}")
+            endpoint = os.getenv("MISTRAL_URL", DEFAULT_MISTRAL_URL)
+            model = os.getenv("MISTRAL_MODEL", "open-mistral-7b")
+            api_key = os.getenv("MISTRAL_API_KEY") or None
+    else:
+        endpoint, model, api_key = get_mistral_client_config()
 
-    if not api_key:
-        print_error("MISTRAL_API_KEY is not defined in your environment or backend/.env file!")
-        print_info("Please edit 'backend/.env' and add: MISTRAL_API_KEY=your_key_here")
+    if not endpoint:
+        print_error("MISTRAL_URL is not defined and no default endpoint is available!")
         return False
 
-    masked_key = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "********"
-    print_success(f"Mistral API Key Found: {BOLD}{masked_key}{RESET}")
+    print_success(f"Mistral Endpoint: {BOLD}{endpoint}{RESET}")
     print_success(f"Mistral Model: {BOLD}{model}{RESET}")
+    if api_key:
+        masked_key = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "********"
+        print_success(f"Mistral API Key Found: {BOLD}{masked_key}{RESET}")
+    else:
+        print_info("MISTRAL_API_KEY is not set. Requests will be sent without Authorization header.")
     return True
 
 
@@ -123,9 +153,7 @@ async def direct_chat_loop():
     print_info("Type '/exit' or '/quit' to return to the main menu.")
     print_info("You are chatting with Mistral. Ask it anything!")
 
-    api_key = os.getenv("MISTRAL_API_KEY") or (get_settings().MISTRAL_API_KEY if service_imported else None)
-    model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510") or (get_settings().MISTRAL_MODEL if service_imported else None)
-    endpoint = "https://mistral.24102006.xyz/v1/chat/completions"
+    endpoint, model, api_key = get_mistral_client_config()
 
     chat_history = []
 
@@ -151,10 +179,7 @@ async def direct_chat_loop():
             async with httpx.AsyncClient(timeout=45.0) as client:
                 response = await client.post(
                     endpoint,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=build_mistral_headers(api_key),
                     json={
                         "model": model,
                         "messages": messages,
@@ -219,16 +244,12 @@ Rules:
 - Extract concrete skills (e.g., "React", "Docker", "Communication").
 - Max 5 skills. If none, return []."""
 
-                api_key = os.getenv("MISTRAL_API_KEY")
-                model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+                endpoint, model, api_key = get_mistral_client_config()
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
-                        "https://mistral.24102006.xyz/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        endpoint,
+                        headers=build_mistral_headers(api_key),
                         json={
                             "model": model,
                             "messages": [
@@ -308,16 +329,12 @@ Rules:
 - Be conservative."""
 
                 project_text = f"Title: {title}\nDescription: {description}\n"
-                api_key = os.getenv("MISTRAL_API_KEY")
-                model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+                endpoint, model, api_key = get_mistral_client_config()
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
-                        "https://mistral.24102006.xyz/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        endpoint,
+                        headers=build_mistral_headers(api_key),
                         json={
                             "model": model,
                             "messages": [
@@ -379,11 +396,8 @@ async def main():
     # 1. Check env config
     config_ok = await test_env_config()
     if not config_ok:
-        print_error("Please configure your .env file before proceeding.")
-        # We still allow proceeding in case they set variables in terminal environment
-        choice = input("\nDo you still want to proceed? (y/N): ").strip().lower()
-        if choice != "y":
-            sys.exit(1)
+        print_error("Please configure MISTRAL_URL before proceeding.")
+        sys.exit(1)
 
     if service_imported:
         print_success("Backend service codebase detected. Testing will use real codebase paths!")

@@ -838,12 +838,17 @@ async def main():
     print_header("HiBuddy Mistral AI Automated Test Suite")
 
     settings = get_settings()
-    if not settings.MISTRAL_API_KEY:
-        print_error("MISTRAL_API_KEY not found in settings configuration!")
-        print_info("Please ensure MISTRAL_API_KEY is defined in backend/.env file.")
+    if not settings.MISTRAL_URL:
+        print_error("MISTRAL_URL not found in settings configuration!")
+        print_info("Please ensure MISTRAL_URL is defined in backend/.env file or app config.")
         sys.exit(1)
 
+    print_success(f"Loaded Mistral Endpoint: {BOLD}{settings.MISTRAL_URL}{RESET}")
     print_success(f"Loaded Mistral Model: {BOLD}{settings.MISTRAL_MODEL}{RESET}")
+    if settings.MISTRAL_API_KEY:
+        print_success("Loaded optional Mistral API key for Authorization header.")
+    else:
+        print_info("No MISTRAL_API_KEY configured. Requests will be sent without Authorization header.")
 
     # Run tests
     fb_results = await run_feedback_tests()
