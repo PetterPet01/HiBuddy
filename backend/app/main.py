@@ -9,7 +9,7 @@ from app.redis_client import get_redis, close_redis
 from app.api.auth import router as auth_router
 from app.api.profile import router as profile_router
 from app.api.project import router as project_router
-#from app.api.swipe import router as swipe_router
+from app.api.swipe import router as swipe_router
 from app.api.task import router as task_router
 from app.api.suggestion import router as suggestion_router
 from app.api.chat import router as chat_router
@@ -60,7 +60,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(profile_router)
 app.include_router(project_router)
-#app.include_router(swipe_router)
+app.include_router(swipe_router)
 app.include_router(task_router)
 app.include_router(suggestion_router)
 app.include_router(chat_router)

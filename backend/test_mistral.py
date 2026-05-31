@@ -95,7 +95,7 @@ async def test_env_config():
     print_sub_header("Environment Configuration Check")
 
     api_key = os.getenv("MISTRAL_API_KEY")
-    model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+    model = os.getenv("MISTRAL_MODEL","mistral-medium-latest")
 
     if service_imported:
         try:
@@ -107,12 +107,11 @@ async def test_env_config():
             print_error(f"Error loading app settings: {e}")
 
     if not api_key:
-        print_error("MISTRAL_API_KEY is not defined in your environment or backend/.env file!")
-        print_info("Please edit 'backend/.env' and add: MISTRAL_API_KEY=your_key_here")
-        return False
+        print_info("MISTRAL_API_KEY is not defined (optional for OpenAI-compatible API proxy).")
+    else:
+        masked_key = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "********"
+        print_success(f"Mistral API Key Found: {BOLD}{masked_key}{RESET}")
 
-    masked_key = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "********"
-    print_success(f"Mistral API Key Found: {BOLD}{masked_key}{RESET}")
     print_success(f"Mistral Model: {BOLD}{model}{RESET}")
     return True
 
@@ -124,7 +123,7 @@ async def direct_chat_loop():
     print_info("You are chatting with Mistral. Ask it anything!")
 
     api_key = os.getenv("MISTRAL_API_KEY") or (get_settings().MISTRAL_API_KEY if service_imported else None)
-    model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510") or (get_settings().MISTRAL_MODEL if service_imported else None)
+    model = os.getenv("MISTRAL_MODEL", "mistral-medium-latest") or (get_settings().MISTRAL_MODEL if service_imported else None)
     endpoint = "https://mistral.24102006.xyz/v1/chat/completions"
 
     chat_history = []
@@ -148,15 +147,16 @@ async def direct_chat_loop():
             # Add current user prompt
             messages.append({"role": "user", "content": user_input})
 
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
             async with httpx.AsyncClient(timeout=45.0) as client:
                 response = await client.post(
                     endpoint,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=headers,
                     json={
-                        "model": model,
+                        "model": model or "mistral-medium-latest",
                         "messages": messages,
                         "temperature": 0.7,
                         "max_tokens": 800,
@@ -220,17 +220,18 @@ Rules:
 - Max 5 skills. If none, return []."""
 
                 api_key = os.getenv("MISTRAL_API_KEY")
-                model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+                model = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
+
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
                         "https://mistral.24102006.xyz/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        headers=headers,
                         json={
-                            "model": model,
+                            "model": model or "mistral-medium-latest",
                             "messages": [
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": f"Analyze this peer feedback:\n\n{feedback}"},
@@ -309,17 +310,18 @@ Rules:
 
                 project_text = f"Title: {title}\nDescription: {description}\n"
                 api_key = os.getenv("MISTRAL_API_KEY")
-                model = os.getenv("MISTRAL_MODEL", "ministral-3b-2510")
+                model = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
+
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
                         "https://mistral.24102006.xyz/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        headers=headers,
                         json={
-                            "model": model,
+                            "model": model or "mistral-medium-latest",
                             "messages": [
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": f"Review this project posting for community standards violations:\n\n{project_text}"},

@@ -39,94 +39,116 @@ fun DiscoverScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         viewModel.loadCards()
+    }
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearError()
+        }
     }
 
     val cards = if (uiState.mode == "CONTRIBUTOR") uiState.projectCards else uiState.userCards
     val cardIndex = uiState.currentCardIndex
     val topCards = cards.drop(cardIndex)
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colorScheme.background)
     ) {
-        DiscoverHeader(
-            isPeopleMode = uiState.mode == "OWNER",
-            onToggle = {
-                val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
-                viewModel.switchMode(newMode)
-            },
-            onCreateProject = onCreateProject,
-        )
-
-        Box(
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
+                .background(colorScheme.background)
         ) {
-            if (uiState.isLoading && topCards.isEmpty()) {
-                CircularProgressIndicator(color = colorScheme.primary)
-            } else if (topCards.isEmpty()) {
-                EmptyStackView(
-                    isPeopleMode = uiState.mode == "OWNER",
-                    onCreateProject = onCreateProject,
-                )
-            } else {
-                val first = topCards[0]
-                if (topCards.size >= 3 && uiState.mode == "OWNER") {
-                    UserSwipeCardStatic(
-                        card = topCards[2] as UserCardResponse,
-                        modifier = Modifier.fillMaxSize().offset(y = 16.dp).scale(0.92f).alpha(0.5f)
+            DiscoverHeader(
+                isPeopleMode = uiState.mode == "OWNER",
+                onToggle = {
+                    val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
+                    viewModel.switchMode(newMode)
+                },
+                onCreateProject = onCreateProject,
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (uiState.isLoading && topCards.isEmpty()) {
+                    CircularProgressIndicator(color = colorScheme.primary)
+                } else if (topCards.isEmpty()) {
+                    EmptyStackView(
+                        isPeopleMode = uiState.mode == "OWNER",
+                        onCreateProject = onCreateProject,
                     )
-                }
-                if (topCards.size >= 2) {
-                    if (uiState.mode == "OWNER") {
+                } else {
+                    val first = topCards[0]
+                    if (topCards.size >= 3 && uiState.mode == "OWNER") {
                         UserSwipeCardStatic(
-                            card = topCards[1] as UserCardResponse,
-                            modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.75f)
+                            card = topCards[2] as UserCardResponse,
+                            modifier = Modifier.fillMaxSize().offset(y = 16.dp).scale(0.92f).alpha(0.5f)
                         )
-                    } else if (topCards.size >= 2 && uiState.mode == "CONTRIBUTOR") {
-                        ProjectSwipeCardStatic(
-                            card = topCards[1] as ProjectCardResponse,
-                            modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.7f)
+                    }
+                    if (topCards.size >= 2) {
+                        if (uiState.mode == "OWNER") {
+                            UserSwipeCardStatic(
+                                card = topCards[1] as UserCardResponse,
+                                modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.75f)
+                            )
+                        } else if (topCards.size >= 2 && uiState.mode == "CONTRIBUTOR") {
+                            ProjectSwipeCardStatic(
+                                card = topCards[1] as ProjectCardResponse,
+                                modifier = Modifier.fillMaxSize().offset(y = 8.dp).scale(0.96f).alpha(0.7f)
+                            )
+                        }
+                    }
+                    if (uiState.mode == "OWNER") {
+                        SwipeableUserCard(
+                            card = first as UserCardResponse,
+                            modifier = Modifier.fillMaxSize(),
+                            enabled = !uiState.isSwiping,
+                            onSwipeLeft = { viewModel.swipe("PASS") },
+                            onSwipeRight = { viewModel.swipe("LIKE") },
+                            onSuperLike = { viewModel.swipe("SUPER_LIKE") }
+                        )
+                    } else {
+                        SwipeableProjectCard(
+                            card = first as ProjectCardResponse,
+                            modifier = Modifier.fillMaxSize(),
+                            enabled = !uiState.isSwiping,
+                            onSwipeLeft = { viewModel.swipe("PASS") },
+                            onSwipeRight = { viewModel.swipe("LIKE") },
+                            onSuperLike = { viewModel.swipe("SUPER_LIKE") }
                         )
                     }
                 }
-                if (uiState.mode == "OWNER") {
-                    SwipeableUserCard(
-                        card = first as UserCardResponse,
-                        modifier = Modifier.fillMaxSize(),
-                        onSwipeLeft = { viewModel.swipe("PASS") },
-                        onSwipeRight = { viewModel.swipe("LIKE") },
-                        onSuperLike = { viewModel.swipe("SUPER_LIKE") }
-                    )
-                } else {
-                    SwipeableProjectCard(
-                        card = first as ProjectCardResponse,
-                        modifier = Modifier.fillMaxSize(),
-                        onSwipeLeft = { viewModel.swipe("PASS") },
-                        onSwipeRight = { viewModel.swipe("LIKE") },
-                        onSuperLike = { viewModel.swipe("SUPER_LIKE") }
-                    )
-                }
             }
+
+            ActionButtons(
+                onPass = { viewModel.swipe("PASS") },
+                onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+                onLike = { viewModel.swipe("LIKE") },
+                superLikesLeft = uiState.dailySuperlikesRemaining,
+                likesLeft = uiState.dailyLikesRemaining,
+                enabled = topCards.isNotEmpty() && !uiState.isSwiping
+            )
+
+            Spacer(Modifier.height(4.dp))
         }
 
-        ActionButtons(
-            onPass = { viewModel.swipe("PASS") },
-            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
-            onLike = { viewModel.swipe("LIKE") },
-            superLikesLeft = uiState.dailySuperlikesRemaining,
-            likesLeft = uiState.dailyLikesRemaining,
-            enabled = topCards.isNotEmpty()
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 84.dp)
         )
-
-        Spacer(Modifier.height(4.dp))
     }
 
     if (uiState.matchedProjectId != null) {
@@ -198,6 +220,7 @@ private fun SwipeableCardFrame(
     modifier: Modifier = Modifier,
     positiveLabel: String,
     negativeLabel: String,
+    enabled: Boolean = true,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -331,6 +354,54 @@ private fun SwipeableCardFrame(
         val superLikeAlpha = (-cardOffset.y / verticalThreshold).coerceIn(0f, 1f)
         val colorScheme = MaterialTheme.colorScheme
 
+        val dragModifier = if (enabled) {
+            Modifier.pointerInput(cardKey, horizontalThreshold, verticalThreshold, widthPx, heightPx) {
+                detectDragGestures(
+                    onDragStart = {
+                        if (!hasDispatched) {
+                            animationJob?.cancel()
+                            isDragging = true
+                            isSettling = false
+                            velocityTracker = VelocityTracker()
+                        }
+                    },
+                    onDragEnd = {
+                        if (isDragging && !hasDispatched) {
+                            isDragging = false
+                            val velocity = velocityTracker.calculateVelocity()
+                            settleCard(velocity.x, velocity.y)
+                        }
+                    },
+                    onDragCancel = {
+                        if (!hasDispatched) {
+                            isDragging = false
+                            launchSettleAnimation(
+                                targetOffset = Offset.Zero,
+                                initialVelocity = Offset.Zero,
+                                intent = null,
+                            )
+                        }
+                    },
+                    onDrag = { change, drag ->
+                        if (hasDispatched || isSettling) {
+                            change.consume()
+                        } else {
+                            change.consume()
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            val dampedVerticalDrag = if (cardOffset.y > 0f && drag.y > 0f) {
+                                drag.y * 0.35f
+                            } else {
+                                drag.y
+                            }
+                            cardOffset += Offset(drag.x, dampedVerticalDrag)
+                        }
+                    },
+                )
+            }
+        } else {
+            Modifier
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -344,49 +415,7 @@ private fun SwipeableCardFrame(
                     rotationZ = rotation
                     transformOrigin = TransformOrigin(0.5f, 0.88f)
                 }
-                .pointerInput(cardKey, horizontalThreshold, verticalThreshold, widthPx, heightPx) {
-                    detectDragGestures(
-                        onDragStart = {
-                            if (!hasDispatched) {
-                                animationJob?.cancel()
-                                isDragging = true
-                                isSettling = false
-                                velocityTracker = VelocityTracker()
-                            }
-                        },
-                        onDragEnd = {
-                            if (isDragging && !hasDispatched) {
-                                isDragging = false
-                                val velocity = velocityTracker.calculateVelocity()
-                                settleCard(velocity.x, velocity.y)
-                            }
-                        },
-                        onDragCancel = {
-                            if (!hasDispatched) {
-                                isDragging = false
-                                launchSettleAnimation(
-                                    targetOffset = Offset.Zero,
-                                    initialVelocity = Offset.Zero,
-                                    intent = null,
-                                )
-                            }
-                        },
-                        onDrag = { change, drag ->
-                            if (hasDispatched || isSettling) {
-                                change.consume()
-                            } else {
-                                change.consume()
-                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                val dampedVerticalDrag = if (cardOffset.y > 0f && drag.y > 0f) {
-                                    drag.y * 0.35f
-                                } else {
-                                    drag.y
-                                }
-                                cardOffset += Offset(drag.x, dampedVerticalDrag)
-                            }
-                        },
-                    )
-                },
+                .then(dragModifier),
         ) {
             content()
 
@@ -458,6 +487,7 @@ private fun SwipeableCardFrame(
 fun SwipeableUserCard(
     card: UserCardResponse,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -468,6 +498,7 @@ fun SwipeableUserCard(
             .fillMaxSize(),
         positiveLabel = "LIKE",
         negativeLabel = "PASS",
+        enabled = enabled,
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,
@@ -585,6 +616,7 @@ fun StatChip(icon: String, value: String, label: String) {
 fun SwipeableProjectCard(
     card: ProjectCardResponse,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -595,6 +627,7 @@ fun SwipeableProjectCard(
             .fillMaxSize(),
         positiveLabel = "APPLY",
         negativeLabel = "SKIP",
+        enabled = enabled,
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,

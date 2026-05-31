@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 
 data class DiscoverUiState(
     val isLoading: Boolean = false,
+    val isSwiping: Boolean = false,
     val userCards: List<UserCardResponse> = emptyList(),
     val projectCards: List<ProjectCardResponse> = emptyList(),
     val mode: String = "CONTRIBUTOR",
@@ -29,17 +30,19 @@ class DiscoverViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
+    private val swipedUserIds = mutableSetOf<String>()
+    private val swipedProjectIds = mutableSetOf<String>()
 
     fun loadCards() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             val mode = _uiState.value.mode
             swipeRepository.discoverCards(mode).fold(
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        userCards = response.userCards,
-                        projectCards = response.projectCards,
+                        userCards = response.userCards.filterNot { it.userId in swipedUserIds },
+                        projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds },
                         dailyLikesRemaining = response.dailyLikesRemaining,
                         dailySuperlikesRemaining = response.dailySuperlikesRemaining,
                         currentCardIndex = 0
@@ -53,15 +56,30 @@ class DiscoverViewModel : ViewModel() {
     }
 
     fun switchMode(mode: String) {
-        _uiState.value = _uiState.value.copy(mode = mode, currentCardIndex = 0)
+        _uiState.value = _uiState.value.copy(
+            mode = mode,
+            currentCardIndex = 0,
+            userCards = emptyList(),
+            projectCards = emptyList(),
+            error = null
+        )
         loadCards()
     }
 
     fun swipe(action: String) {
         val state = _uiState.value
+        if (state.isSwiping) return
         val cards = if (state.mode == "CONTRIBUTOR") state.projectCards else state.userCards
         val currentIndex = state.currentCardIndex
         if (currentIndex >= cards.size) return
+        if ((action == "LIKE" || action == "SUPER_LIKE") && state.dailyLikesRemaining <= 0) {
+            _uiState.value = state.copy(error = "Daily like limit reached")
+            return
+        }
+        if (action == "SUPER_LIKE" && state.dailySuperlikesRemaining <= 0) {
+            _uiState.value = state.copy(error = "Daily super like limit reached")
+            return
+        }
 
         val card = cards[currentIndex]
         val targetId = if (state.mode == "CONTRIBUTOR") {
@@ -85,18 +103,40 @@ class DiscoverViewModel : ViewModel() {
             currentCardIndex = currentIndex + 1,
             dailyLikesRemaining = nextLikesRemaining,
             dailySuperlikesRemaining = nextSuperlikesRemaining,
+            isSwiping = true,
             error = null,
         )
 
         viewModelScope.launch {
             swipeRepository.swipeAction(SwipeActionRequest(targetType, targetId, action)).fold(
                 onSuccess = { response ->
+                    if (targetType == "PROJECT") {
+                        swipedProjectIds.add(targetId)
+                    } else {
+                        swipedUserIds.add(targetId)
+                    }
                     if (response.matched) {
-                        _uiState.value = _uiState.value.copy(matchedProjectId = response.matchId)
+                        _uiState.value = _uiState.value.copy(
+                            isSwiping = false,
+                            matchedProjectId = response.matchId,
+                            error = response.message?.takeIf { it.contains("limit", ignoreCase = true) }
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            isSwiping = false,
+                            error = response.message?.takeIf { it.contains("limit", ignoreCase = true) }
+                        )
                     }
                 },
                 onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(error = e.message)
+                    val currentState = _uiState.value
+                    _uiState.value = currentState.copy(
+                        isSwiping = false,
+                        currentCardIndex = (currentState.currentCardIndex - 1).coerceAtLeast(0),
+                        dailyLikesRemaining = state.dailyLikesRemaining,
+                        dailySuperlikesRemaining = state.dailySuperlikesRemaining,
+                        error = e.message ?: "Swipe failed"
+                    )
                 }
             )
         }

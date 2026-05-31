@@ -54,14 +54,37 @@ async def get_daily_superlikes_remaining(db: AsyncSession, user_id: UUID) -> int
 async def perform_swipe_action(
     db: AsyncSession, user: User, target_type: str, target_id: str, action: str
 ) -> dict[str, Any]:
+    target_type = target_type.upper()
+    action = action.upper()
+    if target_type not in {"PROJECT", "USER"}:
+        raise ValueError("Invalid swipe target type")
+    if action not in {"PASS", "LIKE", "SUPER_LIKE"}:
+        raise ValueError("Invalid swipe action")
+
+    existing_result = await db.execute(
+        select(SwipeAction).where(
+            SwipeAction.swiper_id == user.id,
+            SwipeAction.target_type == target_type,
+            SwipeAction.target_id == target_id,
+            SwipeAction.is_active == True,
+        ).order_by(SwipeAction.created_at.desc()).limit(1)
+    )
+    existing_swipe = existing_result.scalar_one_or_none()
+    if existing_swipe and existing_swipe.action == action:
+        if action in ("LIKE", "SUPER_LIKE"):
+            matched = await _check_match(db, user.id, target_type, target_id)
+            if matched:
+                return {"matched": True, "match_id": str(matched.id)}
+        return {"matched": False, "message": f"Already recorded {action.lower()}"}
+
     if action == "LIKE":
         remaining = await get_daily_likes_remaining(db, user.id)
         if remaining <= 0:
-            return {"matched": False, "message": "Daily like limit reached"}
+            raise ValueError("Daily like limit reached")
     if action == "SUPER_LIKE":
         remaining = await get_daily_superlikes_remaining(db, user.id)
         if remaining <= 0:
-            return {"matched": False, "message": "Daily super like limit reached"}
+            raise ValueError("Daily super like limit reached")
 
     swipe = SwipeAction(
         swiper_id=user.id,
@@ -70,6 +93,7 @@ async def perform_swipe_action(
         action=action,
     )
     db.add(swipe)
+    await db.flush()
 
     if action == "PASS":
         return {"matched": False, "message": "Passed"}
@@ -91,7 +115,11 @@ async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, targ
     if target_type == "PROJECT":
         contributor_id = swiper_id
         project_id = UUID(target_id)
-        project = await db.get(Project, project_id)
+        project = await db.scalar(
+            select(Project)
+            .options(selectinload(Project.role_slots))
+            .where(Project.id == project_id)
+        )
         if not project:
             return None
 
@@ -121,7 +149,11 @@ async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, targ
         liked_project_ids = [UUID(s.target_id) for s in contributor_liked_projects.scalars().all()]
 
         for pid in liked_project_ids:
-            project = await db.get(Project, pid)
+            project = await db.scalar(
+                select(Project)
+                .options(selectinload(Project.role_slots))
+                .where(Project.id == pid)
+            )
             if project and project.owner_id == owner_id:
                 return await _create_match(db, contributor_id, pid, owner_id)
 
@@ -141,12 +173,33 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
     if existing.scalar_one_or_none():
         return None
 
-    contributor = await db.get(User, user_id, options=[selectinload(User.roles), selectinload(User.skills), selectinload(User.interests), selectinload(User.profile)])
-    project = await db.get(Project, project_id, options=[selectinload(Project.role_slots)])
+    contributor = await db.scalar(
+        select(User)
+        .options(
+            selectinload(User.roles),
+            selectinload(User.skills),
+            selectinload(User.interests),
+            selectinload(User.profile),
+        )
+        .where(User.id == user_id)
+        .execution_options(populate_existing=True)
+    )
+    project = await db.scalar(
+        select(Project)
+        .options(selectinload(Project.role_slots))
+        .where(Project.id == project_id)
+        .execution_options(populate_existing=True)
+    )
+    owner = await db.scalar(
+        select(User)
+        .options(selectinload(User.profile))
+        .where(User.id == owner_id)
+        .execution_options(populate_existing=True)
+    )
 
     computed_score = 0.0
     if contributor and project:
-        computed_score = calculate_match_score_for_pair(contributor, project)
+        computed_score = calculate_match_score_for_pair(contributor, project, owner)
 
     match = Match(
         user_id=user_id,
@@ -270,6 +323,7 @@ async def _discover_projects(
         .where(
             Project.status == "RECRUITING",
             Project.review_status == "APPROVED",
+            Project.owner_id != user.id,
             ~Project.id.in_([UUID(p) for p in exclude_project_ids if p] if exclude_project_ids else [UUID("00000000-0000-0000-0000-000000000000")]),
         )
     )

@@ -40,20 +40,17 @@ Rules:
 
 
 async def _call_mistral(system_prompt: str, user_prompt: str, max_tokens: int = 300) -> str | None:
-    if not settings.MISTRAL_API_KEY:
-        logger.warning("MISTRAL_API_KEY not configured")
-        return None
-
     try:
+        headers = {"Content-Type": "application/json"}
+        if settings.MISTRAL_API_KEY:
+            headers["Authorization"] = f"Bearer {settings.MISTRAL_API_KEY}"
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 MISTRAL_URL,
-                headers={
-                    "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json={
-                    "model": settings.MISTRAL_MODEL,
+                    "model": settings.MISTRAL_MODEL or "mistral-medium-latest",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -62,8 +59,15 @@ async def _call_mistral(system_prompt: str, user_prompt: str, max_tokens: int = 
                     "max_tokens": max_tokens,
                 },
             )
-            response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"].strip()
+            if response.status_code != 200:
+                logger.error(f"Mistral HTTP {response.status_code}: {response.text[:500]}")
+                return None
+            raw = response.json()
+            if "choices" not in raw or not raw["choices"]:
+                logger.error(f"Mistral unexpected response: {json.dumps(raw, ensure_ascii=False)[:500]}")
+                return None
+            content = raw["choices"][0]["message"]["content"].strip()
+            logger.debug(f"Mistral raw response: {content[:300]}")
             if content.startswith("```"):
                 content = content.split("\n", 1)[1].rsplit("\n", 1)[0]
             return content
@@ -91,11 +95,8 @@ async def moderate_project_content(title: str, description: str, specific_goal: 
     """Check project content for community standards violations using Mistral.
 
     Returns {"is_flagged": bool, "categories": list[str], "reasons": list[str]}.
-    On error or missing API key, returns {"is_flagged": False, "categories": [], "reasons": []} (fail-open).
+    On error, returns {"is_flagged": False, "categories": [], "reasons": []} (fail-open).
     """
-    if not settings.MISTRAL_API_KEY:
-        logger.warning("MISTRAL_API_KEY not configured — skipping moderation")
-        return {"is_flagged": False, "categories": [], "reasons": []}
 
     project_text = f"Title: {title}\nDescription: {description}\n"
     if specific_goal:
@@ -107,7 +108,7 @@ async def moderate_project_content(title: str, description: str, specific_goal: 
 
     content = await _call_mistral(MODERATION_SYSTEM_PROMPT, f"Review this project posting for community standards violations:\n\n{project_text}", 300)
     if not content:
-        return {"is_flagged": False, "categories": [], "reasons": []}
+        return {"is_flagged": True, "categories": ["error"], "reasons": ["Moderation service unavailable — content requires manual admin review"]}
 
     try:
         result = json.loads(content)

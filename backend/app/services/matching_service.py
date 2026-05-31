@@ -135,10 +135,10 @@ def calculate_user_score(owner: User, target_user: User,
 
 # ── Combined score when a match is created ────────────────────────────
 
-def calculate_match_score_for_pair(user: User, project: Project) -> float:
+def calculate_match_score_for_pair(user: User, project: Project, owner: User | None = None) -> float:
     """Average of both perspectives when a mutual like occurs."""
-    proj_score = calculate_project_score(user, project)
-    user_score = _calculate_user_score_single_project(user, project)
+    proj_score = calculate_project_score(user, project, owner)
+    user_score = _calculate_user_score_single_project(user, project, owner)
     return round((proj_score + user_score) / 2.0, 1)
 
 
@@ -310,9 +310,9 @@ def _owner_interest_score(target_user: User,
     return _jaccard(interests, project_fields) * 100.0
 
 
-def _owner_location_score(owner: User, target_profile: UserProfile) -> float:
+def _owner_location_score(owner: User | None, target_profile: UserProfile) -> float:
     """5 % — same location (case-insensitive)."""
-    owner_location = (owner.profile.location or "").strip().lower() if owner.profile else ""
+    owner_location = (owner.profile.location or "").strip().lower() if owner and owner.profile else ""
     target_location = (target_profile.location or "").strip().lower()
     if owner_location and target_location and owner_location == target_location:
         return 100.0
@@ -322,7 +322,8 @@ def _owner_location_score(owner: User, target_profile: UserProfile) -> float:
 # ── Single-project version (for match creation) ──────────────────────
 
 def _calculate_user_score_single_project(user: User,
-                                         project: Project) -> float:
+                                         project: Project,
+                                         owner: User | None = None) -> float:
     """Owner-mode scoring limited to one project."""
     weights = {
         "role_compat":          40,
@@ -346,8 +347,7 @@ def _calculate_user_score_single_project(user: User,
     scores["reputation"]        = _norm(profile.reputation_score, 5.0)
     scores["experience"]        = _norm(profile.projects_completed, 10.0)
     scores["interest_alignment"]= _owner_interest_score(user, rec)
-    scores["location"]          = _owner_location_score(
-        _owner_of(project), profile)
+    scores["location"]          = _owner_location_score(owner or _owner_of(project), profile)
     scores["verified_student"]  = 100.0 if user.verified_student else 0.0
 
     total = sum(scores[k] * weights[k] / 100.0 for k in weights)

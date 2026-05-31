@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     MAX_COURSE_SUGGESTIONS: int = 5
 
     MISTRAL_API_KEY: str = ""
-    MISTRAL_MODEL: str = "ministral-3b-2510"
+    MISTRAL_MODEL: str = "mistral-medium-latest"
 
     class Config:
         env_file = str(BACKEND_DIR / ".env")
