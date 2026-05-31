@@ -190,6 +190,7 @@ interface ApiService {
         @Path("userId") userId: String,
         @Body request: RejectStudentRequest
     ): AdminUserResponse
+
     @GET("api/v1/admin/users")
     suspend fun getAdminUsers(): List<AdminUserResponse>
 
@@ -202,6 +203,7 @@ interface ApiService {
     suspend fun unbanUserByAdmin(
         @Path("userId") userId: String
     ): AdminUserResponse
+
     @GET("api/v1/admin/reports")
     suspend fun getAdminReports(): List<AdminReportResponse>
 
@@ -210,4 +212,24 @@ interface ApiService {
         @Path("reportId") reportId: String,
         @Body request: ResolveReportRequest
     ): AdminReportResponse
+
+    @POST("api/v1/projects/{projectId}/feedback/{memberId}")
+    suspend fun submitFeedback(
+        @Path("projectId") projectId: String,
+        @Path("memberId") memberId: String,
+        @Body request: FeedbackCreateRequest
+    ): FeedbackResponse
+
+    @GET("api/v1/projects/{projectId}/my-feedback")
+    suspend fun getMyFeedback(
+        @Path("projectId") projectId: String
+    ): MyFeedbackSummaryResponse
+
+    @GET("api/v1/my-feedback-summary")
+    suspend fun getMyFeedbackSummary(): MyFeedbackSummaryResponse
+
+    @GET("api/v1/projects/{projectId}/members-to-feedback")
+    suspend fun getMembersToFeedback(
+        @Path("projectId") projectId: String
+    ): MembersToFeedbackResponse
 }

@@ -92,6 +92,7 @@ class ProjectResponse(BaseModel):
     end_date: datetime
     max_members: int
     status: str
+    review_status: str = "APPROVED"
     additional_requirements: str | None
     member_benefits: str | None
     role_slots: list[RoleSlotResponse] = []

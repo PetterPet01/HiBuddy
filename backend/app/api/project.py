@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_current_user_or_none
 from app.models.user import User
 from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.profile import UserProfile
@@ -17,9 +18,11 @@ from app.schemas.project import (
 )
 #from app.services.embedding_service import upsert_project_vector, delete_project_vector
 from app.services.notification_service import notify_member_added
+from app.services.mistral_service import moderate_project_content
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
@@ -43,6 +46,7 @@ async def create_project(
         select(func.count()).select_from(Project).where(
             Project.owner_id == current_user.id,
             Project.status.in_(["RECRUITING", "ACTIVE"]),
+            Project.review_status == "APPROVED",
         )
     )
     if active_count.scalar() >= settings.MAX_ACTIVE_PROJECTS_PER_OWNER:
@@ -93,11 +97,53 @@ async def create_project(
 
     await db.flush()
 
-    project_for_embedding = await _get_project_for_embedding(db, project.id)
-    embedding_id = None
-    #embedding_id = upsert_project_vector(project_for_embedding or project)
-    if embedding_id:
-        project.embedding_id = embedding_id
+    moderation = await moderate_project_content(
+        title=data.title,
+        description=data.description,
+        specific_goal=data.specific_goal,
+        additional_requirements=data.additional_requirements,
+        member_benefits=data.member_benefits,
+    )
+
+    if moderation["is_flagged"]:
+        project.review_status = "FLAGGED"
+        logger.warning(
+            "Project %s flagged by moderation: %s",
+            project.id, moderation["reasons"],
+        )
+        try:
+            # Query all admins
+            admins_result = await db.execute(
+                select(User).where(User.role == "ADMIN")
+            )
+            admins = admins_result.scalars().all()
+
+            from app.models.chat import Notification
+            from app.services.fcm_service import notify_user
+            import asyncio
+
+            for admin in admins:
+                notif = Notification(
+                    user_id=admin.id,
+                    type="PROJECT_FLAGGED_ADMIN",
+                    title="Dự án cần phê duyệt",
+                    body=f"Dự án '{project.title}' chứa nội dung không an toàn cần được kiểm duyệt.",
+                    related_id=str(project.id),
+                )
+                db.add(notif)
+                asyncio.create_task(notify_user(
+                    db, admin.id,
+                    "Dự án cần phê duyệt",
+                    f"Dự án '{project.title}' chứa nội dung không an toàn cần được kiểm duyệt.",
+                ))
+        except Exception as e:
+            logger.error(f"Failed to notify admins for flagged project: {e}")
+    else:
+        project.review_status = "APPROVED"
+        embedding_id = None
+        #embedding_id = upsert_project_vector(project_for_embedding or project)
+        if embedding_id:
+            project.embedding_id = embedding_id
 
     return await _build_project_response(db, project)
 
@@ -127,11 +173,19 @@ async def list_my_projects(
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: UUID,
+    current_user: User | None = Depends(get_current_user_or_none),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    is_owner = current_user and current_user.id == project.owner_id
+    is_admin = current_user and current_user.role == "ADMIN"
+
+    if project.review_status != "APPROVED" and not is_owner and not is_admin:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     return await _build_project_response(db, project)
 
 
@@ -168,12 +222,35 @@ async def close_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await db.get(Project, project_id)
+    from sqlalchemy.orm import selectinload
+    from app.models.chat import Notification
+    from app.services.fcm_service import notify_user
+    import asyncio
+
+    project = await db.get(Project, project_id, options=[selectinload(Project.members)])
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found or not authorized")
 
     project.status = "CLOSED"
     #delete_project_vector(project)
+
+    for member in project.members:
+        if member.user_id == current_user.id:
+            continue
+        notif = Notification(
+            user_id=member.user_id,
+            type="PROJECT_COMPLETED_FEEDBACK",
+            title="Dự án đã hoàn thành!",
+            body=f"'{project.title}' đã kết thúc. Hãy gửi feedback cho các thành viên trong nhóm.",
+            related_id=str(project_id),
+        )
+        db.add(notif)
+        asyncio.create_task(notify_user(
+            db, member.user_id,
+            "Dự án đã hoàn thành!",
+            f"'{project.title}' đã kết thúc. Gửi feedback cho đồng đội ngay.",
+        ))
+
     return {"message": "Project closed"}
 
 
@@ -190,6 +267,9 @@ async def add_member(
     project = await db.get(Project, project_id)
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found or not authorized")
+
+    if project.review_status != "APPROVED":
+        raise HTTPException(status_code=400, detail="Cannot add members to a project that is not approved")
 
     target_user = await db.get(User, user_id)
     if not target_user:
@@ -327,6 +407,7 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
         end_date=project.end_date,
         max_members=project.max_members,
         status=project.status,
+        review_status=project.review_status,
         additional_requirements=project.additional_requirements,
         member_benefits=project.member_benefits,
         role_slots=[RoleSlotResponse.model_validate(s) for s in slots_result.scalars().all()],
