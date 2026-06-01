@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.database import async_session
-from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
+from app.models.task import Task, TaskCheckoutHistory
 from app.models.project import Project
 from app.models.user import User
 from app.models.profile import UserProfile
@@ -122,7 +122,12 @@ async def auto_confirm_checkouts():
 
 
 async def _recalculate_user_score(db: AsyncSession, user_id):
-    """Recalculate reputation score based on task checkout history and evaluations."""
+    """Recalculate reputation score from closed assigned tasks only.
+
+    Raw per-task values:
+    EARLY = 6, ON_TIME = 5, LATE = 3, LATE_CHECKOUT/NOT_COMPLETED = 0.
+    The final average is capped at 5.
+    """
     tasks_result = await db.execute(
         select(Task).where(
             Task.assignee_id == user_id,
@@ -136,31 +141,20 @@ async def _recalculate_user_score(db: AsyncSession, user_id):
     if total_tasks == 0:
         return
 
-    task_score = 3.0
+    task_scores: list[float] = []
     for task in tasks:
         if task.checkout_status == "EARLY":
-            task_score += 0.1
+            task_scores.append(6.0)
+        elif task.checkout_status == "ON_TIME":
+            task_scores.append(5.0)
         elif task.checkout_status == "LATE":
-            task_score -= 0.2
-        elif task.checkout_status == "LATE_CHECKOUT":
-            task_score -= 0.5
+            task_scores.append(3.0)
+        elif task.checkout_status in ("LATE_CHECKOUT", "NOT_COMPLETED"):
+            task_scores.append(0.0)
+        else:
+            task_scores.append(0.0)
 
-    task_score = max(0, min(5, task_score))
-
-    evals_result = await db.execute(
-        select(ProjectEvaluation).where(ProjectEvaluation.evaluatee_id == user_id)
-    )
-    evaluations = evals_result.scalars().all()
-
-    eval_score = 3.0
-    if evaluations:
-        avg_scores = []
-        for ev in evaluations:
-            avg = (ev.quality_score + ev.collaboration_score + ev.communication_score + ev.deadline_score) / 4
-            avg_scores.append(avg)
-        eval_score = sum(avg_scores) / len(avg_scores)
-
-    final_score = 0.4 * task_score + 0.6 * eval_score
+    final_score = sum(task_scores) / len(task_scores)
     final_score = round(max(0, min(5, final_score)), 1)
 
     profile_result = await db.execute(

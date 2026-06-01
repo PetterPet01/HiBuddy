@@ -33,9 +33,11 @@ import com.example.hibuddy.ui.screens.auth.ForgotPasswordScreen
 import com.example.hibuddy.ui.screens.chat.ChatScreen
 import com.example.hibuddy.ui.screens.projects.CreateProjectScreen
 import com.example.hibuddy.ui.screens.projects.ProjectDetailScreen
+import com.example.hibuddy.ui.screens.queue.QueueScreen
 import com.example.hibuddy.ui.screens.SimpleCreateTaskScreen
 import kotlinx.coroutines.launch
 import com.example.hibuddy.ui.screens.profile.CompleteProfileScreen
+import com.example.hibuddy.ui.screens.profile.UserDetailScreen
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.hibuddy.ui.screens.admin.AdminScreen
 import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
@@ -75,6 +77,7 @@ object Routes {
     const val REGISTER = "auth/register"
     const val FORGOT = "auth/forgot"
     const val DISCOVER = "main/discover"
+    const val QUEUE = "main/queue"
     const val MATCHES = "main/matches"
     const val TASKS = "main/tasks"
     const val PROFILE = "main/profile"
@@ -85,6 +88,8 @@ object Routes {
         "main/chat/$matchId/${Uri.encode(userName)}/${Uri.encode(targetUserId)}"
     const val PROJECT_DETAIL = "main/project/{projectId}"
     fun projectDetail(projectId: String) = "main/project/$projectId"
+    const val USER_DETAIL = "main/user/{userId}"
+    fun userDetail(userId: String) = "main/user/$userId"
     const val CREATE_PROJECT = "main/create-project"
     const val CREATE_TASK = "main/create-task/{projectId}"
     fun createTask(projectId: String) = "main/create-task/$projectId"
@@ -221,7 +226,30 @@ fun HiBuddyApp() {
                 DiscoverScreen(
                     onCreateProject = {
                         navController.navigate(Routes.CREATE_PROJECT)
+                    },
+                    onOpenQueue = {
+                        navController.navigate(Routes.QUEUE)
                     }
+                )
+            }
+        }
+        composable(Routes.QUEUE) {
+            MainScaffold(
+                currentTab = "discover",
+                onTabSelect = { tab ->
+                    when (tab) {
+                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
+                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
+                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
+                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
+                    }
+                }
+            ) {
+                QueueScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenUser = { userId -> navController.navigate(Routes.userDetail(userId)) },
+                    onOpenProject = { projectId -> navController.navigate(Routes.projectDetail(projectId)) }
                 )
             }
         }
@@ -331,6 +359,17 @@ fun HiBuddyApp() {
             val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
             ProjectDetailScreen(
                 projectId = projectId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            Routes.USER_DETAIL,
+            arguments = listOf(navArgument("userId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            UserDetailScreen(
+                userId = userId,
                 onBack = { navController.popBackStack() }
             )
         }

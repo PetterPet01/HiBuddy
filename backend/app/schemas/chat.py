@@ -43,6 +43,45 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectInvitationCreate(BaseModel):
+    role_slot_id: UUID
+    message: str | None = None
+
+
+class InvitationRoleSlotResponse(BaseModel):
+    id: UUID
+    role_name: str
+    count: int
+    filled: int
+
+
+class ProjectInvitationOptionsResponse(BaseModel):
+    can_invite: bool
+    reason: str | None = None
+    project_id: UUID | None = None
+    project_title: str | None = None
+    open_role_slots: list[InvitationRoleSlotResponse] = []
+
+
+class ProjectInvitationResponse(BaseModel):
+    id: UUID
+    match_id: UUID
+    project_id: UUID
+    project_title: str
+    inviter_id: UUID
+    inviter_name: str
+    invitee_id: UUID
+    invitee_name: str
+    role_slot_id: UUID | None
+    role: str
+    message: str | None
+    status: str
+    created_at: datetime
+    responded_at: datetime | None = None
+    is_incoming: bool = False
+    is_outgoing: bool = False
+
+
 class ChatResponse(BaseModel):
     id: UUID
     match_id: UUID

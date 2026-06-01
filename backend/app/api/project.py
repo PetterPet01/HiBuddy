@@ -224,32 +224,75 @@ async def close_project(
 ):
     from sqlalchemy.orm import selectinload
     from app.models.chat import Notification
+    from app.models.task import Task, TaskCheckoutHistory
     from app.services.fcm_service import notify_user
+    from app.services.task_scheduler import _recalculate_user_score
     import asyncio
 
     project = await db.get(Project, project_id, options=[selectinload(Project.members)])
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found or not authorized")
 
+    if project.status == "CLOSED":
+        return {"message": "Project already closed"}
+
+    now = datetime.now(timezone.utc)
     project.status = "CLOSED"
     #delete_project_vector(project)
 
-    for member in project.members:
-        if member.user_id == current_user.id:
-            continue
+    tasks_result = await db.execute(
+        select(Task).where(
+            Task.project_id == project_id,
+            Task.status != "CLOSED",
+        )
+    )
+    affected_assignees: set[UUID] = set()
+    for task in tasks_result.scalars():
+        previous_status = task.status
+        task.status = "CLOSED"
+        if previous_status != "DONE_REVIEW":
+            task.checkout_status = "NOT_COMPLETED"
+        task.checkout_confirmed_at = now
+        affected_assignees.add(task.assignee_id)
+        db.add(TaskCheckoutHistory(
+            task_id=task.id,
+            action="PROJECT_CLOSE",
+            actor_id=current_user.id,
+            previous_status=previous_status,
+            new_status="CLOSED",
+            notes=(
+                "Project closed and submitted task was accepted"
+                if previous_status == "DONE_REVIEW"
+                else "Project closed before this task was completed"
+            ),
+        ))
+
+    participant_ids = {project.owner_id}
+    participant_ids.update(member.user_id for member in project.members)
+
+    for user_id in participant_ids:
+        profile_result = await db.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile:
+            profile.projects_completed += 1
         notif = Notification(
-            user_id=member.user_id,
+            user_id=user_id,
             type="PROJECT_COMPLETED_FEEDBACK",
-            title="Dự án đã hoàn thành!",
-            body=f"'{project.title}' đã kết thúc. Hãy gửi feedback cho các thành viên trong nhóm.",
+            title="Project completed",
+            body=f"'{project.title}' has ended. Send team feedback and review AI Course Suggestions to improve your skills.",
             related_id=str(project_id),
         )
         db.add(notif)
         asyncio.create_task(notify_user(
-            db, member.user_id,
-            "Dự án đã hoàn thành!",
-            f"'{project.title}' đã kết thúc. Gửi feedback cho đồng đội ngay.",
+            db, user_id,
+            "Project completed",
+            f"'{project.title}' has ended. You can send feedback and open AI Course Suggestions from your profile.",
         ))
+
+    for assignee_id in affected_assignees:
+        await _recalculate_user_score(db, assignee_id)
 
     return {"message": "Project closed"}
 
@@ -378,7 +421,17 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
     members_result = await db.execute(
         select(ProjectMember).where(ProjectMember.project_id == project.id)
     )
-    members = members_result.scalars().all()
+    members = list(members_result.scalars().all())
+    if not any(m.user_id == project.owner_id for m in members):
+        owner_member = ProjectMember(
+            project_id=project.id,
+            user_id=project.owner_id,
+            role="Project Owner",
+            is_owner=True,
+        )
+        db.add(owner_member)
+        await db.flush()
+        members.insert(0, owner_member)
 
     member_responses = []
     for m in members:

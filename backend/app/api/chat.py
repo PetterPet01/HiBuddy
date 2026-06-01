@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,13 +9,90 @@ from app.core.dependencies import get_current_user
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.swipe import Match
-from app.models.chat import Chat, Message, Notification
-from app.models.project import Project
+from app.models.chat import Chat, Message, Notification, ProjectInvitation
+from app.models.project import Project, ProjectMember, ProjectRoleSlot
+from app.schemas.chat import ProjectInvitationCreate
 from app.api.websocket import manager
 from app.services.notification_service import get_notifications, get_unread_notification_count
 from app.services.presence_service import presence_manager
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
+
+
+async def _get_authorized_match(db: AsyncSession, match_id: UUID, user: User) -> Match:
+    match = await db.get(Match, match_id)
+    if not match or user.id not in (match.user_id, match.owner_id) or match.is_unmatched:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return match
+
+
+async def _build_invitation_response(db: AsyncSession, invitation: ProjectInvitation, current_user: User) -> dict:
+    project = await db.get(Project, invitation.project_id)
+    inviter = await db.get(User, invitation.inviter_id)
+    invitee = await db.get(User, invitation.invitee_id)
+    return {
+        "id": str(invitation.id),
+        "match_id": str(invitation.match_id),
+        "project_id": str(invitation.project_id),
+        "project_title": project.title if project else "",
+        "inviter_id": str(invitation.inviter_id),
+        "inviter_name": inviter.full_name if inviter else "",
+        "invitee_id": str(invitation.invitee_id),
+        "invitee_name": invitee.full_name if invitee else "",
+        "role_slot_id": str(invitation.role_slot_id) if invitation.role_slot_id else None,
+        "role": invitation.role,
+        "message": invitation.message,
+        "status": invitation.status,
+        "created_at": invitation.created_at.isoformat() if invitation.created_at else "",
+        "responded_at": invitation.responded_at.isoformat() if invitation.responded_at else None,
+        "is_incoming": invitation.invitee_id == current_user.id,
+        "is_outgoing": invitation.inviter_id == current_user.id,
+    }
+
+
+async def _add_member_from_invitation(db: AsyncSession, invitation: ProjectInvitation) -> None:
+    project = await db.get(Project, invitation.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.review_status != "APPROVED":
+        raise HTTPException(status_code=400, detail="Cannot add members to a project that is not approved")
+
+    existing = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == invitation.project_id,
+            ProjectMember.user_id == invitation.invitee_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return
+
+    member_count_result = await db.execute(
+        select(func.count()).select_from(ProjectMember).where(ProjectMember.project_id == invitation.project_id)
+    )
+    member_count = member_count_result.scalar() or 0
+    if member_count >= project.max_members:
+        raise HTTPException(status_code=400, detail="Project is already full")
+
+    slot = await db.get(ProjectRoleSlot, invitation.role_slot_id) if invitation.role_slot_id else None
+    if not slot or slot.project_id != invitation.project_id:
+        raise HTTPException(status_code=404, detail="Role slot not found")
+    if slot.filled >= slot.count:
+        raise HTTPException(status_code=400, detail="Selected role slot is already filled")
+
+    db.add(ProjectMember(project_id=invitation.project_id, user_id=invitation.invitee_id, role=invitation.role))
+    await db.flush()
+    slot.filled += 1
+
+    match = await db.get(Match, invitation.match_id)
+    if match:
+        match.is_member_added = True
+        match.role_matched = invitation.role
+
+    slots_result = await db.execute(select(ProjectRoleSlot).where(ProjectRoleSlot.project_id == invitation.project_id))
+    slots = slots_result.scalars().all()
+    all_slots_filled = bool(slots) and all(s.filled >= s.count for s in slots)
+    if member_count + 1 >= project.max_members or all_slots_filled:
+        project.status = "ACTIVE"
 
 
 @router.get("/chat/inbox")
@@ -144,6 +221,175 @@ async def get_messages(
             "created_at": msg.created_at.isoformat(),
             "sender_name": sender.full_name if sender else None,
         })
+    return response
+
+
+@router.get("/chat/{match_id}/project-invitations/options")
+async def get_project_invitation_options(
+    match_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    match = await _get_authorized_match(db, match_id, current_user)
+    if match.owner_id != current_user.id:
+        return {"can_invite": False, "reason": "Only the project owner can invite members", "open_role_slots": []}
+    if match.is_member_added:
+        return {"can_invite": False, "reason": "This match is already a project member", "open_role_slots": []}
+
+    project = await db.get(Project, match.project_id)
+    if not project:
+        return {"can_invite": False, "reason": "Project not found", "open_role_slots": []}
+    if project.review_status != "APPROVED":
+        return {"can_invite": False, "reason": "Project is not approved yet", "project_id": project.id, "project_title": project.title, "open_role_slots": []}
+
+    existing_member = await db.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == match.user_id,
+        )
+    )
+    if existing_member:
+        return {"can_invite": False, "reason": "This user is already a member", "project_id": project.id, "project_title": project.title, "open_role_slots": []}
+
+    role_slots = (await db.execute(
+        select(ProjectRoleSlot).where(ProjectRoleSlot.project_id == project.id).order_by(ProjectRoleSlot.role_name)
+    )).scalars().all()
+    open_slots = [
+        {"id": slot.id, "role_name": slot.role_name, "count": slot.count, "filled": slot.filled}
+        for slot in role_slots
+        if slot.filled < slot.count
+    ]
+
+    return {
+        "can_invite": bool(open_slots),
+        "reason": None if open_slots else "No open role slots remaining",
+        "project_id": project.id,
+        "project_title": project.title,
+        "open_role_slots": open_slots,
+    }
+
+
+@router.get("/chat/{match_id}/project-invitations")
+async def list_project_invitations(
+    match_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_authorized_match(db, match_id, current_user)
+    result = await db.execute(
+        select(ProjectInvitation)
+        .where(ProjectInvitation.match_id == match_id)
+        .order_by(ProjectInvitation.created_at.desc())
+    )
+    return [await _build_invitation_response(db, invitation, current_user) for invitation in result.scalars().all()]
+
+
+@router.post("/chat/{match_id}/project-invitations")
+async def create_project_invitation(
+    match_id: UUID,
+    data: ProjectInvitationCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    match = await _get_authorized_match(db, match_id, current_user)
+    if match.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the project owner can invite members")
+    if match.is_member_added:
+        raise HTTPException(status_code=400, detail="This match is already a project member")
+
+    slot = await db.get(ProjectRoleSlot, data.role_slot_id)
+    if not slot or slot.project_id != match.project_id:
+        raise HTTPException(status_code=404, detail="Role slot not found")
+    if slot.filled >= slot.count:
+        raise HTTPException(status_code=400, detail="Selected role slot is already filled")
+
+    existing_pending = await db.scalar(
+        select(ProjectInvitation).where(
+            ProjectInvitation.match_id == match.id,
+            ProjectInvitation.invitee_id == match.user_id,
+            ProjectInvitation.status == "PENDING",
+        )
+    )
+    if existing_pending:
+        raise HTTPException(status_code=400, detail="There is already a pending invitation for this match")
+
+    invitation = ProjectInvitation(
+        match_id=match.id,
+        project_id=match.project_id,
+        inviter_id=current_user.id,
+        invitee_id=match.user_id,
+        role_slot_id=slot.id,
+        role=slot.role_name,
+        message=data.message,
+    )
+    db.add(invitation)
+    await db.flush()
+
+    project = await db.get(Project, match.project_id)
+    db.add(Notification(
+        user_id=match.user_id,
+        type="PROJECT_INVITATION",
+        title="Project invitation",
+        body=f"{current_user.full_name} invited you to join {project.title if project else 'a project'} as {slot.role_name}.",
+        related_id=str(invitation.id),
+    ))
+
+    response = await _build_invitation_response(db, invitation, current_user)
+    await manager.send_message(str(match.user_id), str(match.id), {"type": "project_invitation", "data": response})
+    return response
+
+
+@router.post("/project-invitations/{invitation_id}/accept")
+async def accept_project_invitation(
+    invitation_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    invitation = await db.get(ProjectInvitation, invitation_id)
+    if not invitation or invitation.invitee_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if invitation.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Invitation is no longer pending")
+
+    await _add_member_from_invitation(db, invitation)
+    invitation.status = "ACCEPTED"
+    invitation.responded_at = datetime.now(timezone.utc)
+
+    db.add(Notification(
+        user_id=invitation.inviter_id,
+        type="PROJECT_INVITATION_ACCEPTED",
+        title="Invitation accepted",
+        body=f"{current_user.full_name} accepted your project invitation.",
+        related_id=str(invitation.id),
+    ))
+    response = await _build_invitation_response(db, invitation, current_user)
+    await manager.send_message(str(invitation.inviter_id), str(invitation.match_id), {"type": "project_invitation", "data": response})
+    return response
+
+
+@router.post("/project-invitations/{invitation_id}/decline")
+async def decline_project_invitation(
+    invitation_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    invitation = await db.get(ProjectInvitation, invitation_id)
+    if not invitation or invitation.invitee_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if invitation.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Invitation is no longer pending")
+
+    invitation.status = "DECLINED"
+    invitation.responded_at = datetime.now(timezone.utc)
+    db.add(Notification(
+        user_id=invitation.inviter_id,
+        type="PROJECT_INVITATION_DECLINED",
+        title="Invitation declined",
+        body=f"{current_user.full_name} declined your project invitation.",
+        related_id=str(invitation.id),
+    ))
+    response = await _build_invitation_response(db, invitation, current_user)
+    await manager.send_message(str(invitation.inviter_id), str(invitation.match_id), {"type": "project_invitation", "data": response})
     return response
 
 

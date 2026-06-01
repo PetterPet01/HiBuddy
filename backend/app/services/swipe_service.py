@@ -10,7 +10,7 @@ from pymilvus import Collection
 
 from app.config import get_settings
 from app.milvus_client import connect_milvus, disconnect_milvus
-from app.models.swipe import SwipeAction, Match
+from app.models.swipe import SwipeAction, Match, SwipeQueueItem
 from app.models.project import Project, ProjectRoleSlot
 from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill
@@ -26,6 +26,8 @@ from app.services.matching_service import (
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+QUEUE_LIMIT_PER_TYPE = 3
+QUEUE_TTL = timedelta(hours=24)
 
 
 async def get_daily_likes_remaining(db: AsyncSession, user_id: UUID) -> int:
@@ -104,6 +106,285 @@ async def perform_swipe_action(
             return {"matched": True, "match_id": str(matched.id)}
 
     return {"matched": False, "message": f"Recorded {action.lower()}"}
+
+
+async def expire_queued_items(db: AsyncSession, user_id: UUID) -> None:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(SwipeQueueItem).where(
+            SwipeQueueItem.swiper_id == user_id,
+            SwipeQueueItem.is_active == True,
+            SwipeQueueItem.expires_at <= now,
+        )
+    )
+    for item in result.scalars().all():
+        existing_pass = await db.execute(
+            select(SwipeAction).where(
+                SwipeAction.swiper_id == user_id,
+                SwipeAction.target_type == item.target_type,
+                SwipeAction.target_id == item.target_id,
+                SwipeAction.action == "PASS",
+                SwipeAction.is_active == True,
+            ).limit(1)
+        )
+        if not existing_pass.scalar_one_or_none():
+            db.add(
+                SwipeAction(
+                    swiper_id=user_id,
+                    target_type=item.target_type,
+                    target_id=item.target_id,
+                    action="PASS",
+                )
+            )
+        item.is_active = False
+        item.resolution = "EXPIRED"
+        item.resolved_at = now
+
+
+async def add_to_queue(db: AsyncSession, user: User, target_type: str, target_id: str) -> dict:
+    target_type = target_type.upper()
+    if target_type not in {"PROJECT", "USER"}:
+        raise ValueError("Invalid queue target type")
+
+    await expire_queued_items(db, user.id)
+    await _ensure_queue_target_exists(db, target_type, target_id)
+
+    existing_swipe = await db.execute(
+        select(SwipeAction).where(
+            SwipeAction.swiper_id == user.id,
+            SwipeAction.target_type == target_type,
+            SwipeAction.target_id == target_id,
+            SwipeAction.is_active == True,
+        ).limit(1)
+    )
+    if existing_swipe.scalar_one_or_none():
+        raise ValueError("This profile already has a swipe decision")
+
+    existing_queue = await db.execute(
+        select(SwipeQueueItem).where(
+            SwipeQueueItem.swiper_id == user.id,
+            SwipeQueueItem.target_type == target_type,
+            SwipeQueueItem.target_id == target_id,
+            SwipeQueueItem.is_active == True,
+        ).limit(1)
+    )
+    existing_item = existing_queue.scalar_one_or_none()
+    if existing_item:
+        return {"message": "Already in queue", "queue_item_id": str(existing_item.id)}
+
+    active_count = await db.scalar(
+        select(func.count()).select_from(SwipeQueueItem).where(
+            SwipeQueueItem.swiper_id == user.id,
+            SwipeQueueItem.target_type == target_type,
+            SwipeQueueItem.is_active == True,
+        )
+    )
+    if (active_count or 0) >= QUEUE_LIMIT_PER_TYPE:
+        label = "user profiles" if target_type == "USER" else "project profiles"
+        raise ValueError(f"Queue is full for {label}")
+
+    now = datetime.now(timezone.utc)
+    item = SwipeQueueItem(
+        swiper_id=user.id,
+        target_type=target_type,
+        target_id=target_id,
+        expires_at=now + QUEUE_TTL,
+    )
+    db.add(item)
+    await db.flush()
+    return {"message": "Added to queue", "queue_item_id": str(item.id)}
+
+
+async def get_queue(db: AsyncSession, user: User) -> dict:
+    await expire_queued_items(db, user.id)
+    result = await db.execute(
+        select(SwipeQueueItem).where(
+            SwipeQueueItem.swiper_id == user.id,
+            SwipeQueueItem.is_active == True,
+        ).order_by(SwipeQueueItem.queued_at.asc())
+    )
+    items = result.scalars().all()
+
+    user_items = []
+    project_items = []
+    for item in items:
+        payload = await _build_queue_item_payload(db, user, item)
+        if item.target_type == "USER":
+            user_items.append(payload)
+        elif item.target_type == "PROJECT":
+            project_items.append(payload)
+
+    return {
+        "user_profiles": user_items,
+        "project_profiles": project_items,
+        "user_capacity_remaining": max(0, QUEUE_LIMIT_PER_TYPE - len(user_items)),
+        "project_capacity_remaining": max(0, QUEUE_LIMIT_PER_TYPE - len(project_items)),
+    }
+
+
+async def decide_queue_item(db: AsyncSession, user: User, queue_item_id: UUID, action: str) -> dict:
+    action = action.upper()
+    if action not in {"PASS", "LIKE", "SUPER_LIKE"}:
+        raise ValueError("Invalid queue action")
+    await expire_queued_items(db, user.id)
+
+    item = await _get_active_queue_item(db, user.id, queue_item_id)
+    result = await perform_swipe_action(db, user, item.target_type, item.target_id, action)
+    item.is_active = False
+    item.resolution = action
+    item.resolved_at = datetime.now(timezone.utc)
+    result["message"] = result.get("message") or "Queue decision recorded"
+    return result
+
+
+async def remove_queue_item(db: AsyncSession, user: User, queue_item_id: UUID) -> dict:
+    await expire_queued_items(db, user.id)
+    item = await _get_active_queue_item(db, user.id, queue_item_id)
+    item.is_active = False
+    item.resolution = "REMOVED"
+    item.resolved_at = datetime.now(timezone.utc)
+    return {"message": "Removed from queue"}
+
+
+async def _get_active_queue_item(db: AsyncSession, user_id: UUID, queue_item_id: UUID) -> SwipeQueueItem:
+    result = await db.execute(
+        select(SwipeQueueItem).where(
+            SwipeQueueItem.id == queue_item_id,
+            SwipeQueueItem.swiper_id == user_id,
+            SwipeQueueItem.is_active == True,
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise ValueError("Queue item not found")
+    return item
+
+
+async def _ensure_queue_target_exists(db: AsyncSession, target_type: str, target_id: str) -> None:
+    try:
+        target_uuid = UUID(target_id)
+    except ValueError:
+        raise ValueError("Invalid queue target id")
+
+    if target_type == "PROJECT":
+        project = await db.get(Project, target_uuid)
+        if not project:
+            raise ValueError("Project not found")
+    else:
+        profile = await db.scalar(select(UserProfile).where(UserProfile.user_id == target_uuid))
+        if not profile:
+            raise ValueError("Profile not found")
+
+
+async def _build_queue_item_payload(db: AsyncSession, user: User, item: SwipeQueueItem) -> dict:
+    now = datetime.now(timezone.utc)
+    expires_at = _as_aware_utc(item.expires_at)
+    payload = {
+        "id": str(item.id),
+        "target_type": item.target_type,
+        "target_id": item.target_id,
+        "queued_at": item.queued_at,
+        "expires_at": item.expires_at,
+        "seconds_remaining": max(0, int((expires_at - now).total_seconds())),
+        "user_card": None,
+        "project_card": None,
+    }
+    if item.target_type == "USER":
+        payload["user_card"] = await _build_user_queue_card(db, user, UUID(item.target_id))
+    elif item.target_type == "PROJECT":
+        payload["project_card"] = await _build_project_queue_card(db, user, UUID(item.target_id))
+    return payload
+
+
+async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) -> dict | None:
+    profile = await db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
+    target_user = await db.get(
+        User,
+        user_id,
+        options=[
+            selectinload(User.roles),
+            selectinload(User.skills),
+            selectinload(User.interests),
+            selectinload(User.profile),
+        ],
+    )
+    if not profile or not target_user:
+        return None
+
+    roles = await db.execute(select(UserRole).where(UserRole.user_id == user_id).order_by(UserRole.ordering).limit(3))
+    skills = await db.execute(select(UserSkill).where(UserSkill.user_id == user_id))
+    owner_projects = await _get_owner_projects(db, user)
+    match_score = calculate_user_score(user, target_user, profile, owner_projects)
+
+    return {
+        "user_id": str(profile.user_id),
+        "display_name": profile.display_name,
+        "avatar_url": target_user.avatar_url,
+        "verified_student": target_user.verified_student,
+        "university": target_user.university,
+        "bio": profile.bio[:100] if profile.bio else None,
+        "roles": [
+            {"id": str(r.id), "role_name": r.role_name, "ordering": r.ordering}
+            for r in roles.scalars()
+        ],
+        "skills": [
+            {"id": str(s.id), "skill_name": s.skill_name, "level": s.level, "needs_improvement": s.needs_improvement}
+            for s in skills.scalars()
+        ],
+        "location": profile.location,
+        "github_url": profile.github_url,
+        "reputation_score": profile.reputation_score,
+        "projects_completed": profile.projects_completed,
+        "match_score": round(match_score, 1),
+    }
+
+
+async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UUID) -> dict | None:
+    project = await db.scalar(
+        select(Project)
+        .options(selectinload(Project.role_slots))
+        .where(Project.id == project_id)
+    )
+    if not project:
+        return None
+
+    owner = await db.get(User, project.owner_id, options=[selectinload(User.profile)])
+    total_filled = sum(s.filled for s in project.role_slots)
+    total_slots = sum(s.count for s in project.role_slots)
+    match_score = calculate_project_score(user, project, owner)
+
+    return {
+        "project_id": str(project.id),
+        "title": project.title,
+        "field": project.field,
+        "description": project.description[:300],
+        "owner_name": owner.full_name if owner else "",
+        "owner_avatar": owner.avatar_url if owner else None,
+        "owner_verified": owner.verified_student if owner else False,
+        "role_slots": [
+            {
+                "id": str(s.id),
+                "role_name": s.role_name,
+                "count": s.count,
+                "filled": s.filled,
+                "skill_requirements": s.skill_requirements,
+            }
+            for s in project.role_slots
+        ],
+        "work_mode": project.work_mode,
+        "commitment_level": project.commitment_level,
+        "start_date": project.start_date.isoformat() if project.start_date else None,
+        "end_date": project.end_date.isoformat() if project.end_date else None,
+        "total_slots": total_slots,
+        "filled_slots": total_filled,
+        "match_score": round(match_score, 1),
+    }
+
+
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, target_id: str) -> Match | None:
@@ -248,6 +529,7 @@ async def get_discover_cards(
 
 
 async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str], set[str]]:
+    await expire_queued_items(db, user_id)
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=settings.PASS_COOLDOWN_DAYS)
 
     recent_passes = await db.execute(
@@ -273,6 +555,18 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
         elif tgt_type == "PROJECT":
             exclude_project_ids.add(tgt_id)
     for tgt_id, tgt_type in all_likes.all():
+        if tgt_type == "USER":
+            exclude_user_ids.add(tgt_id)
+        elif tgt_type == "PROJECT":
+            exclude_project_ids.add(tgt_id)
+
+    active_queue = await db.execute(
+        select(SwipeQueueItem.target_id, SwipeQueueItem.target_type).where(
+            SwipeQueueItem.swiper_id == user_id,
+            SwipeQueueItem.is_active == True,
+        )
+    )
+    for tgt_id, tgt_type in active_queue.all():
         if tgt_type == "USER":
             exclude_user_ids.add(tgt_id)
         elif tgt_type == "PROJECT":

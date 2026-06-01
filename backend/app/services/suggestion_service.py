@@ -4,17 +4,15 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 
-from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
+from app.models.task import Task
 from app.models.chat import CourseSuggestion
 from app.models.profile import UserSkill, UserProfile, UserRole
 from app.models.feedback import AnonymousFeedback
 from app.models.user import User
-from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 COURSE_CATALOG: list[dict[str, Any]] = [
     {
@@ -117,6 +115,24 @@ COURSE_CATALOG: list[dict[str, Any]] = [
         "duration_hours": 20,
     },
     {
+        "course_id": "coursera-time-management",
+        "title": "Work Smarter, Not Harder: Time Management",
+        "source": "Coursera",
+        "url": "https://www.coursera.org/learn/work-smarter-not-harder",
+        "skills": ["Time Management", "Planning", "Productivity"],
+        "level": "Beginner",
+        "duration_hours": 8,
+    },
+    {
+        "course_id": "coursera-feedback",
+        "title": "Giving and Receiving Feedback",
+        "source": "Coursera",
+        "url": "https://www.coursera.org/learn/feedback",
+        "skills": ["Feedback", "Communication", "Teamwork"],
+        "level": "Beginner",
+        "duration_hours": 6,
+    },
+    {
         "course_id": "udemy-nodejs",
         "title": "Node.js - The Complete Guide",
         "source": "Udemy",
@@ -173,40 +189,20 @@ async def _get_feedback_weaknesses(db: AsyncSession, user_id: UUID) -> dict[str,
 async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[dict]:
     skill_scores: dict[str, float] = defaultdict(float)
 
-    late_tasks_result = await db.execute(
+    weak_task_result = await db.execute(
         select(Task).where(
             Task.assignee_id == user_id,
-            Task.checkout_status == "LATE",
+            Task.checkout_status.in_(["LATE", "LATE_CHECKOUT", "NOT_COMPLETED"]),
         )
     )
-    for task in late_tasks_result.scalars():
+    for task in weak_task_result.scalars():
+        weight = 1.0 if task.checkout_status in ("LATE_CHECKOUT", "NOT_COMPLETED") else 0.7
+        skill_scores["Time Management"] += weight
+        skill_scores["Planning"] += weight * 0.5
         if task.role_related:
-            skill_scores[task.role_related] += 0.5
-
-    low_eval_result = await db.execute(
-        select(ProjectEvaluation).where(
-            ProjectEvaluation.evaluatee_id == user_id,
-            ProjectEvaluation.overall_score < 3.0,
-        )
-    )
-    for evaluation in low_eval_result.scalars():
-        if evaluation.quality_score < 3.0:
-            skill_scores["Technical Quality"] += 0.3
-        if evaluation.collaboration_score < 3.0:
-            skill_scores["Teamwork"] += 0.3
-        if evaluation.communication_score < 3.0:
-            skill_scores["Communication"] += 0.3
-        if evaluation.deadline_score < 3.0:
-            skill_scores["Time Management"] += 0.3
-
-    profile_skills_result = await db.execute(
-        select(UserSkill).where(
-            UserSkill.user_id == user_id,
-            UserSkill.needs_improvement == True,
-        )
-    )
-    for skill in profile_skills_result.scalars():
-        skill_scores[skill.skill_name] += 0.2
+            skill_scores[task.role_related] += weight
+        if task.tag:
+            skill_scores[task.tag] += weight * 0.4
 
     fb_weaknesses = await _get_feedback_weaknesses(db, user_id)
     for skill, weight in fb_weaknesses.items():
@@ -226,13 +222,18 @@ async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[d
             continue
 
         match_score = 0.0
+        matched_skills: list[str] = []
         for skill in course["skills"]:
             if skill in skill_scores:
                 match_score += skill_scores[skill] * 100
+                if skill not in matched_skills:
+                    matched_skills.append(skill)
             skill_lower = skill.lower()
             for ks, kv in skill_scores.items():
                 if skill_lower in ks.lower() or ks.lower() in skill_lower:
                     match_score += kv * 50
+                    if skill not in matched_skills:
+                        matched_skills.append(skill)
 
         if match_score > 0:
             suggestions.append({
@@ -240,7 +241,7 @@ async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[d
                 "course_title": course["title"],
                 "source": course["source"],
                 "url": course["url"],
-                "target_skill": ", ".join(course["skills"]),
+                "target_skill": ", ".join(matched_skills) if matched_skills else ", ".join(course["skills"]),
                 "match_percent": min(round(match_score, 1), 99.0),
             })
 
@@ -252,7 +253,7 @@ async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[d
     existing_suggestions = existing.scalars().all()
 
     result = []
-    for s in suggestions[:settings.MAX_COURSE_SUGGESTIONS]:
+    for s in suggestions[:3]:
         found = False
         for es in existing_suggestions:
             if es.course_id == s["course_id"] and not es.is_dismissed:

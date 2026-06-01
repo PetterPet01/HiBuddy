@@ -134,7 +134,6 @@ fun ProfileScreen(
 
     LaunchedEffect(Unit) {
         profileViewModel.loadProfile()
-        profileViewModel.loadSuggestions()
     }
 
     uiState.error?.let { error ->
@@ -168,10 +167,6 @@ fun ProfileScreen(
             Text("Profile", fontSize = 26.sp, fontWeight = FontWeight.Black, color = colorScheme.onBackground)
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = { profileViewModel.refreshSuggestions() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh Suggestions", tint = colorScheme.onSurfaceVariant)
-                }
-
                 IconButton(
                     onClick = {
                         onDismissCompletionHint()
@@ -529,9 +524,45 @@ fun ProfileScreen(
 
 // ... existing code ...
 
-            if (uiState.courseSuggestions.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
-                ProfileSection(title = "AI SUGGESTED COURSES") {
+            Spacer(modifier = Modifier.height(20.dp))
+            ProfileSection(title = "AI COURSE SUGGESTIONS") {
+                Button(
+                    onClick = { profileViewModel.refreshSuggestions() },
+                    enabled = !uiState.isSuggestionLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    if (uiState.isSuggestionLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (uiState.isSuggestionLoading) "Generating..." else "AI Course Suggestions")
+                }
+
+                if (uiState.hasRequestedSuggestions && uiState.courseSuggestions.isEmpty() && !uiState.isSuggestionLoading) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "No course suggestions yet. Suggestions appear after late tasks, unfinished tasks, or feedback weaknesses are available.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+                }
+
+                if (uiState.courseSuggestions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
                     uiState.courseSuggestions.forEach { course ->
                         CourseRecommendationCard(
                             course = course,

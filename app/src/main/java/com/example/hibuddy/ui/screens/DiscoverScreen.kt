@@ -30,12 +30,13 @@ import kotlin.math.roundToInt
 
 enum class CardMode { PEOPLE, PROJECTS }
 
-private enum class SwipeIntent { Pass, Like, SuperLike }
+private enum class SwipeIntent { Pass, Like, SuperLike, Queue }
 
 @Composable
 fun DiscoverScreen(
     viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory),
     onCreateProject: () -> Unit = {},
+    onOpenQueue: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
@@ -116,7 +117,8 @@ fun DiscoverScreen(
                             enabled = !uiState.isSwiping,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
-                            onSuperLike = { viewModel.swipe("SUPER_LIKE") }
+                            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+                            onQueueDrop = { viewModel.queueCurrentCard() }
                         )
                     } else {
                         SwipeableProjectCard(
@@ -125,7 +127,8 @@ fun DiscoverScreen(
                             enabled = !uiState.isSwiping,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
-                            onSuperLike = { viewModel.swipe("SUPER_LIKE") }
+                            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+                            onQueueDrop = { viewModel.queueCurrentCard() }
                         )
                     }
                 }
@@ -143,6 +146,14 @@ fun DiscoverScreen(
             Spacer(Modifier.height(4.dp))
         }
 
+        QueueCornerButton(
+            count = uiState.queuedUserCount + uiState.queuedProjectCount,
+            onClick = onOpenQueue,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 58.dp, end = 16.dp)
+        )
+
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -153,6 +164,42 @@ fun DiscoverScreen(
 
     if (uiState.matchedProjectId != null) {
         MatchDialog(onDismiss = { viewModel.clearMatch() })
+    }
+}
+
+@Composable
+private fun QueueCornerButton(
+    count: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    Box(modifier = modifier) {
+        FloatingActionButton(
+            onClick = onClick,
+            modifier = Modifier.size(52.dp),
+            containerColor = colorScheme.primaryContainer,
+            contentColor = colorScheme.onPrimaryContainer,
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(2.dp)
+        ) {
+            Icon(Icons.Filled.Bookmark, contentDescription = "Open queue", modifier = Modifier.size(24.dp))
+        }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 4.dp, y = (-4).dp),
+            shape = CircleShape,
+            color = if (count >= 6) MaterialTheme.colorScheme.error else HiBuddyColors.success
+        ) {
+            Text(
+                count.toString(),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
     }
 }
 
@@ -224,6 +271,7 @@ private fun SwipeableCardFrame(
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
+    onQueueDrop: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -231,6 +279,7 @@ private fun SwipeableCardFrame(
     val latestOnSwipeLeft by rememberUpdatedState(onSwipeLeft)
     val latestOnSwipeRight by rememberUpdatedState(onSwipeRight)
     val latestOnSuperLike by rememberUpdatedState(onSuperLike)
+    val latestOnQueueDrop by rememberUpdatedState(onQueueDrop)
 
     var cardOffset by remember(cardKey) { mutableStateOf(Offset.Zero) }
     var isDragging by remember(cardKey) { mutableStateOf(false) }
@@ -296,6 +345,7 @@ private fun SwipeableCardFrame(
                     SwipeIntent.Pass -> latestOnSwipeLeft()
                     SwipeIntent.Like -> latestOnSwipeRight()
                     SwipeIntent.SuperLike -> latestOnSuperLike()
+                    SwipeIntent.Queue -> latestOnQueueDrop()
                     null -> Unit
                 }
             }
@@ -312,8 +362,14 @@ private fun SwipeableCardFrame(
             val superLikeScore =
                 (-projectedOffset.y).coerceAtLeast(0f) / verticalThreshold +
                     (-velocityY).coerceAtLeast(0f) / velocityThreshold * 0.3f
+            val queueScore =
+                projectedOffset.x.coerceAtLeast(0f) / horizontalThreshold * 0.6f +
+                    (-projectedOffset.y).coerceAtLeast(0f) / verticalThreshold * 0.8f
 
             val intent = when {
+                queueScore >= 1.15f &&
+                    projectedOffset.x > horizontalThreshold * 0.55f &&
+                    projectedOffset.y < -verticalThreshold * 0.45f -> SwipeIntent.Queue
                 horizontalScore >= 1f && horizontalScore >= superLikeScore ->
                     if (projectedOffset.x >= 0f) SwipeIntent.Like else SwipeIntent.Pass
                 superLikeScore >= 1f -> SwipeIntent.SuperLike
@@ -338,6 +394,10 @@ private fun SwipeableCardFrame(
                     x = (cardOffset.x + velocityX * 0.08f).coerceIn(-widthPx * 0.35f, widthPx * 0.35f),
                     y = -heightPx - exitPadding,
                 )
+                SwipeIntent.Queue -> Offset(
+                    x = widthPx * 0.42f,
+                    y = -heightPx * 0.42f,
+                )
                 null -> Offset.Zero
             }
 
@@ -352,6 +412,10 @@ private fun SwipeableCardFrame(
         val likeAlpha = (cardOffset.x / horizontalThreshold).coerceIn(0f, 1f)
         val passAlpha = (-cardOffset.x / horizontalThreshold).coerceIn(0f, 1f)
         val superLikeAlpha = (-cardOffset.y / verticalThreshold).coerceIn(0f, 1f)
+        val queueAlpha = (
+            cardOffset.x.coerceAtLeast(0f) / horizontalThreshold * 0.45f +
+                (-cardOffset.y).coerceAtLeast(0f) / verticalThreshold * 0.65f
+            ).coerceIn(0f, 1f)
         val colorScheme = MaterialTheme.colorScheme
 
         val dragModifier = if (enabled) {
@@ -479,6 +543,26 @@ private fun SwipeableCardFrame(
                     )
                 }
             }
+            if (queueAlpha > 0.08f && cardOffset.x > 0f && cardOffset.y < 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(colorScheme.primary.copy(alpha = queueAlpha * 0.16f), RoundedCornerShape(24.dp)),
+                )
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(20.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = colorScheme.primaryContainer.copy(alpha = queueAlpha),
+                ) {
+                    Text(
+                        "QUEUE",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
         }
     }
 }
@@ -491,6 +575,7 @@ fun SwipeableUserCard(
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
+    onQueueDrop: () -> Unit,
 ) {
     SwipeableCardFrame(
         cardKey = card.userId,
@@ -502,6 +587,7 @@ fun SwipeableUserCard(
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,
+        onQueueDrop = onQueueDrop,
     ) {
         UserSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
     }
@@ -620,6 +706,7 @@ fun SwipeableProjectCard(
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
+    onQueueDrop: () -> Unit,
 ) {
     SwipeableCardFrame(
         cardKey = card.projectId,
@@ -631,6 +718,7 @@ fun SwipeableProjectCard(
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,
+        onQueueDrop = onQueueDrop,
     ) {
         ProjectSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
     }

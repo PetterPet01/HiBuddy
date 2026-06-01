@@ -8,7 +8,7 @@ from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.project import Project, ProjectMember
-from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
+from app.models.task import Task, TaskCheckoutHistory
 from app.models.profile import UserProfile
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskStatusUpdate, TaskCheckoutOverride,
@@ -34,13 +34,14 @@ async def create_task(
         raise HTTPException(status_code=403, detail="Only project owner can create tasks")
 
     assignee_uuid = UUID(data.assignee_id)
+    is_owner_assignee = assignee_uuid == project.owner_id
     member_result = await db.execute(
         select(ProjectMember).where(
             ProjectMember.project_id == project_id,
             ProjectMember.user_id == assignee_uuid,
         )
     )
-    if not member_result.scalar_one_or_none():
+    if not is_owner_assignee and not member_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Assignee must be a member of the project")
 
     start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
@@ -84,13 +85,17 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     member_check = await db.execute(
         select(ProjectMember).where(
             ProjectMember.project_id == project_id,
             ProjectMember.user_id == current_user.id,
         )
     )
-    if not member_check.scalar_one_or_none():
+    if project.owner_id != current_user.id and not member_check.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not a member of this project")
 
     query = select(Task).where(Task.project_id == project_id)
@@ -157,6 +162,8 @@ async def update_task_status(
         project = await db.get(Project, task.project_id)
         if not project or project.owner_id != current_user.id:
             raise HTTPException(status_code=403, detail="Only owner can close tasks")
+        if task.status != "DONE_REVIEW":
+            raise HTTPException(status_code=400, detail="Task must be in review before closing")
 
     previous_status = task.status
     task.status = data.status
@@ -169,6 +176,9 @@ async def update_task_status(
             new_status=data.status,
             notes=f"Status changed from {previous_status} to {data.status}",
         ))
+    if data.status == "CLOSED":
+        task.checkout_confirmed_at = datetime.now(timezone.utc)
+        await _recalculate_user_score(db, task.assignee_id)
     return {"message": f"Task status updated to {data.status}"}
 
 
@@ -188,7 +198,7 @@ async def checkout_task(
     now = datetime.now(timezone.utc)
     deadline = task.deadline
 
-    if now < deadline:
+    if now.date() < deadline.date():
         checkout_status = "EARLY"
     elif now.date() == deadline.date():
         checkout_status = "ON_TIME"
@@ -318,7 +328,7 @@ async def get_dashboard(
             ProjectMember.user_id == current_user.id,
         )
     )
-    if not member_check.scalar_one_or_none():
+    if project.owner_id != current_user.id and not member_check.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not a member of this project")
 
     members_result = await db.execute(
@@ -342,7 +352,7 @@ async def get_dashboard(
 
         early = sum(1 for t in tasks if t.checkout_status == "EARLY")
         on_time = sum(1 for t in tasks if t.checkout_status == "ON_TIME")
-        late = sum(1 for t in tasks if t.checkout_status in ("LATE", "LATE_CHECKOUT"))
+        late = sum(1 for t in tasks if t.checkout_status in ("LATE", "LATE_CHECKOUT", "NOT_COMPLETED"))
         in_progress = sum(1 for t in tasks if t.status == "IN_PROGRESS")
         todo = sum(1 for t in tasks if t.status == "TODO")
 
@@ -375,29 +385,10 @@ async def evaluate_member(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await db.get(Project, project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only owner can evaluate")
-
-    overall = (data.quality_score + data.collaboration_score + data.communication_score + data.deadline_score) / 4
-
-    evaluation = ProjectEvaluation(
-        project_id=project_id,
-        evaluator_id=current_user.id,
-        evaluatee_id=member_id,
-        quality_score=data.quality_score,
-        collaboration_score=data.collaboration_score,
-        communication_score=data.communication_score,
-        deadline_score=data.deadline_score,
-        overall_score=round(overall, 1),
-        feedback_text=data.feedback_text,
-    )
-    db.add(evaluation)
-    await db.flush()
-
-    await _recalculate_user_score(db, member_id)
-
-    return EvaluationResponse.model_validate(evaluation)
+    # Numeric owner-to-member evaluations are disabled for this project.
+    # Reputation is calculated from task completion status, while qualitative feedback
+    # is handled through the anonymous feedback flow.
+    raise HTTPException(status_code=410, detail="Numeric project evaluations are disabled")
 
 
 async def _build_task_response(db: AsyncSession, task: Task) -> TaskResponse:

@@ -6,11 +6,13 @@ import com.example.hibuddy.data.remote.ApiService
 import com.example.hibuddy.data.remote.dto.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Locale
 
 class ProfileRepository(private val api: ApiService) {
     suspend fun getMyProfile(): Result<ProfileResponse> = runCatching { api.getMyProfile() }
+    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = runCatching { api.getUserProfile(userId) }
     suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = runCatching { api.updateMyProfile(request) }
     suspend fun hideProfile(): Result<GenericResponse> = runCatching { api.hideProfile() }
     suspend fun unhideProfile(): Result<GenericResponse> = runCatching { api.unhideProfile() }
@@ -40,6 +42,12 @@ class ProjectRepository(private val api: ApiService) {
 class SwipeRepository(private val api: ApiService) {
     suspend fun discoverCards(mode: String, limit: Int = 20): Result<DiscoverResponse> = runCatching { api.discoverCards(mode, limit) }
     suspend fun swipeAction(request: SwipeActionRequest): Result<SwipeActionResponse> = runCatching { api.swipeAction(request) }
+    suspend fun getQueue(): Result<QueueResponse> = runCatching { api.getQueue() }
+    suspend fun addToQueue(request: QueueAddRequest): Result<QueueAddResponse> = runCatching { api.addToQueue(request) }
+    suspend fun decideQueueItem(id: String, action: String): Result<SwipeActionResponse> = runCatching {
+        api.decideQueueItem(id, QueueDecisionRequest(action))
+    }
+    suspend fun removeQueueItem(id: String): Result<GenericResponse> = runCatching { api.removeQueueItem(id) }
     suspend fun getMatches(): Result<List<MatchResponse>> = runCatching { api.getMatches() }
     suspend fun unmatch(matchId: String): Result<GenericResponse> = runCatching { api.unmatch(matchId) }
     suspend fun getApplicants(projectId: String): Result<List<ApplicantResponse>> = runCatching { api.getApplicants(projectId) }
@@ -47,15 +55,32 @@ class SwipeRepository(private val api: ApiService) {
 }
 
 class TaskRepository(private val api: ApiService) {
-    suspend fun createTask(projectId: String, request: CreateTaskRequest): Result<TaskResponse> = runCatching { api.createTask(projectId, request) }
-    suspend fun getTasks(projectId: String, status: String? = null): Result<List<TaskResponse>> = runCatching { api.getTasks(projectId, status) }
-    suspend fun updateTaskStatus(taskId: String, status: String): Result<GenericResponse> = runCatching { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status)) }
-    suspend fun checkoutTask(taskId: String): Result<CheckoutResponse> = runCatching { api.checkoutTask(taskId) }
-    suspend fun confirmCheckout(taskId: String): Result<GenericResponse> = runCatching { api.confirmCheckout(taskId) }
-    suspend fun getDashboard(projectId: String): Result<DashboardResponse> = runCatching { api.getDashboard(projectId) }
+    suspend fun createTask(projectId: String, request: CreateTaskRequest): Result<TaskResponse> = apiResult { api.createTask(projectId, request) }
+    suspend fun getTasks(projectId: String, status: String? = null): Result<List<TaskResponse>> = apiResult { api.getTasks(projectId, status) }
+    suspend fun updateTaskStatus(taskId: String, status: String): Result<GenericResponse> = apiResult { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status)) }
+    suspend fun checkoutTask(taskId: String): Result<CheckoutResponse> = apiResult { api.checkoutTask(taskId) }
+    suspend fun confirmCheckout(taskId: String): Result<GenericResponse> = apiResult { api.confirmCheckout(taskId) }
+    suspend fun getDashboard(projectId: String): Result<DashboardResponse> = apiResult { api.getDashboard(projectId) }
     suspend fun evaluateMember(projectId: String, memberId: String, request: EvaluationRequest): Result<EvaluationResponse> = runCatching {
         api.evaluateMember(projectId, memberId, request)
     }
+}
+
+private suspend fun <T> apiResult(block: suspend () -> T): Result<T> {
+    return try {
+        Result.success(block())
+    } catch (e: Throwable) {
+        Result.failure(Exception(e.readableApiMessage()))
+    }
+}
+
+private fun Throwable.readableApiMessage(): String {
+    if (this is HttpException) {
+        val raw = response()?.errorBody()?.string().orEmpty()
+        val detail = Regex("\"detail\"\\s*:\\s*\"([^\"]+)\"").find(raw)?.groupValues?.getOrNull(1)
+        return detail ?: message()
+    }
+    return message ?: "Request failed"
 }
 
 class SuggestionRepository(private val api: ApiService) {
@@ -79,6 +104,16 @@ class ChatRepository(
             cacheRemoteMessages(matchId, messages)
         }
     }
+    suspend fun getProjectInvitationOptions(matchId: String): Result<ProjectInvitationOptionsResponse> =
+        runCatching { api.getProjectInvitationOptions(matchId) }
+    suspend fun getProjectInvitations(matchId: String): Result<List<ProjectInvitationResponse>> =
+        runCatching { api.getProjectInvitations(matchId) }
+    suspend fun createProjectInvitation(matchId: String, roleSlotId: String, message: String? = null): Result<ProjectInvitationResponse> =
+        runCatching { api.createProjectInvitation(matchId, ProjectInvitationCreateRequest(roleSlotId, message)) }
+    suspend fun acceptProjectInvitation(id: String): Result<ProjectInvitationResponse> =
+        runCatching { api.acceptProjectInvitation(id) }
+    suspend fun declineProjectInvitation(id: String): Result<ProjectInvitationResponse> =
+        runCatching { api.declineProjectInvitation(id) }
     suspend fun getNotifications(limit: Int = 20): Result<List<NotificationResponse>> = runCatching { api.getNotifications(limit) }
     suspend fun markNotificationRead(id: String): Result<GenericResponse> = runCatching { api.markNotificationRead(id) }
     suspend fun getUnreadCount(): Result<UnreadCountResponse> = runCatching { api.getUnreadCount() }

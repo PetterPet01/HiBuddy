@@ -6,10 +6,11 @@ from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.profile import UserProfile
-from app.schemas.swipe import SwipeActionRequest, DiscoverResponse
+from app.schemas.swipe import SwipeActionRequest, DiscoverResponse, QueueAddRequest, QueueDecisionRequest
 from app.services.swipe_service import (
     perform_swipe_action, get_discover_cards, get_matches,
     unmatch, get_applicants_for_project,
+    add_to_queue, get_queue, decide_queue_item, remove_queue_item,
 )
 
 router = APIRouter(prefix="/api/v1/swipe", tags=["swipe"])
@@ -34,6 +35,51 @@ async def swipe_action(
 ):
     try:
         return await perform_swipe_action(db, current_user, data.target_type, data.target_id, data.action)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/queue")
+async def list_queue(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_queue(db, current_user)
+
+
+@router.post("/queue")
+async def queue_profile(
+    data: QueueAddRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await add_to_queue(db, current_user, data.target_type, data.target_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/queue/{queue_item_id}/action")
+async def queue_decision(
+    queue_item_id: UUID,
+    data: QueueDecisionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await decide_queue_item(db, current_user, queue_item_id, data.action)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/queue/{queue_item_id}")
+async def delete_queue_item(
+    queue_item_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await remove_queue_item(db, current_user, queue_item_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

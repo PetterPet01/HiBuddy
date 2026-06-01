@@ -7,7 +7,7 @@ from sqlalchemy import select, and_, func
 
 from app.models.chat import Notification, Chat, Message, CourseSuggestion
 from app.models.swipe import Match
-from app.models.task import Task, ProjectEvaluation
+from app.models.task import Task
 from app.models.project import Project, ProjectMember
 from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill

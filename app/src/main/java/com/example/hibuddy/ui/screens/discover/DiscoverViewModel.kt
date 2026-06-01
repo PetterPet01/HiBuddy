@@ -18,6 +18,8 @@ data class DiscoverUiState(
     val mode: String = "CONTRIBUTOR",
     val dailyLikesRemaining: Int = 50,
     val dailySuperlikesRemaining: Int = 3,
+    val queuedUserCount: Int = 0,
+    val queuedProjectCount: Int = 0,
     val currentCardIndex: Int = 0,
     val error: String? = null,
     val matchedProjectId: String? = null,
@@ -32,6 +34,8 @@ class DiscoverViewModel : ViewModel() {
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
     private val swipedUserIds = mutableSetOf<String>()
     private val swipedProjectIds = mutableSetOf<String>()
+    private val queuedUserIds = mutableSetOf<String>()
+    private val queuedProjectIds = mutableSetOf<String>()
 
     fun loadCards() {
         viewModelScope.launch {
@@ -41,8 +45,8 @@ class DiscoverViewModel : ViewModel() {
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        userCards = response.userCards.filterNot { it.userId in swipedUserIds },
-                        projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds },
+                        userCards = response.userCards.filterNot { it.userId in swipedUserIds || it.userId in queuedUserIds },
+                        projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds || it.projectId in queuedProjectIds },
                         dailyLikesRemaining = response.dailyLikesRemaining,
                         dailySuperlikesRemaining = response.dailySuperlikesRemaining,
                         currentCardIndex = 0
@@ -53,6 +57,7 @@ class DiscoverViewModel : ViewModel() {
                 }
             )
         }
+        loadQueueSummary()
     }
 
     fun switchMode(mode: String) {
@@ -138,6 +143,83 @@ class DiscoverViewModel : ViewModel() {
                         error = e.message ?: "Swipe failed"
                     )
                 }
+            )
+        }
+    }
+
+    fun queueCurrentCard() {
+        val state = _uiState.value
+        if (state.isSwiping) return
+        val cards = if (state.mode == "CONTRIBUTOR") state.projectCards else state.userCards
+        val currentIndex = state.currentCardIndex
+        if (currentIndex >= cards.size) return
+
+        val targetType = if (state.mode == "CONTRIBUTOR") "PROJECT" else "USER"
+        if (targetType == "PROJECT" && state.queuedProjectCount >= 3) {
+            _uiState.value = state.copy(error = "Project queue is full")
+            return
+        }
+        if (targetType == "USER" && state.queuedUserCount >= 3) {
+            _uiState.value = state.copy(error = "User queue is full")
+            return
+        }
+
+        val card = cards[currentIndex]
+        val targetId = if (targetType == "PROJECT") {
+            (card as ProjectCardResponse).projectId
+        } else {
+            (card as UserCardResponse).userId
+        }
+
+        _uiState.value = state.copy(
+            currentCardIndex = currentIndex + 1,
+            queuedProjectCount = if (targetType == "PROJECT") (state.queuedProjectCount + 1).coerceAtMost(3) else state.queuedProjectCount,
+            queuedUserCount = if (targetType == "USER") (state.queuedUserCount + 1).coerceAtMost(3) else state.queuedUserCount,
+            isSwiping = true,
+            error = null
+        )
+
+        viewModelScope.launch {
+            swipeRepository.addToQueue(QueueAddRequest(targetType, targetId)).fold(
+                onSuccess = {
+                    if (targetType == "PROJECT") {
+                        queuedProjectIds.add(targetId)
+                    } else {
+                        queuedUserIds.add(targetId)
+                    }
+                    _uiState.value = _uiState.value.copy(isSwiping = false)
+                    loadQueueSummary()
+                },
+                onFailure = { e ->
+                    val currentState = _uiState.value
+                    _uiState.value = currentState.copy(
+                        isSwiping = false,
+                        currentCardIndex = (currentState.currentCardIndex - 1).coerceAtLeast(0),
+                        queuedProjectCount = state.queuedProjectCount,
+                        queuedUserCount = state.queuedUserCount,
+                        error = e.message ?: "Unable to add to queue"
+                    )
+                }
+            )
+        }
+    }
+
+    fun loadQueueSummary() {
+        viewModelScope.launch {
+            swipeRepository.getQueue().fold(
+                onSuccess = { response ->
+                    queuedUserIds.clear()
+                    queuedProjectIds.clear()
+                    queuedUserIds.addAll(response.userProfiles.map { it.targetId })
+                    queuedProjectIds.addAll(response.projectProfiles.map { it.targetId })
+                    _uiState.value = _uiState.value.copy(
+                        queuedUserCount = response.userProfiles.size,
+                        queuedProjectCount = response.projectProfiles.size,
+                        userCards = _uiState.value.userCards.filterNot { it.userId in queuedUserIds },
+                        projectCards = _uiState.value.projectCards.filterNot { it.projectId in queuedProjectIds }
+                    )
+                },
+                onFailure = { Unit }
             )
         }
     }

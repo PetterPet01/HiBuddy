@@ -11,6 +11,8 @@ import com.example.hibuddy.data.remote.PresenceState
 import com.example.hibuddy.data.remote.WebSocketEvent
 import com.example.hibuddy.data.remote.WebSocketManager
 import com.example.hibuddy.data.remote.dto.MessageResponse
+import com.example.hibuddy.data.remote.dto.ProjectInvitationOptionsResponse
+import com.example.hibuddy.data.remote.dto.ProjectInvitationResponse
 import com.example.hibuddy.data.remote.dto.ReportRequest
 import com.example.hibuddy.data.remote.dto.UserBlockRequest
 import kotlinx.coroutines.Job
@@ -53,6 +55,9 @@ data class ChatUiState(
     val otherUserIsOnline: Boolean = false,
     val otherUserLastSeenAt: String? = null,
     val isTyping: Boolean = false,
+    val projectInvitations: List<ProjectInvitationResponse> = emptyList(),
+    val invitationOptions: ProjectInvitationOptionsResponse? = null,
+    val isInvitationActionLoading: Boolean = false,
     val error: String? = null,
     val actionMessage: String? = null,
     val isModerationActionInProgress: Boolean = false
@@ -123,6 +128,8 @@ class ChatViewModel : ViewModel() {
 
         viewModelScope.launch { loadCachedMessages(matchId) }
         refreshMessages(initial = true)
+        loadProjectInvitations()
+        loadInvitationOptions()
         connectWebSocket(matchId)
     }
 
@@ -312,6 +319,10 @@ class ChatViewModel : ViewModel() {
             }
 
             is WebSocketEvent.Notification -> Unit
+            is WebSocketEvent.ProjectInvitation -> {
+                upsertInvitation(event.invitation)
+                loadInvitationOptions()
+            }
         }
     }
 
@@ -491,6 +502,134 @@ class ChatViewModel : ViewModel() {
         if (!_uiState.value.isConnected || now - lastTypingAt < TYPING_THROTTLE_MS) return
         lastTypingAt = now
         webSocketManager.sendTyping()
+    }
+
+    fun loadInvitationOptions() {
+        val matchId = _uiState.value.matchId
+        if (matchId.isBlank()) return
+        viewModelScope.launch {
+            chatRepository.getProjectInvitationOptions(matchId).fold(
+                onSuccess = { options ->
+                    _uiState.update { it.copy(invitationOptions = options) }
+                },
+                onFailure = { }
+            )
+        }
+    }
+
+    fun loadProjectInvitations() {
+        val matchId = _uiState.value.matchId
+        if (matchId.isBlank()) return
+        viewModelScope.launch {
+            chatRepository.getProjectInvitations(matchId).fold(
+                onSuccess = { invitations ->
+                    _uiState.update {
+                        it.copy(projectInvitations = invitations.map(::normalizeInvitation).sortedByDescending { invite -> invite.createdAt })
+                    }
+                },
+                onFailure = { }
+            )
+        }
+    }
+
+    fun createProjectInvitation(roleSlotId: String, message: String? = null) {
+        val matchId = _uiState.value.matchId
+        if (matchId.isBlank() || roleSlotId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isInvitationActionLoading = true, error = null) }
+            chatRepository.createProjectInvitation(matchId, roleSlotId, message?.takeIf { it.isNotBlank() }).fold(
+                onSuccess = { invitation ->
+                    upsertInvitation(invitation)
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            actionMessage = "Invitation sent"
+                        )
+                    }
+                    loadInvitationOptions()
+                },
+                onFailure = { e ->
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            error = e.message ?: "Unable to send invitation"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun acceptProjectInvitation(invitationId: String) {
+        if (invitationId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isInvitationActionLoading = true, error = null) }
+            chatRepository.acceptProjectInvitation(invitationId).fold(
+                onSuccess = { invitation ->
+                    upsertInvitation(invitation)
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            actionMessage = "You joined the project"
+                        )
+                    }
+                    loadInvitationOptions()
+                },
+                onFailure = { e ->
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            error = e.message ?: "Unable to accept invitation"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun declineProjectInvitation(invitationId: String) {
+        if (invitationId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isInvitationActionLoading = true, error = null) }
+            chatRepository.declineProjectInvitation(invitationId).fold(
+                onSuccess = { invitation ->
+                    upsertInvitation(invitation)
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            actionMessage = "Invitation declined"
+                        )
+                    }
+                    loadInvitationOptions()
+                },
+                onFailure = { e ->
+                    _uiState.update {
+                        it.copy(
+                            isInvitationActionLoading = false,
+                            error = e.message ?: "Unable to decline invitation"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun upsertInvitation(invitation: ProjectInvitationResponse) {
+        val normalized = normalizeInvitation(invitation)
+        _uiState.update { state ->
+            state.copy(
+                projectInvitations = (state.projectInvitations.filterNot { it.id == normalized.id } + normalized)
+                    .sortedByDescending { it.createdAt }
+            )
+        }
+    }
+
+    private fun normalizeInvitation(invitation: ProjectInvitationResponse): ProjectInvitationResponse {
+        val currentUserId = _uiState.value.currentUserId
+        return invitation.copy(
+            isIncoming = invitation.inviteeId == currentUserId,
+            isOutgoing = invitation.inviterId == currentUserId
+        )
     }
 
     fun cleanup() {

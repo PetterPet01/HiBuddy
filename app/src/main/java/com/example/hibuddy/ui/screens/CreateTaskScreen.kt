@@ -45,10 +45,12 @@ fun SimpleCreateTaskScreen(
     var priorityExpanded by remember { mutableStateOf(false) }
     var assigneeExpanded by remember { mutableStateOf(false) }
     var roleExpanded by remember { mutableStateOf(false) }
+    val currentUserId = ServiceLocator.authRepository.getUserId().orEmpty()
 
     val priorities = listOf("LOW", "MEDIUM", "HIGH", "URGENT")
     val members = project?.members.orEmpty()
-    val assignableMembers = members.filterNot { it.isOwner }.ifEmpty { members }
+    val assignableMembers = members
+    val canCreateTask = project?.ownerId == currentUserId
     val availableRoles = project?.roleSlots
         ?.filter { it.filled < it.count }
         ?.map { it.roleName }
@@ -63,7 +65,8 @@ fun SimpleCreateTaskScreen(
         ServiceLocator.projectRepository.getProject(projectId).fold(
             onSuccess = { loadedProject ->
                 project = loadedProject
-                val defaultMember = loadedProject.members.filterNot { it.isOwner }.ifEmpty { loadedProject.members }.firstOrNull()
+                val defaultMember = loadedProject.members.firstOrNull { it.userId == currentUserId }
+                    ?: loadedProject.members.firstOrNull()
                 if (assigneeId.isBlank()) {
                     assigneeId = defaultMember?.userId.orEmpty()
                 }
@@ -126,6 +129,17 @@ fun SimpleCreateTaskScreen(
                 }
             }
 
+            if (!canCreateTask) {
+                Card(colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)) {
+                    Text(
+                        "Only the project owner can create and assign tasks.",
+                        modifier = Modifier.padding(16.dp),
+                        color = colorScheme.onErrorContainer,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -161,7 +175,7 @@ fun SimpleCreateTaskScreen(
                 ExposedDropdownMenu(expanded = assigneeExpanded, onDismissRequest = { assigneeExpanded = false }) {
                     assignableMembers.forEach { member ->
                         DropdownMenuItem(
-                            text = { Text("${member.displayName} · ${member.role}") },
+                            text = { Text("${member.displayName} - ${member.role}${if (member.isOwner) " (Owner)" else ""}") },
                             onClick = {
                                 assigneeId = member.userId
                                 assigneeExpanded = false
@@ -289,7 +303,7 @@ fun SimpleCreateTaskScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = !isLoading && title.isNotBlank() && assigneeId.isNotBlank() && startDate.isNotBlank() && deadline.isNotBlank(),
+                enabled = canCreateTask && !isLoading && title.isNotBlank() && assigneeId.isNotBlank() && startDate.isNotBlank() && deadline.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colorScheme.primary,
                     contentColor = colorScheme.onPrimary

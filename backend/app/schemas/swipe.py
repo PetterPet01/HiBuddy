@@ -9,6 +9,15 @@ class SwipeActionRequest(BaseModel):
     action: str
 
 
+class QueueAddRequest(BaseModel):
+    target_type: str
+    target_id: str
+
+
+class QueueDecisionRequest(BaseModel):
+    action: str
+
+
 class DiscoverResponse(BaseModel):
     user_cards: list = []
     project_cards: list = []
@@ -50,3 +59,21 @@ class ApplicantResponse(BaseModel):
     reputation_score: float
     match_score: float
     swiped_at: datetime
+
+
+class QueueItemResponse(BaseModel):
+    id: UUID
+    target_type: str
+    target_id: str
+    queued_at: datetime
+    expires_at: datetime
+    seconds_remaining: int
+    user_card: dict | None = None
+    project_card: dict | None = None
+
+
+class QueueResponse(BaseModel):
+    user_profiles: list[QueueItemResponse] = []
+    project_profiles: list[QueueItemResponse] = []
+    user_capacity_remaining: int = 3
+    project_capacity_remaining: int = 3

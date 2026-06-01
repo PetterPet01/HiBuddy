@@ -1,6 +1,7 @@
 package com.example.hibuddy.data.remote
 
 import com.example.hibuddy.BuildConfig
+import com.example.hibuddy.data.remote.dto.ProjectInvitationResponse
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -72,6 +73,10 @@ class WebSocketManager {
                         "notification" -> {
                             _events.tryEmit(WebSocketEvent.Notification(gson.toJson(data)))
                         }
+                        "project_invitation" -> {
+                            val invitation = gson.fromJson(data, ProjectInvitationResponse::class.java)
+                            _events.tryEmit(WebSocketEvent.ProjectInvitation(invitation))
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -138,5 +143,6 @@ sealed class WebSocketEvent {
     data class Typing(val userId: String) : WebSocketEvent()
     data class ReadReceipt(val by: String) : WebSocketEvent()
     data class Notification(val data: String) : WebSocketEvent()
+    data class ProjectInvitation(val invitation: ProjectInvitationResponse) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }

@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 
 data class ProfileUiState(
     val isLoading: Boolean = false,
+    val isSuggestionLoading: Boolean = false,
+    val hasRequestedSuggestions: Boolean = false,
     val profile: ProfileResponse? = null,
     val courseSuggestions: List<CourseSuggestionResponse> = emptyList(),
     val mentorSuggestions: List<MentorSuggestionResponse> = emptyList(),
@@ -44,11 +46,20 @@ class ProfileViewModel : ViewModel() {
 
     fun loadSuggestions() {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSuggestionLoading = true, hasRequestedSuggestions = true)
             suggestionRepository.getCourseSuggestions().fold(
                 onSuccess = { suggestions ->
-                    _uiState.value = _uiState.value.copy(courseSuggestions = suggestions)
+                    _uiState.value = _uiState.value.copy(
+                        isSuggestionLoading = false,
+                        courseSuggestions = suggestions
+                    )
                 },
-                onFailure = { }
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isSuggestionLoading = false,
+                        error = e.message ?: "Failed to load course suggestions"
+                    )
+                }
             )
         }
     }
@@ -133,11 +144,20 @@ class ProfileViewModel : ViewModel() {
 
     fun refreshSuggestions() {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSuggestionLoading = true, hasRequestedSuggestions = true)
             suggestionRepository.refreshSuggestions().fold(
                 onSuccess = { suggestions ->
-                    _uiState.value = _uiState.value.copy(courseSuggestions = suggestions)
+                    _uiState.value = _uiState.value.copy(
+                        isSuggestionLoading = false,
+                        courseSuggestions = suggestions
+                    )
                 },
-                onFailure = { }
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isSuggestionLoading = false,
+                        error = e.message ?: "Failed to generate course suggestions"
+                    )
+                }
             )
         }
     }

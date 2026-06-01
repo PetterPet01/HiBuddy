@@ -33,6 +33,9 @@ interface ApiService {
     @GET("api/v1/profiles/me")
     suspend fun getMyProfile(): ProfileResponse
 
+    @GET("api/v1/profiles/{userId}")
+    suspend fun getUserProfile(@Path("userId") userId: String): UserCardResponse
+
     @PUT("api/v1/profiles/me")
     suspend fun updateMyProfile(@Body request: ProfileUpdateRequest): ProfileResponse
 
@@ -92,6 +95,21 @@ interface ApiService {
 
     @POST("api/v1/swipe/action")
     suspend fun swipeAction(@Body request: SwipeActionRequest): SwipeActionResponse
+
+    @GET("api/v1/swipe/queue")
+    suspend fun getQueue(): QueueResponse
+
+    @POST("api/v1/swipe/queue")
+    suspend fun addToQueue(@Body request: QueueAddRequest): QueueAddResponse
+
+    @POST("api/v1/swipe/queue/{id}/action")
+    suspend fun decideQueueItem(
+        @Path("id") id: String,
+        @Body request: QueueDecisionRequest
+    ): SwipeActionResponse
+
+    @DELETE("api/v1/swipe/queue/{id}")
+    suspend fun removeQueueItem(@Path("id") id: String): GenericResponse
 
     @GET("api/v1/swipe/matches")
     suspend fun getMatches(): List<MatchResponse>
@@ -161,6 +179,24 @@ interface ApiService {
         @Query("limit") limit: Int = 50,
         @Query("before") before: String? = null
     ): List<MessageResponse>
+
+    @GET("api/v1/chat/{matchId}/project-invitations/options")
+    suspend fun getProjectInvitationOptions(@Path("matchId") matchId: String): ProjectInvitationOptionsResponse
+
+    @GET("api/v1/chat/{matchId}/project-invitations")
+    suspend fun getProjectInvitations(@Path("matchId") matchId: String): List<ProjectInvitationResponse>
+
+    @POST("api/v1/chat/{matchId}/project-invitations")
+    suspend fun createProjectInvitation(
+        @Path("matchId") matchId: String,
+        @Body request: ProjectInvitationCreateRequest
+    ): ProjectInvitationResponse
+
+    @POST("api/v1/project-invitations/{id}/accept")
+    suspend fun acceptProjectInvitation(@Path("id") id: String): ProjectInvitationResponse
+
+    @POST("api/v1/project-invitations/{id}/decline")
+    suspend fun declineProjectInvitation(@Path("id") id: String): ProjectInvitationResponse
 
     @GET("api/v1/notifications")
     suspend fun getNotifications(@Query("limit") limit: Int = 20): List<NotificationResponse>

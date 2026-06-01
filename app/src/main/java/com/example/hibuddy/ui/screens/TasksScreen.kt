@@ -123,11 +123,13 @@ fun TasksScreen(
                     ) {
                         Text("Open", fontSize = 12.sp)
                     }
-                    IconButton(
-                        onClick = { onCreateTask(selectedProjectId) },
-                        modifier = Modifier.background(colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).size(48.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = colorScheme.onSurfaceVariant)
+                    if (isOwner) {
+                        IconButton(
+                            onClick = { onCreateTask(selectedProjectId) },
+                            modifier = Modifier.background(colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).size(48.dp)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

@@ -37,9 +37,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +58,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -83,6 +86,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.data.remote.dto.InvitationRoleSlotResponse
+import com.example.hibuddy.data.remote.dto.ProjectInvitationResponse
 import com.example.hibuddy.ui.theme.HiBuddyColors
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -110,8 +115,11 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showBlockDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
+    var showInviteDialog by remember { mutableStateOf(false) }
     var reportReason by remember { mutableStateOf("") }
     var blockReason by remember { mutableStateOf("") }
+    var inviteMessage by remember { mutableStateOf("") }
+    var selectedRoleSlotId by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
         onDispose { viewModel.cleanup() }
@@ -157,6 +165,13 @@ fun ChatScreen(
                     onBack()
                 },
                 onRefresh = { viewModel.refreshMessages() },
+                canInvite = uiState.invitationOptions?.canInvite == true,
+                onInvite = {
+                    showMenu = false
+                    val slots = uiState.invitationOptions?.openRoleSlots.orEmpty()
+                    selectedRoleSlotId = slots.firstOrNull()?.id
+                    showInviteDialog = true
+                },
                 onReport = {
                     showMenu = false
                     showReportDialog = true
@@ -192,6 +207,13 @@ fun ChatScreen(
                     .fillMaxWidth()
             )
 
+            ProjectInvitationPanel(
+                invitations = uiState.projectInvitations,
+                isLoading = uiState.isInvitationActionLoading,
+                onAccept = { viewModel.acceptProjectInvitation(it) },
+                onDecline = { viewModel.declineProjectInvitation(it) }
+            )
+
             ChatComposer(
                 value = inputText,
                 onValueChange = {
@@ -208,6 +230,26 @@ fun ChatScreen(
                 connectionState = uiState.connectionState
             )
         }
+    }
+
+    if (showInviteDialog) {
+        InviteProjectDialog(
+            projectTitle = uiState.invitationOptions?.projectTitle.orEmpty(),
+            roleSlots = uiState.invitationOptions?.openRoleSlots.orEmpty(),
+            selectedRoleSlotId = selectedRoleSlotId,
+            message = inviteMessage,
+            isLoading = uiState.isInvitationActionLoading,
+            onSelectRoleSlot = { selectedRoleSlotId = it },
+            onMessageChange = { inviteMessage = it },
+            onDismiss = { showInviteDialog = false },
+            onConfirm = {
+                selectedRoleSlotId?.let { roleSlotId ->
+                    viewModel.createProjectInvitation(roleSlotId, inviteMessage)
+                    inviteMessage = ""
+                    showInviteDialog = false
+                }
+            }
+        )
     }
 
     if (showBlockDialog) {
@@ -249,6 +291,8 @@ private fun ChatTopBar(
     onShowMenuChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    canInvite: Boolean,
+    onInvite: () -> Unit,
     onReport: () -> Unit,
     onBlock: () -> Unit
 ) {
@@ -298,6 +342,15 @@ private fun ChatTopBar(
                     onDismissRequest = { onShowMenuChange(false) },
                     modifier = Modifier.background(ChatPalette.SurfaceElevated)
                 ) {
+                    if (canInvite) {
+                        DropdownMenuItem(
+                            text = { Text("Invite to Project", color = ChatPalette.TextPrimary) },
+                            onClick = onInvite,
+                            leadingIcon = {
+                                Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = ChatPalette.TextSecondary)
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Report user", color = ChatPalette.TextPrimary) },
                         onClick = onReport,
@@ -414,6 +467,170 @@ private fun EmptyConversation(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+@Composable
+private fun ProjectInvitationPanel(
+    invitations: List<ProjectInvitationResponse>,
+    isLoading: Boolean,
+    onAccept: (String) -> Unit,
+    onDecline: (String) -> Unit
+) {
+    val visibleInvitations = invitations
+        .filter { it.status == "PENDING" || it.status == "ACCEPTED" || it.status == "DECLINED" }
+        .take(2)
+    if (visibleInvitations.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ChatPalette.TopBar)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        visibleInvitations.forEach { invitation ->
+            ProjectInvitationCard(
+                invitation = invitation,
+                isLoading = isLoading,
+                onAccept = { onAccept(invitation.id) },
+                onDecline = { onDecline(invitation.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProjectInvitationCard(
+    invitation: ProjectInvitationResponse,
+    isLoading: Boolean,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    val statusColor = when (invitation.status) {
+        "ACCEPTED" -> ChatPalette.Online
+        "DECLINED" -> ChatPalette.Danger
+        else -> ChatPalette.Warning
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = ChatPalette.Surface,
+        border = BorderStroke(1.dp, ChatPalette.Border)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    color = ChatPalette.Accent.copy(alpha = 0.16f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Work, contentDescription = null, tint = ChatPalette.Accent, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(invitation.projectTitle, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ChatPalette.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Role: ${invitation.role}", fontSize = 12.sp, color = ChatPalette.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Surface(shape = RoundedCornerShape(999.dp), color = statusColor.copy(alpha = 0.16f)) {
+                    Text(
+                        invitation.status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = statusColor
+                    )
+                }
+            }
+
+            invitation.message?.takeIf { it.isNotBlank() }?.let {
+                Text(it, fontSize = 12.sp, color = ChatPalette.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+
+            when {
+                invitation.isIncoming && invitation.status == "PENDING" -> {
+                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = onDecline, enabled = !isLoading) {
+                            Text("Decline", color = ChatPalette.TextSecondary)
+                        }
+                        TextButton(onClick = onAccept, enabled = !isLoading) {
+                            Text("Accept", color = ChatPalette.Accent, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                invitation.isOutgoing && invitation.status == "PENDING" -> {
+                    Text("Waiting for ${invitation.inviteeName.ifBlank { "this user" }} to respond.", fontSize = 12.sp, color = ChatPalette.TextTertiary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteProjectDialog(
+    projectTitle: String,
+    roleSlots: List<InvitationRoleSlotResponse>,
+    selectedRoleSlotId: String?,
+    message: String,
+    isLoading: Boolean,
+    onSelectRoleSlot: (String) -> Unit,
+    onMessageChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Invite to Project", color = ChatPalette.TextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(projectTitle.ifBlank { "Project" }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ChatPalette.TextPrimary)
+                if (roleSlots.isEmpty()) {
+                    Text("No open role slots remaining.", fontSize = 13.sp, color = ChatPalette.Warning)
+                } else {
+                    roleSlots.forEach { slot ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(enabled = !isLoading) { onSelectRoleSlot(slot.id) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedRoleSlotId == slot.id,
+                                onClick = { onSelectRoleSlot(slot.id) },
+                                enabled = !isLoading
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(slot.roleName, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ChatPalette.TextPrimary)
+                                Text("${slot.filled}/${slot.count} filled", fontSize = 12.sp, color = ChatPalette.TextSecondary)
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = onMessageChange,
+                    label = { Text("Message optional") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 1,
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !isLoading && selectedRoleSlotId != null && roleSlots.isNotEmpty()) {
+                Text("Send Invite", color = ChatPalette.Accent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Cancel", color = ChatPalette.TextSecondary)
+            }
+        },
+        containerColor = ChatPalette.TopBar
+    )
 }
 
 @Composable

@@ -265,6 +265,38 @@ data class SwipeActionResponse(
     val message: String? = null
 )
 
+data class QueueAddRequest(
+    @SerializedName("target_type") val targetType: String,
+    @SerializedName("target_id") val targetId: String
+)
+
+data class QueueDecisionRequest(
+    val action: String
+)
+
+data class QueueAddResponse(
+    val message: String,
+    @SerializedName("queue_item_id") val queueItemId: String? = null
+)
+
+data class QueueItemResponse(
+    val id: String,
+    @SerializedName("target_type") val targetType: String,
+    @SerializedName("target_id") val targetId: String,
+    @SerializedName("queued_at") val queuedAt: String,
+    @SerializedName("expires_at") val expiresAt: String,
+    @SerializedName("seconds_remaining") val secondsRemaining: Int,
+    @SerializedName("user_card") val userCard: UserCardResponse? = null,
+    @SerializedName("project_card") val projectCard: ProjectCardResponse? = null
+)
+
+data class QueueResponse(
+    @SerializedName("user_profiles") val userProfiles: List<QueueItemResponse> = emptyList(),
+    @SerializedName("project_profiles") val projectProfiles: List<QueueItemResponse> = emptyList(),
+    @SerializedName("user_capacity_remaining") val userCapacityRemaining: Int = 3,
+    @SerializedName("project_capacity_remaining") val projectCapacityRemaining: Int = 3
+)
+
 data class MatchResponse(
     val id: String,
     @SerializedName("user_id") val userId: String,
@@ -423,6 +455,45 @@ data class ChatInboxResponse(
     @SerializedName("last_message_time") val lastMessageTime: String?,
     @SerializedName("is_unread") val isUnread: Boolean,
     @SerializedName("unread_count") val unreadCount: Int
+)
+
+data class ProjectInvitationCreateRequest(
+    @SerializedName("role_slot_id") val roleSlotId: String,
+    val message: String? = null
+)
+
+data class InvitationRoleSlotResponse(
+    val id: String,
+    @SerializedName("role_name") val roleName: String,
+    val count: Int,
+    val filled: Int
+)
+
+data class ProjectInvitationOptionsResponse(
+    @SerializedName("can_invite") val canInvite: Boolean,
+    val reason: String? = null,
+    @SerializedName("project_id") val projectId: String? = null,
+    @SerializedName("project_title") val projectTitle: String? = null,
+    @SerializedName("open_role_slots") val openRoleSlots: List<InvitationRoleSlotResponse> = emptyList()
+)
+
+data class ProjectInvitationResponse(
+    val id: String,
+    @SerializedName("match_id") val matchId: String,
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    @SerializedName("inviter_id") val inviterId: String,
+    @SerializedName("inviter_name") val inviterName: String,
+    @SerializedName("invitee_id") val inviteeId: String,
+    @SerializedName("invitee_name") val inviteeName: String,
+    @SerializedName("role_slot_id") val roleSlotId: String? = null,
+    val role: String,
+    val message: String? = null,
+    val status: String,
+    @SerializedName("created_at") val createdAt: String,
+    @SerializedName("responded_at") val respondedAt: String? = null,
+    @SerializedName("is_incoming") val isIncoming: Boolean = false,
+    @SerializedName("is_outgoing") val isOutgoing: Boolean = false
 )
 
 data class MessageResponse(
