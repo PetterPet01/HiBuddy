@@ -22,44 +22,65 @@ fun ReportManagementScreen(
         viewModel.loadReports()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Text("Xử lý report", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
+        ) {
+            Text(
+                text = "Report Management",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-            Text("Back")
-        }
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Back")
+            }
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        if (uiState.isLoading) CircularProgressIndicator()
+            if (uiState.isLoading) {
+                CircularProgressIndicator()
+            }
 
-        uiState.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error)
-            Spacer(Modifier.height(8.dp))
-        }
+            uiState.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(8.dp))
+            }
 
-        uiState.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-        }
+            uiState.message?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+            }
 
-        if (!uiState.isLoading && uiState.reports.isEmpty()) {
-            Text("Không có report nào.")
-        }
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(uiState.reports) { report ->
-                ReportCard(
-                    report = report,
-                    onDismiss = { viewModel.dismissReport(report.id) },
-                    onBan = { viewModel.banReportedUser(report.id) }
+            if (!uiState.isLoading && uiState.reports.isEmpty()) {
+                Text(
+                    text = "No reports found.",
+                    color = MaterialTheme.colorScheme.onBackground
                 )
+            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(uiState.reports) { report ->
+                    ReportCard(
+                        report = report,
+                        onDismiss = { viewModel.dismissReport(report.id) },
+                        onBan = { viewModel.banReportedUser(report.id) }
+                    )
+                }
             }
         }
     }
@@ -71,13 +92,38 @@ private fun ReportCard(
     onDismiss: () -> Unit,
     onBan: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Reported: ${report.reported_name ?: report.reported_id}", fontWeight = FontWeight.Bold)
-            Text("Reporter: ${report.reporter_name ?: report.reporter_id}")
-            Text("Reason: ${report.reason}")
-            Text("Description: ${report.description ?: "N/A"}")
-            Text("Status: ${report.status}")
+            Text(
+                text = "Reported User: ${report.reported_name ?: report.reported_id}",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Reporter: ${report.reporter_name ?: report.reporter_id}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Reason: ${report.reason}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Description: ${report.description ?: "N/A"}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Status: ${report.status}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -93,10 +139,11 @@ private fun ReportCard(
                     onClick = onBan,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Ban user")
+                    Text("Ban User")
                 }
             }
         }

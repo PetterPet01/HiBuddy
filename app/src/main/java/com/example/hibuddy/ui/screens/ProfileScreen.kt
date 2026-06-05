@@ -374,7 +374,7 @@ fun ProfileScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                 ) {
-                    Text("Xác thực sinh viên")
+                    Text("Student Verification")
                 }
             }
 

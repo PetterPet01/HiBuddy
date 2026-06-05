@@ -14,51 +14,61 @@ fun AdminScreen(
     onOpenReportManagement: () -> Unit = {},
     onOpenUserManagement: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Text(
-            text = "Admin Dashboard",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-        Button(
-            onClick = onOpenStudentVerifications,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
         ) {
-            Text("Duyệt xác thực sinh viên")
-        }
+            Text(
+                text = "Admin Dashboard",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(24.dp))
 
-        Button(
-            onClick = onOpenUserManagement,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Khóa tài khoản")
-        }
+            Button(
+                onClick = onOpenStudentVerifications,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Review Student Verifications")
+            }
 
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(12.dp))
 
-        Button(
-            onClick = onOpenReportManagement,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Xử lý report")
-        }
+            Button(
+                onClick = onOpenUserManagement,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Manage User Accounts")
+            }
 
-        Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
-        OutlinedButton(
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Logout")
+            Button(
+                onClick = onOpenReportManagement,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Handle Reports")
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            HorizontalDivider()
+
+            Spacer(Modifier.height(24.dp))
+
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Logout")
+            }
         }
     }
 }

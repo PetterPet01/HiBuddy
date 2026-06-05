@@ -22,55 +22,65 @@ fun UserManagementScreen(
         viewModel.loadUsers()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Text(
-            text = "Khóa tài khoản",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
         ) {
-            Text("Back")
-        }
+            Text(
+                text = "User Management",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        if (uiState.isLoading) {
-            CircularProgressIndicator()
-        }
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Back")
+            }
 
-        uiState.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error)
-            Spacer(Modifier.height(8.dp))
-        }
+            Spacer(Modifier.height(16.dp))
 
-        uiState.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-        }
+            if (uiState.isLoading) {
+                CircularProgressIndicator()
+            }
 
-        if (!uiState.isLoading && uiState.users.isEmpty()) {
-            Text("Không có người dùng nào.")
-        }
+            uiState.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(8.dp))
+            }
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(uiState.users) { user ->
-                UserManagementCard(
-                    user = user,
-                    onBan = { viewModel.banUser(user.id) },
-                    onUnban = { viewModel.unbanUser(user.id) }
+            uiState.message?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            if (!uiState.isLoading && uiState.users.isEmpty()) {
+                Text(
+                    text = "No users found.",
+                    color = MaterialTheme.colorScheme.onBackground
                 )
+            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(uiState.users) { user ->
+                    UserManagementCard(
+                        user = user,
+                        onBan = { viewModel.banUser(user.id) },
+                        onUnban = { viewModel.unbanUser(user.id) }
+                    )
+                }
             }
         }
     }
@@ -83,23 +93,33 @@ private fun UserManagementCard(
     onUnban: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
                 text = user.fullName,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(Modifier.height(4.dp))
 
-            Text("Username: ${user.username}")
-            Text("Email: ${user.email}")
-            Text("Role: ${user.role}")
-            Text("Verified student: ${if (user.verifiedStudent) "Yes" else "No"}")
-            Text("Status: ${if (user.isActive) "Active" else "Banned"}")
+            Text("Username: ${user.username}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Email: ${user.email}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Role: ${user.role}", color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = "Verified Student: ${if (user.verifiedStudent) "Yes" else "No"}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Status: ${if (user.isActive) "Active" else "Banned"}",
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -108,17 +128,18 @@ private fun UserManagementCard(
                     onClick = onBan,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Ban user")
+                    Text("Ban User")
                 }
             } else {
                 OutlinedButton(
                     onClick = onUnban,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Unban user")
+                    Text("Unban User")
                 }
             }
         }

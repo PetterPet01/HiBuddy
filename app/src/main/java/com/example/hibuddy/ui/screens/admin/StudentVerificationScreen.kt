@@ -22,63 +22,73 @@ fun StudentVerificationScreen(
         viewModel.loadUsers()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Text(
-            text = "Duyệt xác thực sinh viên",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
         ) {
-            Text("Back")
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        if (uiState.isLoading) {
-            CircularProgressIndicator()
-        }
-
-        uiState.error?.let {
             Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error
+                text = "Student Verification Requests",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
             )
-        }
 
-        uiState.message?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+            Spacer(Modifier.height(16.dp))
 
-        if (!uiState.isLoading && uiState.users.isEmpty()) {
-            Text("Không có yêu cầu xác thực nào.")
-        }
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Back")
+            }
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(uiState.users) { user ->
-                StudentVerificationCard(
-                    user = user,
-                    onApprove = {
-                        viewModel.approve(user.id)
-                    },
-                    onReject = {
-                        viewModel.reject(user.id, "Thông tin sinh viên không hợp lệ")
-                    }
+            Spacer(Modifier.height(16.dp))
+
+            if (uiState.isLoading) {
+                CircularProgressIndicator()
+            }
+
+            uiState.error?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error
                 )
+            }
+
+            uiState.message?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            if (!uiState.isLoading && uiState.users.isEmpty()) {
+                Text(
+                    text = "No verification requests found.",
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(uiState.users) { user ->
+                    StudentVerificationCard(
+                        user = user,
+                        onApprove = {
+                            viewModel.approve(user.id)
+                        },
+                        onReject = {
+                            viewModel.reject(user.id, "Invalid student information")
+                        }
+                    )
+                }
             }
         }
     }
@@ -91,24 +101,28 @@ private fun StudentVerificationCard(
     onReject: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
                 text = user.fullName,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(Modifier.height(4.dp))
 
-            Text("Username: ${user.username}")
-            Text("Email: ${user.email}")
-            Text("Student email: ${user.studentEmail ?: "N/A"}")
-            Text("University: ${user.university ?: "N/A"}")
-            Text("Student ID: ${user.studentId ?: "N/A"}")
-            Text("Status: ${user.verificationStatus}")
+            Text("Username: ${user.username}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Email: ${user.email}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Student Email: ${user.studentEmail ?: "N/A"}", color = MaterialTheme.colorScheme.onSurface)
+            Text("University: ${user.university ?: "N/A"}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Student ID: ${user.studentId ?: "N/A"}", color = MaterialTheme.colorScheme.onSurface)
+            Text("Status: ${user.verificationStatus}", color = MaterialTheme.colorScheme.onSurface)
 
             Spacer(Modifier.height(12.dp))
 
