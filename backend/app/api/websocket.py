@@ -14,6 +14,8 @@ from app.models.swipe import Match
 from app.models.chat import Chat, Message
 from app.services.presence_service import presence_manager
 from app.services.fcm_service import notify_user
+from app.models.trust_safety import UserBlock
+from app.models.operations import OutboxEvent
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,14 @@ class ConnectionManager:
                 await ws.send_json({"type": "notification", "data": notification})
             except Exception:
                 pass
+
+    async def disconnect_user(self, user_id: str, code: int = 4003):
+        connections = list(self.active_connections.get(user_id, {}).items())
+        for chat_id, websocket in connections:
+            try:
+                await websocket.close(code=code)
+            finally:
+                self.disconnect(user_id, chat_id)
 
 
 manager = ConnectionManager()
@@ -125,16 +135,27 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
     async with async_session() as db:
         try:
             match = await db.get(Match, UUID(match_id))
-            if not match:
+            if not match or match.is_unmatched:
                 await websocket.close(code=4004)
                 return
 
             user = await db.get(User, UUID(user_id))
-            if not user:
+            if not user or not user.is_active or not user.email_verified:
                 await websocket.close(code=4004)
                 return
 
             if user.id not in (match.user_id, match.owner_id):
+                await websocket.close(code=4003)
+                return
+
+            other_uuid = match.user_id if user.id == match.owner_id else match.owner_id
+            blocked = await db.scalar(
+                select(UserBlock.id).where(
+                    ((UserBlock.blocker_id == user.id) & (UserBlock.blocked_id == other_uuid))
+                    | ((UserBlock.blocker_id == other_uuid) & (UserBlock.blocked_id == user.id))
+                )
+            )
+            if blocked:
                 await websocket.close(code=4003)
                 return
 
@@ -180,12 +201,34 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                     client_message_id = data.get("client_message_id")
                     if client_message_id is not None:
                         client_message_id = str(client_message_id)[:128]
+                        existing_message = await db.scalar(
+                            select(Message).where(
+                                Message.sender_id == UUID(user_id),
+                                Message.client_message_id == client_message_id,
+                            )
+                        )
+                        if existing_message:
+                            await websocket.send_json({
+                                "type": "message_sent",
+                                "data": {
+                                    "id": str(existing_message.id),
+                                    "chat_id": str(existing_message.chat_id),
+                                    "sender_id": user_id,
+                                    "content": existing_message.content,
+                                    "is_read": existing_message.is_read,
+                                    "created_at": existing_message.created_at.isoformat(),
+                                    "sender_name": user.full_name,
+                                    "client_message_id": client_message_id,
+                                },
+                            })
+                            continue
 
                     recipient_is_active = manager.is_connected(other_user_id, match_id)
                     message = Message(
                         chat_id=chat.id,
                         sender_id=UUID(user_id),
                         content=content,
+                        client_message_id=client_message_id,
                         is_read=recipient_is_active,
                     )
                     db.add(message)
@@ -216,8 +259,15 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                         await manager.send_message(user_id, match_id, {"type": "read_receipt", "by": other_user_id})
 
                     if other_user_id not in manager.active_connections or match_id not in manager.active_connections[other_user_id]:
-                        import asyncio
-                        asyncio.create_task(notify_user(db, UUID(other_user_id), f"New message from {user.full_name}", message.content))
+                        db.add(OutboxEvent(
+                            event_type="PUSH_NOTIFICATION",
+                            payload={
+                                "user_id": other_user_id,
+                                "title": f"New message from {user.full_name}",
+                                "body": message.content,
+                            },
+                        ))
+                        await db.commit()
 
                 elif message_type == "typing":
                     await manager.send_message(other_user_id, match_id, {

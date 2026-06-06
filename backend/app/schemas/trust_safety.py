@@ -20,6 +20,9 @@ class ReportCreate(BaseModel):
     reported_id: UUID
     reason: str
     description: Optional[str] = None
+    evidence_url: Optional[str] = None
+    context_type: Optional[str] = None
+    context_id: Optional[str] = None
 
 class ReportResponse(BaseModel):
     id: UUID

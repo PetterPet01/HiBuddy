@@ -4,24 +4,27 @@ from uuid import UUID
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, delete, func
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
-from pymilvus import Collection
-
 from app.config import get_settings
+from app.database import async_session
 from app.milvus_client import connect_milvus, disconnect_milvus
 from app.models.swipe import SwipeAction, Match, SwipeQueueItem
-from app.models.project import Project, ProjectRoleSlot
+from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill
 from app.models.chat import Chat, Notification, Message
+from app.models.trust_safety import UserBlock
+from app.models.operations import OutboxEvent
+from app.models.catalog import UserRoleSkill, ProjectRoleSkillRequirement
 from app.services.embedding_service import encode_text
-from app.services.fcm_service import notify_user
 from app.services.presence_service import presence_manager
 from app.services.matching_service import (
     calculate_project_score,
     calculate_user_score,
     calculate_match_score_for_pair,
+    calculate_project_score_details,
+    calculate_user_score_details,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +57,13 @@ async def get_daily_superlikes_remaining(db: AsyncSession, user_id: UUID) -> int
 
 
 async def perform_swipe_action(
-    db: AsyncSession, user: User, target_type: str, target_id: str, action: str
+    db: AsyncSession,
+    user: User,
+    target_type: str,
+    target_id: str,
+    action: str,
+    context_project_id: UUID | None = None,
+    context_role_slot_id: UUID | None = None,
 ) -> dict[str, Any]:
     target_type = target_type.upper()
     action = action.upper()
@@ -62,19 +71,26 @@ async def perform_swipe_action(
         raise ValueError("Invalid swipe target type")
     if action not in {"PASS", "LIKE", "SUPER_LIKE"}:
         raise ValueError("Invalid swipe action")
+    await _validate_swipe_target(
+        db, user, target_type, target_id, context_project_id, context_role_slot_id
+    )
+    context_key = str(context_project_id) if context_project_id else "GLOBAL"
 
     existing_result = await db.execute(
         select(SwipeAction).where(
             SwipeAction.swiper_id == user.id,
             SwipeAction.target_type == target_type,
             SwipeAction.target_id == target_id,
+            SwipeAction.context_key == context_key,
             SwipeAction.is_active == True,
         ).order_by(SwipeAction.created_at.desc()).limit(1)
     )
     existing_swipe = existing_result.scalar_one_or_none()
     if existing_swipe and existing_swipe.action == action:
         if action in ("LIKE", "SUPER_LIKE"):
-            matched = await _check_match(db, user.id, target_type, target_id)
+            matched = await _check_match(
+                db, user.id, target_type, target_id, context_project_id
+            )
             if matched:
                 return {"matched": True, "match_id": str(matched.id)}
         return {"matched": False, "message": f"Already recorded {action.lower()}"}
@@ -88,11 +104,17 @@ async def perform_swipe_action(
         if remaining <= 0:
             raise ValueError("Daily super like limit reached")
 
+    if existing_swipe:
+        existing_swipe.is_active = False
+
     swipe = SwipeAction(
         swiper_id=user.id,
         target_type=target_type,
         target_id=target_id,
         action=action,
+        context_project_id=context_project_id,
+        context_role_slot_id=context_role_slot_id,
+        context_key=context_key,
     )
     db.add(swipe)
     await db.flush()
@@ -101,11 +123,117 @@ async def perform_swipe_action(
         return {"matched": False, "message": "Passed"}
 
     if action in ("LIKE", "SUPER_LIKE"):
-        matched = await _check_match(db, user.id, target_type, target_id)
+        matched = await _check_match(
+            db, user.id, target_type, target_id, context_project_id
+        )
         if matched:
             return {"matched": True, "match_id": str(matched.id)}
+        if action == "SUPER_LIKE":
+            await _notify_super_like(
+                db, user, target_type, target_id, context_project_id
+            )
 
     return {"matched": False, "message": f"Recorded {action.lower()}"}
+
+
+async def _notify_super_like(
+    db: AsyncSession,
+    user: User,
+    target_type: str,
+    target_id: str,
+    context_project_id: UUID | None,
+) -> None:
+    if target_type == "PROJECT":
+        project = await db.get(Project, UUID(target_id))
+        recipient_id = project.owner_id if project else None
+        body = f"{user.full_name or 'A contributor'} is especially interested in your project."
+    else:
+        recipient_id = UUID(target_id)
+        project = await db.get(Project, context_project_id) if context_project_id else None
+        project_name = project.title if project else "a project"
+        body = f"{user.full_name or 'A project owner'} is especially interested in you for {project_name}."
+    if not recipient_id:
+        return
+    db.add(
+        Notification(
+            user_id=recipient_id,
+            type="SUPER_LIKE",
+            title="New Super Like",
+            body=body,
+            related_id=str(context_project_id or target_id),
+        )
+    )
+    db.add(
+        OutboxEvent(
+            event_type="PUSH_NOTIFICATION",
+            payload={
+                "user_id": str(recipient_id),
+                "title": "New Super Like",
+                "body": body,
+                "data": {
+                    "type": "SUPER_LIKE",
+                    "project_id": str(context_project_id or target_id),
+                },
+            },
+        )
+    )
+
+
+async def _validate_swipe_target(
+    db: AsyncSession,
+    user: User,
+    target_type: str,
+    target_id: str,
+    context_project_id: UUID | None,
+    context_role_slot_id: UUID | None,
+) -> None:
+    try:
+        target_uuid = UUID(target_id)
+    except ValueError as exc:
+        raise ValueError("Invalid target id") from exc
+    if target_type == "PROJECT":
+        project = await db.get(Project, target_uuid)
+        owner = await db.get(User, project.owner_id) if project else None
+        if (
+            not project
+            or project.owner_id == user.id
+            or project.status != "RECRUITING"
+            or project.review_status != "APPROVED"
+            or not owner
+            or not owner.is_active
+        ):
+            raise ValueError("Project is not eligible for discovery")
+        blocked_user_id = project.owner_id
+    else:
+        if context_project_id is None:
+            raise ValueError("Owner swipes require a project context")
+        project = await db.get(Project, context_project_id)
+        target = await db.get(User, target_uuid)
+        if (
+            not project
+            or project.owner_id != user.id
+            or project.status != "RECRUITING"
+            or not target
+            or target.id == user.id
+            or not target.is_active
+            or not target.email_verified
+        ):
+            raise ValueError("Candidate is not eligible for this project")
+        if context_role_slot_id:
+            slot = await db.get(ProjectRoleSlot, context_role_slot_id)
+            if not slot or slot.project_id != project.id or slot.filled >= slot.count:
+                raise ValueError("Role slot is not available")
+        blocked_user_id = target_uuid
+    blocked = await db.scalar(
+        select(UserBlock.id).where(
+            or_(
+                and_(UserBlock.blocker_id == user.id, UserBlock.blocked_id == blocked_user_id),
+                and_(UserBlock.blocker_id == blocked_user_id, UserBlock.blocked_id == user.id),
+            )
+        )
+    )
+    if blocked:
+        raise ValueError("Target is unavailable")
 
 
 async def expire_queued_items(db: AsyncSession, user_id: UUID) -> None:
@@ -141,19 +269,46 @@ async def expire_queued_items(db: AsyncSession, user_id: UUID) -> None:
         item.resolved_at = now
 
 
-async def add_to_queue(db: AsyncSession, user: User, target_type: str, target_id: str) -> dict:
+async def expire_all_queued_items() -> None:
+    async with async_session() as db:
+        user_ids = (
+            await db.execute(
+                select(SwipeQueueItem.swiper_id)
+                .where(
+                    SwipeQueueItem.is_active == True,
+                    SwipeQueueItem.expires_at <= datetime.now(timezone.utc),
+                )
+                .distinct()
+            )
+        ).scalars().all()
+        for user_id in user_ids:
+            await expire_queued_items(db, user_id)
+        await db.commit()
+
+
+async def add_to_queue(
+    db: AsyncSession,
+    user: User,
+    target_type: str,
+    target_id: str,
+    context_project_id: UUID | None = None,
+) -> dict:
     target_type = target_type.upper()
     if target_type not in {"PROJECT", "USER"}:
         raise ValueError("Invalid queue target type")
 
     await expire_queued_items(db, user.id)
-    await _ensure_queue_target_exists(db, target_type, target_id)
+    await _validate_swipe_target(
+        db, user, target_type, target_id, context_project_id, None
+    )
+    context_key = str(context_project_id) if context_project_id else "GLOBAL"
 
     existing_swipe = await db.execute(
         select(SwipeAction).where(
             SwipeAction.swiper_id == user.id,
             SwipeAction.target_type == target_type,
             SwipeAction.target_id == target_id,
+            SwipeAction.context_key == context_key,
             SwipeAction.is_active == True,
         ).limit(1)
     )
@@ -165,6 +320,7 @@ async def add_to_queue(db: AsyncSession, user: User, target_type: str, target_id
             SwipeQueueItem.swiper_id == user.id,
             SwipeQueueItem.target_type == target_type,
             SwipeQueueItem.target_id == target_id,
+            SwipeQueueItem.context_key == context_key,
             SwipeQueueItem.is_active == True,
         ).limit(1)
     )
@@ -188,6 +344,8 @@ async def add_to_queue(db: AsyncSession, user: User, target_type: str, target_id
         swiper_id=user.id,
         target_type=target_type,
         target_id=target_id,
+        context_project_id=context_project_id,
+        context_key=context_key,
         expires_at=now + QUEUE_TTL,
     )
     db.add(item)
@@ -229,7 +387,14 @@ async def decide_queue_item(db: AsyncSession, user: User, queue_item_id: UUID, a
     await expire_queued_items(db, user.id)
 
     item = await _get_active_queue_item(db, user.id, queue_item_id)
-    result = await perform_swipe_action(db, user, item.target_type, item.target_id, action)
+    result = await perform_swipe_action(
+        db,
+        user,
+        item.target_type,
+        item.target_id,
+        action,
+        item.context_project_id,
+    )
     item.is_active = False
     item.resolution = action
     item.resolved_at = datetime.now(timezone.utc)
@@ -342,7 +507,11 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
 async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UUID) -> dict | None:
     project = await db.scalar(
         select(Project)
-        .options(selectinload(Project.role_slots))
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill)
+        )
         .where(Project.id == project_id)
     )
     if not project:
@@ -387,7 +556,13 @@ def _as_aware_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, target_id: str) -> Match | None:
+async def _check_match(
+    db: AsyncSession,
+    swiper_id: UUID,
+    target_type: str,
+    target_id: str,
+    context_project_id: UUID | None = None,
+) -> Match | None:
     """
     Match occurs when:
     - Contributor likes a project AND the project owner has liked that contributor
@@ -410,6 +585,8 @@ async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, targ
                 SwipeAction.target_type == "USER",
                 SwipeAction.target_id == str(contributor_id),
                 SwipeAction.action.in_(["LIKE", "SUPER_LIKE"]),
+                SwipeAction.context_project_id == project_id,
+                SwipeAction.is_active == True,
             ).order_by(SwipeAction.created_at.desc()).limit(1)
         )
         if owner_liked.scalar_one_or_none():
@@ -420,24 +597,24 @@ async def _check_match(db: AsyncSession, swiper_id: UUID, target_type: str, targ
         owner_id = swiper_id
         contributor_id = UUID(target_id)
 
-        contributor_liked_projects = await db.execute(
-            select(SwipeAction).where(
+        if context_project_id is None:
+            return None
+        project = await db.get(Project, context_project_id)
+        if not project or project.owner_id != owner_id:
+            return None
+        contributor_liked = await db.scalar(
+            select(SwipeAction.id).where(
                 SwipeAction.swiper_id == contributor_id,
                 SwipeAction.target_type == "PROJECT",
+                SwipeAction.target_id == str(context_project_id),
                 SwipeAction.action.in_(["LIKE", "SUPER_LIKE"]),
+                SwipeAction.is_active == True,
             )
         )
-        liked_project_ids = [UUID(s.target_id) for s in contributor_liked_projects.scalars().all()]
-
-        for pid in liked_project_ids:
-            project = await db.scalar(
-                select(Project)
-                .options(selectinload(Project.role_slots))
-                .where(Project.id == pid)
+        if contributor_liked:
+            return await _create_match(
+                db, contributor_id, context_project_id, owner_id
             )
-            if project and project.owner_id == owner_id:
-                return await _create_match(db, contributor_id, pid, owner_id)
-
         return None
 
     return None
@@ -451,13 +628,17 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
             Match.is_unmatched == False,
         )
     )
-    if existing.scalar_one_or_none():
-        return None
+    existing_match = existing.scalar_one_or_none()
+    if existing_match:
+        return existing_match
 
     contributor = await db.scalar(
         select(User)
         .options(
             selectinload(User.roles),
+            selectinload(User.roles)
+            .selectinload(UserRole.role_skills)
+            .selectinload(UserRoleSkill.skill),
             selectinload(User.skills),
             selectinload(User.interests),
             selectinload(User.profile),
@@ -467,7 +648,11 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
     )
     project = await db.scalar(
         select(Project)
-        .options(selectinload(Project.role_slots))
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill)
+        )
         .where(Project.id == project_id)
         .execution_options(populate_existing=True)
     )
@@ -479,14 +664,21 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
     )
 
     computed_score = 0.0
+    score_explanation = None
+    matched_role = None
     if contributor and project:
-        computed_score = calculate_match_score_for_pair(contributor, project, owner)
+        computed_score, score_explanation, slot = calculate_project_score_details(
+            contributor, project, owner
+        )
+        matched_role = slot.role_name if slot else None
 
     match = Match(
         user_id=user_id,
         project_id=project_id,
         owner_id=owner_id,
         match_score=computed_score,
+        role_matched=matched_role,
+        score_explanation=score_explanation,
     )
     db.add(match)
     await db.flush()
@@ -512,23 +704,53 @@ async def _create_match(db: AsyncSession, user_id: UUID, project_id: UUID, owner
     )
     db.add(notif_owner)
 
-    import asyncio
-    asyncio.create_task(notify_user(db, user_id, "New Match!", "You matched with a project! Start chatting."))
-    asyncio.create_task(notify_user(db, owner_id, "New Match!", "A contributor matched with your project!"))
+    db.add(
+        OutboxEvent(
+            event_type="PUSH_NOTIFICATION",
+            payload={
+                "user_id": str(user_id),
+                "title": "New Match!",
+                "body": "You matched with a project! Start chatting.",
+            },
+        )
+    )
+    db.add(
+        OutboxEvent(
+            event_type="PUSH_NOTIFICATION",
+            payload={
+                "user_id": str(owner_id),
+                "title": "New Match!",
+                "body": "A contributor matched with your project!",
+            },
+        )
+    )
 
     return match
 
 
 async def get_discover_cards(
-    db: AsyncSession, user: User, mode: str, cursor: str | None = None, limit: int = 20
+    db: AsyncSession,
+    user: User,
+    mode: str,
+    cursor: str | None = None,
+    limit: int = 20,
+    project_id: UUID | None = None,
 ) -> dict:
+    mode = mode.upper()
     if mode == "CONTRIBUTOR":
         return await _discover_projects(db, user, cursor, limit)
-    else:
-        return await _discover_users(db, user, cursor, limit)
+    if mode == "OWNER":
+        if project_id is None:
+            raise ValueError("Owner discovery requires project_id")
+        return await _discover_users(db, user, cursor, limit, project_id)
+    raise ValueError("Mode must be CONTRIBUTOR or OWNER")
 
 
-async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str], set[str]]:
+async def _get_exclusion_ids(
+    db: AsyncSession,
+    user_id: UUID,
+    context_project_id: UUID | None = None,
+) -> tuple[set[str], set[str]]:
     await expire_queued_items(db, user_id)
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=settings.PASS_COOLDOWN_DAYS)
 
@@ -537,6 +759,10 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
             SwipeAction.swiper_id == user_id,
             SwipeAction.action == "PASS",
             SwipeAction.created_at > seven_days_ago,
+            SwipeAction.context_key == (
+                str(context_project_id) if context_project_id else "GLOBAL"
+            ),
+            SwipeAction.is_active == True,
         )
     )
 
@@ -544,11 +770,22 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
         select(SwipeAction.target_id, SwipeAction.target_type).where(
             SwipeAction.swiper_id == user_id,
             SwipeAction.action.in_(["LIKE", "SUPER_LIKE"]),
+            SwipeAction.context_key == (
+                str(context_project_id) if context_project_id else "GLOBAL"
+            ),
+            SwipeAction.is_active == True,
         )
     )
 
     exclude_user_ids = set()
     exclude_project_ids = set()
+    blocked_rows = await db.execute(
+        select(UserBlock.blocker_id, UserBlock.blocked_id).where(
+            or_(UserBlock.blocker_id == user_id, UserBlock.blocked_id == user_id)
+        )
+    )
+    for blocker_id, blocked_id in blocked_rows.all():
+        exclude_user_ids.add(str(blocked_id if blocker_id == user_id else blocker_id))
     for tgt_id, tgt_type in recent_passes.all():
         if tgt_type == "USER":
             exclude_user_ids.add(tgt_id)
@@ -581,9 +818,11 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
         )
     )
     for match in active_matches.scalars():
-        exclude_project_ids.add(str(match.project_id))
-        exclude_user_ids.add(str(match.user_id))
-        exclude_user_ids.add(str(match.owner_id))
+        if context_project_id is None:
+            exclude_project_ids.add(str(match.project_id))
+            exclude_user_ids.add(str(match.owner_id))
+        elif match.project_id == context_project_id:
+            exclude_user_ids.add(str(match.user_id))
 
     return exclude_user_ids, exclude_project_ids
 
@@ -591,7 +830,11 @@ async def _get_exclusion_ids(db: AsyncSession, user_id: UUID) -> tuple[set[str],
 async def _get_owner_projects(db: AsyncSession, owner: User) -> list[Project]:
     result = await db.execute(
         select(Project)
-        .options(selectinload(Project.role_slots))
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill)
+        )
         .where(
             Project.owner_id == owner.id,
             Project.status == "RECRUITING",
@@ -613,18 +856,23 @@ async def _discover_projects(
 
     query = (
         select(Project)
-        .options(selectinload(Project.role_slots))
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill)
+        )
+        .join(User, User.id == Project.owner_id)
         .where(
             Project.status == "RECRUITING",
             Project.review_status == "APPROVED",
             Project.owner_id != user.id,
+            User.is_active == True,
+            User.email_verified == True,
             ~Project.id.in_([UUID(p) for p in exclude_project_ids if p] if exclude_project_ids else [UUID("00000000-0000-0000-0000-000000000000")]),
         )
     )
     if project_ids:
         query = query.where(Project.id.in_(project_ids))
-    query = query.limit(limit * 2)
-
     projects = (await db.execute(query)).scalars().all()
 
     cards = []
@@ -638,7 +886,9 @@ async def _discover_projects(
         total_filled = sum(s.filled for s in project.role_slots)
         total_slots = sum(s.count for s in project.role_slots)
 
-        match_score = calculate_project_score(user, project, owner)
+        match_score, explanation, matched_slot = calculate_project_score_details(
+            user, project, owner
+        )
 
         if vector:
             project_vec = _get_or_compute_embedding("project", str(project.id), _build_project_text(project))
@@ -671,22 +921,58 @@ async def _discover_projects(
             "total_slots": total_slots,
             "filled_slots": total_filled,
             "match_score": round(match_score, 1),
+            "matched_role": matched_slot.role_name if matched_slot else None,
+            "score_explanation": explanation,
         }
         cards.append(card)
 
+    cards.sort(key=lambda item: (-item["match_score"], item["project_id"]))
+    offset = _cursor_offset(cursor)
+    page = cards[offset:offset + limit]
+    next_cursor = str(offset + limit) if offset + limit < len(cards) else None
+
     return {
-        "project_cards": cards,
+        "project_cards": page,
         "user_cards": [],
-        "next_cursor": None,
+        "next_cursor": next_cursor,
         "daily_likes_remaining": await get_daily_likes_remaining(db, user.id),
         "daily_superlikes_remaining": await get_daily_superlikes_remaining(db, user.id),
     }
 
 
 async def _discover_users(
-    db: AsyncSession, user: User, cursor: str | None, limit: int
+    db: AsyncSession,
+    user: User,
+    cursor: str | None,
+    limit: int,
+    project_id: UUID,
 ) -> dict:
-    exclude_user_ids, exclude_project_ids = await _get_exclusion_ids(db, user.id)
+    project = await db.scalar(
+        select(Project)
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill)
+        )
+        .where(
+            Project.id == project_id,
+            Project.owner_id == user.id,
+            Project.status == "RECRUITING",
+            Project.review_status == "APPROVED",
+        )
+    )
+    if not project:
+        raise ValueError("Recruiting project not found")
+    exclude_user_ids, exclude_project_ids = await _get_exclusion_ids(
+        db, user.id, project_id
+    )
+    blocked_rows = await db.execute(
+        select(UserBlock.blocker_id, UserBlock.blocked_id).where(
+            or_(UserBlock.blocker_id == user.id, UserBlock.blocked_id == user.id)
+        )
+    )
+    for blocker_id, blocked_id in blocked_rows.all():
+        exclude_user_ids.add(str(blocked_id if blocker_id == user.id else blocker_id))
 
     vector = _get_user_search_vector(user)
     profile_ids = None
@@ -695,20 +981,19 @@ async def _discover_users(
 
     query = (
         select(UserProfile)
+        .join(User, User.id == UserProfile.user_id)
         .where(
             UserProfile.mode.in_(["CONTRIBUTOR", "BOTH"]),
             UserProfile.is_hidden == False,
             UserProfile.user_id != user.id,
+            User.is_active == True,
+            User.email_verified == True,
             ~UserProfile.user_id.in_([UUID(u) for u in exclude_user_ids if u] if exclude_user_ids else [UUID("00000000-0000-0000-0000-000000000000")]),
         )
     )
     if profile_ids:
         query = query.where(UserProfile.user_id.in_(profile_ids))
-    query = query.limit(limit * 2)
-
     profiles = (await db.execute(query)).scalars().all()
-
-    owner_projects = await _get_owner_projects(db, user)
 
     cards = []
     for profile in profiles:
@@ -717,6 +1002,9 @@ async def _discover_users(
             profile.user_id,
             options=[
                 selectinload(User.roles),
+                selectinload(User.roles)
+                .selectinload(UserRole.role_skills)
+                .selectinload(UserRoleSkill.skill),
                 selectinload(User.skills),
                 selectinload(User.interests),
                 selectinload(User.profile),
@@ -729,7 +1017,9 @@ async def _discover_users(
             select(UserSkill).where(UserSkill.user_id == profile.user_id)
         )
 
-        match_score = calculate_user_score(user, pu, profile, owner_projects)
+        match_score, explanation, matched_slot = calculate_user_score_details(
+            user, pu, project
+        )
 
         if vector:
             profile_vec = _get_or_compute_embedding("user", str(profile.user_id), _build_user_text(profile))
@@ -757,16 +1047,33 @@ async def _discover_users(
             "reputation_score": profile.reputation_score,
             "projects_completed": profile.projects_completed,
             "match_score": round(match_score, 1),
+            "matched_role": matched_slot.role_name if matched_slot else None,
+            "score_explanation": explanation,
         }
         cards.append(card)
 
+    cards.sort(key=lambda item: (-item["match_score"], item["user_id"]))
+    offset = _cursor_offset(cursor)
+    page = cards[offset:offset + limit]
+    next_cursor = str(offset + limit) if offset + limit < len(cards) else None
+
     return {
-        "user_cards": cards,
+        "user_cards": page,
         "project_cards": [],
-        "next_cursor": None,
+        "next_cursor": next_cursor,
+        "context_project_id": str(project_id),
         "daily_likes_remaining": await get_daily_likes_remaining(db, user.id),
         "daily_superlikes_remaining": await get_daily_superlikes_remaining(db, user.id),
     }
+
+
+def _cursor_offset(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    try:
+        return max(0, int(cursor))
+    except ValueError as exc:
+        raise ValueError("Invalid discovery cursor") from exc
 
 
 def _get_user_search_vector(user: User) -> list[float] | None:
@@ -793,6 +1100,7 @@ def _search_similar_projects(vector: list[float], limit: int, exclude_ids: set[s
     if not settings.ENABLE_MILVUS:
         return None
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("project_vectors")
         collection.load()
@@ -825,6 +1133,7 @@ def _search_similar_users(vector: list[float], limit: int, exclude_ids: set[str]
     if not settings.ENABLE_MILVUS:
         return None
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("user_profile_vectors")
         collection.load()
@@ -994,14 +1303,32 @@ async def get_applicants_for_project(
             SwipeAction.target_type == "PROJECT",
             SwipeAction.target_id == str(project_id),
             SwipeAction.action.in_(["LIKE", "SUPER_LIKE"]),
+            SwipeAction.is_active == True,
         ).order_by(SwipeAction.created_at.desc())
     )
     swipes = result.scalars().all()
 
     applicants = []
+    seen_user_ids: set[UUID] = set()
     for swipe in swipes:
-        swiper = await db.get(User, UUID(swipe.swiper_id))
-        if not swiper:
+        swiper_id = UUID(str(swipe.swiper_id))
+        if swiper_id in seen_user_ids:
+            continue
+        seen_user_ids.add(swiper_id)
+        swiper = await db.get(
+            User,
+            swiper_id,
+            options=[
+                selectinload(User.roles),
+                selectinload(User.roles)
+                .selectinload(UserRole.role_skills)
+                .selectinload(UserRoleSkill.skill),
+                selectinload(User.skills),
+                selectinload(User.interests),
+                selectinload(User.profile),
+            ],
+        )
+        if not swiper or not swiper.is_active or not swiper.email_verified:
             continue
         profile_result = await db.execute(
             select(UserProfile).where(UserProfile.user_id == swiper.id)
@@ -1013,19 +1340,50 @@ async def get_applicants_for_project(
         skills_result = await db.execute(
             select(UserSkill).where(UserSkill.user_id == swiper.id)
         )
+        score, explanation, matched_slot = calculate_user_score_details(
+            user, swiper, project
+        )
 
+        role_rows = roles_result.scalars().all()
+        skill_rows = skills_result.scalars().all()
         applicants.append({
             "user_id": str(swiper.id),
             "display_name": profile.display_name if profile else swiper.full_name,
             "avatar_url": swiper.avatar_url,
-            "roles": [{"role_name": r.role_name} for r in roles_result.scalars()],
-            "skills": [{"skill_name": s.skill_name, "level": s.level} for s in skills_result.scalars()],
+            "roles": [
+                {
+                    "id": str(role.id),
+                    "role_name": role.role_name,
+                    "ordering": role.ordering,
+                    "skills": [],
+                }
+                for role in role_rows
+            ],
+            "skills": [
+                {
+                    "id": str(skill.id),
+                    "skill_name": skill.skill_name,
+                    "level": skill.level,
+                    "needs_improvement": skill.needs_improvement,
+                }
+                for skill in skill_rows
+            ],
             "verified_student": swiper.verified_student,
             "reputation_score": profile.reputation_score if profile else 3.0,
-            "match_score": 0.0,
+            "match_score": round(score, 1),
+            "matched_role": matched_slot.role_name if matched_slot else None,
+            "score_explanation": explanation,
+            "is_super_like": swipe.action == "SUPER_LIKE",
             "swiped_at": swipe.created_at,
         })
 
+    applicants.sort(
+        key=lambda item: (
+            not item["is_super_like"],
+            -item["match_score"],
+            item["display_name"].lower(),
+        )
+    )
     return applicants
 
 

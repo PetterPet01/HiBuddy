@@ -5,6 +5,8 @@ from sqlalchemy import select, or_
 from app.database import get_db
 from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill
+from app.models.trust_safety import UserBlock
+from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/search", tags=["search"])
 
@@ -15,6 +17,7 @@ async def search_users(
     skill: str | None = Query(None, description="Filter by skill name"),
     role: str | None = Query(None, description="Filter by role name"),
     limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     user_ids = set()
@@ -37,18 +40,39 @@ async def search_users(
         else:
             user_ids = role_ids
 
-    conditions = [User.is_active == True]
+    if (skill or role) and not user_ids:
+        return []
+
+    conditions = [
+        User.is_active == True,
+        User.email_verified == True,
+        User.id != current_user.id,
+    ]
 
     if q:
         search_term = f"%{q}%"
         conditions.append(or_(
             User.full_name.ilike(search_term),
-            User.email.ilike(search_term),
             User.university.ilike(search_term),
         ))
 
     if user_ids:
         conditions.append(User.id.in_(user_ids))
+
+    blocked_rows = await db.execute(
+        select(UserBlock.blocker_id, UserBlock.blocked_id).where(
+            or_(
+                UserBlock.blocker_id == current_user.id,
+                UserBlock.blocked_id == current_user.id,
+            )
+        )
+    )
+    blocked_ids = {
+        blocked_id if blocker_id == current_user.id else blocker_id
+        for blocker_id, blocked_id in blocked_rows.all()
+    }
+    if blocked_ids:
+        conditions.append(~User.id.in_(blocked_ids))
 
     query = select(User).where(*conditions).limit(limit)
     result = await db.execute(query)

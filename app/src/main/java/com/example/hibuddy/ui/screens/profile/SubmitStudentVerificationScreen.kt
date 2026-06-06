@@ -7,6 +7,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun SubmitStudentVerificationScreen(
@@ -20,6 +24,11 @@ fun SubmitStudentVerificationScreen(
     var university by remember { mutableStateOf("") }
     var studentId by remember { mutableStateOf("") }
     var academicYear by remember { mutableStateOf("") }
+    var studentCardUri by remember { mutableStateOf<Uri?>(null) }
+    val context = LocalContext.current
+    val cardPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> studentCardUri = uri }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -38,6 +47,15 @@ fun SubmitStudentVerificationScreen(
             )
 
             Spacer(Modifier.height(20.dp))
+
+            OutlinedButton(
+                onClick = { cardPicker.launch("image/*") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (studentCardUri == null) "Select student card" else "Student card selected")
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = fullName,
@@ -101,15 +119,26 @@ fun SubmitStudentVerificationScreen(
 
             Button(
                 onClick = {
-                    profileViewModel.submitStudentVerification(
-                        fullName = fullName,
-                        studentEmail = studentEmail,
-                        university = university,
-                        studentId = studentId,
-                        academicYear = academicYear
-                    )
+                    val submit = {
+                        profileViewModel.submitStudentVerification(
+                            fullName = fullName,
+                            studentEmail = studentEmail,
+                            university = university,
+                            studentId = studentId,
+                            academicYear = academicYear
+                        )
+                    }
+                    studentCardUri?.let { uri ->
+                        profileViewModel.uploadStudentCard(context, uri, submit)
+                    } ?: submit()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isLoading &&
+                    fullName.isNotBlank() &&
+                    university.isNotBlank() &&
+                    studentId.isNotBlank() &&
+                    academicYear.isNotBlank() &&
+                    studentCardUri != null
             ) {
                 Text("Submit Verification Request")
             }

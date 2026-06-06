@@ -40,17 +40,17 @@ class ReportManagementViewModel : ViewModel() {
         }
     }
 
-    fun dismissReport(reportId: String) {
-        resolve(reportId, "DISMISS", "Report dismissed")
+    fun dismissReport(reportId: String, reason: String) {
+        resolve(reportId, "DISMISS", reason)
     }
 
-    fun banReportedUser(reportId: String) {
-        resolve(reportId, "BAN", "User banned")
+    fun banReportedUser(reportId: String, reason: String) {
+        resolve(reportId, "BAN", reason)
     }
 
     private fun resolve(reportId: String, action: String, message: String) {
         viewModelScope.launch {
-            adminRepository.resolveReport(reportId, action).fold(
+            adminRepository.resolveReport(reportId, action, message).fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(
                         message = message,

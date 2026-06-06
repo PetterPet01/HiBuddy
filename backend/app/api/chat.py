@@ -15,6 +15,7 @@ from app.schemas.chat import ProjectInvitationCreate
 from app.api.websocket import manager
 from app.services.notification_service import get_notifications, get_unread_notification_count
 from app.services.presence_service import presence_manager
+from app.models.trust_safety import UserBlock
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
@@ -23,6 +24,15 @@ async def _get_authorized_match(db: AsyncSession, match_id: UUID, user: User) ->
     match = await db.get(Match, match_id)
     if not match or user.id not in (match.user_id, match.owner_id) or match.is_unmatched:
         raise HTTPException(status_code=403, detail="Not authorized")
+    other_id = match.user_id if match.owner_id == user.id else match.owner_id
+    blocked = await db.scalar(
+        select(UserBlock.id).where(
+            ((UserBlock.blocker_id == user.id) & (UserBlock.blocked_id == other_id))
+            | ((UserBlock.blocker_id == other_id) & (UserBlock.blocked_id == user.id))
+        )
+    )
+    if blocked:
+        raise HTTPException(status_code=403, detail="Chat is unavailable")
     return match
 
 
@@ -170,9 +180,7 @@ async def get_messages(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    match = await db.get(Match, match_id)
-    if not match or (match.user_id != current_user.id and match.owner_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized")
+    match = await _get_authorized_match(db, match_id, current_user)
 
     chat_result = await db.execute(select(Chat).where(Chat.match_id == match_id))
     chat = chat_result.scalar_one_or_none()
@@ -220,6 +228,7 @@ async def get_messages(
             "is_read": msg.is_read,
             "created_at": msg.created_at.isoformat(),
             "sender_name": sender.full_name if sender else None,
+            "client_message_id": msg.client_message_id,
         })
     return response
 

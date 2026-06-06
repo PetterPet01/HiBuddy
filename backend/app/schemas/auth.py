@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 import re
 
 
@@ -26,6 +26,7 @@ class UserRegister(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
+        v = v.strip().lower()
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters")
         if not re.match(r"^[a-zA-Z0-9._@]+$", v):
@@ -43,6 +44,8 @@ class UserRegister(BaseModel):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
         return v
 
     @field_validator("confirm_password")
@@ -63,7 +66,8 @@ class UserRegister(BaseModel):
             raise ValueError("Date of birth must be after 01/01/1900")
         if dt > datetime.now():
             raise ValueError("Date of birth must be in the past")
-        age = datetime.now().year - dt.year
+        today = datetime.now().date()
+        age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
         if age < 18:
             raise ValueError("You must be at least 18 years old")
         return v
@@ -80,6 +84,7 @@ class UserLogin(BaseModel):
     username: str
     password: str
     remember_me: bool = False
+    device_name: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -92,8 +97,7 @@ class UserResponse(BaseModel):
     role: str
     avatar_url: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenResponse(BaseModel):
@@ -101,10 +105,12 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+    requires_email_verification: bool = False
 
 
 class TokenRefresh(BaseModel):
     refresh_token: str
+    device_name: str | None = None
 
 
 class ForgotPassword(BaseModel):
@@ -113,6 +119,7 @@ class ForgotPassword(BaseModel):
 
 
 class ResetPassword(BaseModel):
+    email: EmailStr
     code: str
     new_password: str
     confirm_password: str
@@ -128,6 +135,8 @@ class ResetPassword(BaseModel):
             raise ValueError("Password must contain at least one lowercase letter")
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
         return v
 
     @field_validator("confirm_password")
@@ -139,12 +148,22 @@ class ResetPassword(BaseModel):
 
 
 class EmailVerifyRequest(BaseModel):
-    code: str
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr | None = None
+
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+    device_name: str | None = None
 
 
 class StudentVerificationRequest(BaseModel):
-    full_name: str
-    student_email: str | None = None
-    university: str
-    student_id: str
-    academic_year: str
+    full_name: str = Field(min_length=2, max_length=100)
+    student_email: EmailStr | None = None
+    university: str = Field(min_length=2, max_length=200)
+    student_id: str = Field(min_length=3, max_length=50)
+    academic_year: str = Field(min_length=1, max_length=20)

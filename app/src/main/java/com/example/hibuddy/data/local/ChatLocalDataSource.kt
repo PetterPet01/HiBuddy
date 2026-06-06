@@ -132,6 +132,11 @@ class ChatLocalDataSource(context: Context) :
         )
     }
 
+    @Synchronized
+    fun clearAll() {
+        writableDatabase.delete(TABLE_MESSAGES, null, null)
+    }
+
     private fun SQLiteDatabase.runInTransaction(block: SQLiteDatabase.() -> Unit) {
         beginTransaction()
         try {

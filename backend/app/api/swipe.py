@@ -21,10 +21,16 @@ async def discover_cards(
     mode: str = "CONTRIBUTOR",
     cursor: str | None = None,
     limit: int = 20,
+    project_id: UUID | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_discover_cards(db, current_user, mode, cursor, limit)
+    if limit < 1 or limit > 50:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
+    try:
+        return await get_discover_cards(db, current_user, mode, cursor, limit, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/action")
@@ -34,7 +40,15 @@ async def swipe_action(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await perform_swipe_action(db, current_user, data.target_type, data.target_id, data.action)
+        return await perform_swipe_action(
+            db,
+            current_user,
+            data.target_type,
+            data.target_id,
+            data.action,
+            data.context_project_id,
+            data.context_role_slot_id,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -54,7 +68,9 @@ async def queue_profile(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await add_to_queue(db, current_user, data.target_type, data.target_id)
+        return await add_to_queue(
+            db, current_user, data.target_type, data.target_id, data.context_project_id
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

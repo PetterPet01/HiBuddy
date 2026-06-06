@@ -15,8 +15,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login-swagger", auto
 
 
 from sqlalchemy.orm import selectinload
+from app.models.profile import UserRole
+from app.models.catalog import UserRoleSkill
 
-async def get_current_user(
+async def get_authenticated_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -35,7 +37,7 @@ async def get_current_user(
         select(User)
         .options(
             selectinload(User.profile),
-            selectinload(User.roles),
+            selectinload(User.roles).selectinload(UserRole.role_skills).selectinload(UserRoleSkill.skill),
             selectinload(User.skills),
             selectinload(User.interests),
         )
@@ -48,6 +50,17 @@ async def get_current_user(
     return user
 
 
+async def get_current_user(
+    user: User = Depends(get_authenticated_user),
+) -> User:
+    if not user.email_verified and user.role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required",
+        )
+    return user
+
+
 async def get_current_user_or_none(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: AsyncSession = Depends(get_db),
@@ -55,7 +68,10 @@ async def get_current_user_or_none(
     if not token:
         return None
     try:
-        return await get_current_user(token, db)
+        user = await get_authenticated_user(token, db)
+        if not user.email_verified and user.role != "ADMIN":
+            return None
+        return user
     except HTTPException:
         return None
 

@@ -28,12 +28,14 @@ import com.example.hibuddy.ui.theme.HiBuddyColors
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 private const val NEW_MATCH_LIFETIME_MILLIS = 24L * 60L * 60L * 1000L
 
 @Composable
 fun MatchesScreen(
-    onChatClick: (matchId: String, userName: String, targetUserId: String) -> Unit = { _, _, _ -> },
+    onChatClick: (matchId: String, userName: String, targetUserId: String, avatar: String?) -> Unit = { _, _, _, _ -> },
     viewModel: MatchesViewModel = viewModel(factory = MatchesViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -106,7 +108,14 @@ fun MatchesScreen(
                             MatchQueueItem(
                                 match = match,
                                 nowMillis = nowMillis,
-                                onClick = { onChatClick(match.id, match.userName ?: "", match.otherUserId ?: "") }
+                                onClick = {
+                                    onChatClick(
+                                        match.id,
+                                        match.userName ?: "",
+                                        match.otherUserId ?: "",
+                                        match.userAvatar
+                                    )
+                                }
                             )
                         }
                     }
@@ -139,7 +148,17 @@ fun MatchesScreen(
                 }
             } else {
                 items(existingChats) { chat ->
-                    ConversationRowItem(chat = chat, onClick = { onChatClick(chat.matchId, chat.userName, chat.userId) })
+                    ConversationRowItem(
+                        chat = chat,
+                        onClick = {
+                            onChatClick(
+                                chat.matchId,
+                                chat.userName,
+                                chat.userId,
+                                chat.userAvatar
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -170,7 +189,16 @@ fun MatchQueueItem(
             CircularProgressIndicator(progress = { 1f }, color = colorScheme.outline.copy(alpha = 0.32f), modifier = Modifier.fillMaxSize(), strokeWidth = 2.dp)
             CircularProgressIndicator(progress = { progress }, color = HiBuddyColors.warning, modifier = Modifier.fillMaxSize(), strokeWidth = 2.dp, strokeCap = StrokeCap.Round)
             Box(modifier = Modifier.size(62.dp).clip(CircleShape).background(avatarColor), contentAlignment = Alignment.Center) {
-                Text(text = (match.userName ?: "?").firstOrNull()?.uppercase() ?: "?", fontSize = 28.sp, color = avatarTextColor)
+                if (!match.userAvatar.isNullOrBlank()) {
+                    AsyncImage(
+                        model = match.userAvatar,
+                        contentDescription = "${match.userName} avatar",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(text = (match.userName ?: "?").firstOrNull()?.uppercase() ?: "?", fontSize = 28.sp, color = avatarTextColor)
+                }
             }
             PresenceBadge(
                 isOnline = match.userIsOnline,
@@ -217,7 +245,16 @@ fun ConversationRowItem(chat: ChatInboxResponse, onClick: () -> Unit) {
                     modifier = Modifier.size(56.dp).clip(CircleShape).background(avatarColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = chat.userName.firstOrNull()?.uppercase() ?: "?", fontSize = 24.sp, color = avatarTextColor)
+                    if (!chat.userAvatar.isNullOrBlank()) {
+                        AsyncImage(
+                            model = chat.userAvatar,
+                            contentDescription = "${chat.userName} avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(text = chat.userName.firstOrNull()?.uppercase() ?: "?", fontSize = 24.sp, color = avatarTextColor)
+                    }
                 }
                 PresenceBadge(
                     isOnline = chat.userIsOnline,

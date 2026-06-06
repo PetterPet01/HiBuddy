@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Any
 from uuid import UUID
 import firebase_admin
@@ -48,7 +49,7 @@ async def send_push_notification(
             data=data or {},
             token=token,
         )
-        response = messaging.send(message)
+        response = await asyncio.to_thread(messaging.send, message)
         logger.info(f"Successfully sent message: {response}")
         return True
     except Exception as e:

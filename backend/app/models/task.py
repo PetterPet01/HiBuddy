@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Integer, Float, ForeignKey, func, JSON
+from sqlalchemy import String, Boolean, DateTime, Integer, Float, ForeignKey, func, JSON, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -8,6 +8,9 @@ from app.database import Base
 
 class Task(Base):
     __tablename__ = "tasks"
+    __table_args__ = (
+        CheckConstraint("deadline > start_date", name="ck_task_date_range"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
@@ -52,6 +55,9 @@ class TaskCheckoutHistory(Base):
 
 class ProjectEvaluation(Base):
     __tablename__ = "project_evaluations"
+    __table_args__ = (
+        UniqueConstraint("project_id", "evaluator_id", "evaluatee_id", name="uq_project_evaluation"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)

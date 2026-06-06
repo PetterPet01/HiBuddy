@@ -10,6 +10,7 @@ from app.database import get_db
 from app.core.dependencies import get_current_user, get_current_user_or_none
 from app.models.user import User
 from app.models.project import Project, ProjectRoleSlot, ProjectMember
+from app.models.catalog import SkillCatalog, ProjectRoleSkillRequirement
 from app.models.profile import UserProfile
 from app.models.swipe import Match
 from app.schemas.project import (
@@ -20,6 +21,7 @@ from app.schemas.project import (
 from app.services.notification_service import notify_member_added
 from app.services.mistral_service import moderate_project_content
 from app.config import get_settings
+from app.models.operations import OutboxEvent
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -52,8 +54,11 @@ async def create_project(
     if active_count.scalar() >= settings.MAX_ACTIVE_PROJECTS_PER_OWNER:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 3 active projects allowed")
 
-    start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
-    end = datetime.strptime(data.end_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+    try:
+        start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+        end = datetime.strptime(data.end_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Dates must use DD/MM/YYYY") from exc
 
     if start < datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start date must be in the future")
@@ -83,9 +88,36 @@ async def create_project(
             role_name=slot_data.role_name,
             count=slot_data.count,
             filled=0,
-            skill_requirements={"requirements": slot_data.skill_requirements} if slot_data.skill_requirements else None,
+            skill_requirements={
+                requirement.skill_name: requirement.minimum_level
+                for requirement in slot_data.skill_requirements
+            } or None,
         )
         db.add(slot)
+        await db.flush()
+        for requirement in slot_data.skill_requirements:
+            normalized = requirement.skill_name.strip().lower()
+            catalog = (
+                await db.execute(
+                    select(SkillCatalog).where(func.lower(SkillCatalog.name) == normalized)
+                )
+            ).scalar_one_or_none()
+            if not catalog:
+                import re
+                catalog = SkillCatalog(
+                    slug=re.sub(r"[^a-z0-9]+", "-", normalized).strip("-"),
+                    name=requirement.skill_name.strip(),
+                )
+                db.add(catalog)
+                await db.flush()
+            db.add(
+                ProjectRoleSkillRequirement(
+                    role_slot_id=slot.id,
+                    skill_id=catalog.id,
+                    minimum_level=requirement.minimum_level,
+                    is_required=requirement.is_required,
+                )
+            )
 
     owner_member = ProjectMember(
         project_id=project.id,
@@ -104,6 +136,9 @@ async def create_project(
         additional_requirements=data.additional_requirements,
         member_benefits=data.member_benefits,
     )
+    project.moderation_categories = moderation["categories"]
+    project.moderation_reasons = moderation["reasons"]
+    project.moderation_checked_at = datetime.now(timezone.utc)
 
     if moderation["is_flagged"]:
         project.review_status = "FLAGGED"
@@ -119,9 +154,6 @@ async def create_project(
             admins = admins_result.scalars().all()
 
             from app.models.chat import Notification
-            from app.services.fcm_service import notify_user
-            import asyncio
-
             for admin in admins:
                 notif = Notification(
                     user_id=admin.id,
@@ -131,10 +163,13 @@ async def create_project(
                     related_id=str(project.id),
                 )
                 db.add(notif)
-                asyncio.create_task(notify_user(
-                    db, admin.id,
-                    "Dự án cần phê duyệt",
-                    f"Dự án '{project.title}' chứa nội dung không an toàn cần được kiểm duyệt.",
+                db.add(OutboxEvent(
+                    event_type="PUSH_NOTIFICATION",
+                    payload={
+                        "user_id": str(admin.id),
+                        "title": "Project requires review",
+                        "body": f"Project '{project.title}' requires moderation.",
+                    },
                 ))
         except Exception as e:
             logger.error(f"Failed to notify admins for flagged project: {e}")
@@ -225,9 +260,7 @@ async def close_project(
     from sqlalchemy.orm import selectinload
     from app.models.chat import Notification
     from app.models.task import Task, TaskCheckoutHistory
-    from app.services.fcm_service import notify_user
     from app.services.task_scheduler import _recalculate_user_score
-    import asyncio
 
     project = await db.get(Project, project_id, options=[selectinload(Project.members)])
     if not project or project.owner_id != current_user.id:
@@ -285,10 +318,13 @@ async def close_project(
             related_id=str(project_id),
         )
         db.add(notif)
-        asyncio.create_task(notify_user(
-            db, user_id,
-            "Project completed",
-            f"'{project.title}' has ended. You can send feedback and open AI Course Suggestions from your profile.",
+        db.add(OutboxEvent(
+            event_type="PUSH_NOTIFICATION",
+            payload={
+                "user_id": str(user_id),
+                "title": "Project completed",
+                "body": f"'{project.title}' has ended. Feedback is now available.",
+            },
         ))
 
     for assignee_id in affected_assignees:
@@ -461,6 +497,8 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
         max_members=project.max_members,
         status=project.status,
         review_status=project.review_status,
+        moderation_categories=project.moderation_categories,
+        moderation_reasons=project.moderation_reasons,
         additional_requirements=project.additional_requirements,
         member_benefits=project.member_benefits,
         role_slots=[RoleSlotResponse.model_validate(s) for s in slots_result.scalars().all()],

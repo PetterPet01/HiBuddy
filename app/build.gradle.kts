@@ -8,6 +8,7 @@ val resolvedBaseUrl = providers.gradleProperty("HIBUDDY_BASE_URL")
     .orElse("http://10.0.2.2:8000/")
     .get()
     .let { if (it.endsWith("/")) it else "$it/" }
+val googleWebClientId = providers.gradleProperty("HIBUDDY_GOOGLE_WEB_CLIENT_ID").orElse("").get()
 
 android {
     namespace = "com.example.hibuddy"
@@ -27,11 +28,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "BASE_URL", "\"$resolvedBaseUrl\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -45,6 +51,11 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    testOptions {
+        unitTests.all {
+            it.useJUnit()
+        }
     }
 }
 
@@ -76,6 +87,10 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     implementation("com.google.accompanist:accompanist-flowlayout:0.36.0")
 

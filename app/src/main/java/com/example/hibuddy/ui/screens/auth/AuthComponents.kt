@@ -180,7 +180,8 @@ fun AuthTextField(
     trailingIcon: @Composable (() -> Unit)? = null,
     placeholder: String? = null,
     supportingText: @Composable (() -> Unit)? = null,
-    isError: Boolean = false
+    isError: Boolean = false,
+    readOnly: Boolean = false
 ) {
     OutlinedTextField(
         value = value,
@@ -191,6 +192,7 @@ fun AuthTextField(
             .heightIn(min = 58.dp),
         singleLine = true,
         isError = isError,
+        readOnly = readOnly,
         placeholder = placeholder?.let { { Text(it) } },
         visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions,

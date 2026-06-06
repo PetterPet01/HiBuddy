@@ -41,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +67,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.foundation.clickable
 @Composable
 private fun FeedbackSummarySection() {
     var feedbackSummary by remember { mutableStateOf<MyFeedbackSummaryResponse?>(null) }
@@ -121,6 +130,12 @@ fun ProfileScreen(
     val isDarkMode by ServiceLocator.themeManager.isDarkMode.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
     val profile = uiState.profile
+    val context = LocalContext.current
+    val avatarPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) profileViewModel.uploadAvatar(context, uri)
+    }
     val isProfileIncomplete =
         profile != null &&
                 (
@@ -301,15 +316,43 @@ fun ProfileScreen(
                     modifier = Modifier
                         .size(104.dp)
                         .border(2.dp, colorScheme.primary, CircleShape)
-                        .background(colorScheme.primaryContainer, CircleShape),
+                        .background(colorScheme.primaryContainer, CircleShape)
+                        .clip(CircleShape)
+                        .clickable { avatarPicker.launch("image/*") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = currentProfile.displayName.firstOrNull()?.uppercase() ?: "?",
-                        fontSize = 46.sp,
-                        fontWeight = FontWeight.Bold,
+                    if (!currentProfile.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = currentProfile.avatarUrl,
+                            contentDescription = "Profile avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = currentProfile.displayName.firstOrNull()?.uppercase() ?: "?",
+                            fontSize = 46.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colorScheme.primary
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd).size(30.dp),
+                        shape = CircleShape,
                         color = colorScheme.primary
-                    )
+                    ) {
+                        Icon(
+                            Icons.Filled.CameraAlt,
+                            contentDescription = "Change avatar",
+                            tint = colorScheme.onPrimary,
+                            modifier = Modifier.padding(7.dp)
+                        )
+                    }
+                }
+                if (!currentProfile.avatarUrl.isNullOrBlank()) {
+                    TextButton(onClick = profileViewModel::removeAvatar) {
+                        Text("Remove photo")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

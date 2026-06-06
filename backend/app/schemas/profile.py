@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 import re
 
 
@@ -16,8 +16,7 @@ class SkillResponse(BaseModel):
     level: str
     needs_improvement: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleCreate(BaseModel):
@@ -29,9 +28,9 @@ class RoleResponse(BaseModel):
     id: UUID
     role_name: str
     ordering: int
+    skills: list[SkillResponse] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InterestCreate(BaseModel):
@@ -42,8 +41,7 @@ class InterestResponse(BaseModel):
     id: UUID
     interest_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProfileCreate(BaseModel):
@@ -64,8 +62,29 @@ class ProfileCreate(BaseModel):
         return v
 
 
+class RoleSkillInput(BaseModel):
+    skill_name: str = Field(min_length=1, max_length=100)
+    level: str = "BEGINNER"
+    needs_improvement: bool = False
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, value: str) -> str:
+        value = value.upper()
+        if value not in {"BEGINNER", "INTERMEDIATE", "ADVANCED"}:
+            raise ValueError("Invalid skill level")
+        return value
+
+
+class RoleProfileInput(BaseModel):
+    role_name: str = Field(min_length=1, max_length=100)
+    ordering: int = Field(default=0, ge=0, le=2)
+    skills: list[RoleSkillInput] = Field(default_factory=list, max_length=30)
+
+
 class ProfileUpdate(ProfileCreate):
-    pass
+    roles: list[RoleProfileInput] | None = None
+    interests: list[str] | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -86,13 +105,12 @@ class ProfileResponse(BaseModel):
     email: str
     verified_student: bool
     university: str | None
-    roles: list[RoleResponse] = []
-    skills: list[SkillResponse] = []
-    interests: list[InterestResponse] = []
+    roles: list[RoleResponse] = Field(default_factory=list)
+    skills: list[SkillResponse] = Field(default_factory=list)
+    interests: list[InterestResponse] = Field(default_factory=list)
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCardResponse(BaseModel):
@@ -110,8 +128,7 @@ class UserCardResponse(BaseModel):
     projects_completed: int
     match_score: float = 0.0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CompletedCourseCreate(BaseModel):
@@ -127,5 +144,4 @@ class CompletedCourseResponse(BaseModel):
     badge_visible: bool
     completed_date: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

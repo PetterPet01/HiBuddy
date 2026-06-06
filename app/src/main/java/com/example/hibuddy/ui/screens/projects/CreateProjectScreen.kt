@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.data.remote.dto.RoleSlotRequest
+import com.example.hibuddy.data.remote.dto.SkillRequirementRequest
+import com.example.hibuddy.ui.components.DatePickerField
 import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 
 data class RoleSlotEntry(
@@ -54,7 +56,7 @@ fun CreateProjectScreen(
 
     val fields = listOf("EdTech", "Climate Tech", "HealthTech", "FinTech", "AI/ML", "Mobile", "Web", "Gaming", "IoT", "Other")
     val workModes = listOf("ONLINE" to "Online", "OFFLINE" to "Offline", "HYBRID" to "Hybrid")
-    val commitments = listOf("CASUAL" to "Casual", "SERIOUS" to "Serious", "FULLTIME" to "Full-time")
+    val commitments = listOf("CASUAL" to "Casual", "MODERATE" to "Moderate", "INTENSIVE" to "Intensive")
 
     LaunchedEffect(uiState.createdProject) {
         uiState.createdProject?.let {
@@ -142,23 +144,17 @@ fun CreateProjectScreen(
             )
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                DatePickerField(
                     value = startDate,
                     onValueChange = { startDate = it },
-                    label = { Text("Start Date") },
-                    placeholder = { Text("DD/MM/YYYY") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = textFieldColors()
+                    label = "Start Date",
+                    modifier = Modifier.weight(1f)
                 )
-                OutlinedTextField(
+                DatePickerField(
                     value = endDate,
                     onValueChange = { endDate = it },
-                    label = { Text("End Date") },
-                    placeholder = { Text("DD/MM/YYYY") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = textFieldColors()
+                    label = "End Date",
+                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -317,7 +313,18 @@ fun CreateProjectScreen(
                         maxMembers = maxMembers.toIntOrNull() ?: 4,
                         workMode = workMode,
                         commitmentLevel = commitmentLevel,
-                        roleSlots = roleSlots.map { RoleSlotRequest(it.roleName, it.count, it.skillRequirements.ifBlank { null }) },
+                        roleSlots = roleSlots.map { slot ->
+                            RoleSlotRequest(
+                                slot.roleName,
+                                slot.count,
+                                slot.skillRequirements
+                                    .split(",")
+                                    .map(String::trim)
+                                    .filter(String::isNotBlank)
+                                    .distinctBy(String::lowercase)
+                                    .map { SkillRequirementRequest(it) }
+                            )
+                        },
                         additionalRequirements = additionalRequirements.ifBlank { null },
                         memberBenefits = memberBenefits.ifBlank { null }
                     )

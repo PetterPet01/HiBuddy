@@ -1,14 +1,15 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal
 
 
 class TaskCreate(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=2, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
     assignee_id: str
     role_related: str | None = None
-    priority: str = "MEDIUM"
+    priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] = "MEDIUM"
     start_date: str
     deadline: str
     tag: str | None = None
@@ -17,18 +18,18 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
-    priority: str | None = None
+    priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] | None = None
     deadline: str | None = None
     tag: str | None = None
     assignee_id: str | None = None
 
 
 class TaskStatusUpdate(BaseModel):
-    status: str
+    status: Literal["TODO", "IN_PROGRESS", "DONE_REVIEW", "CLOSED"]
 
 
 class TaskCheckoutOverride(BaseModel):
-    checkout_status: str
+    checkout_status: Literal["EARLY", "ON_TIME", "LATE", "LATE_CHECKOUT", "NOT_COMPLETED"]
     notes: str | None = None
 
 
@@ -52,8 +53,7 @@ class TaskResponse(BaseModel):
     assignee_avatar: str | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DashboardResponse(BaseModel):
@@ -104,5 +104,4 @@ class EvaluationResponse(BaseModel):
     feedback_text: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import android.content.Context
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class ProfileUiState(
     val isLoading: Boolean = false,
@@ -129,6 +133,74 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
+    fun uploadAvatar(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            val payload = runCatching {
+                withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalArgumentException("Could not read selected image")
+                    bytes to (context.contentResolver.getType(uri) ?: "image/jpeg")
+                }
+            }.getOrElse {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = it.message ?: "Could not read selected image"
+                )
+                return@launch
+            }
+            profileRepository.uploadAvatar(payload.first, payload.second).fold(
+                onSuccess = { loadProfile() },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = it.message ?: "Avatar upload failed"
+                    )
+                }
+            )
+        }
+    }
+
+    fun removeAvatar() {
+        viewModelScope.launch {
+            profileRepository.deleteAvatar().fold(
+                onSuccess = { loadProfile() },
+                onFailure = { _uiState.value = _uiState.value.copy(error = it.message) }
+            )
+        }
+    }
+
+    fun uploadStudentCard(context: Context, uri: Uri, onUploaded: () -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            val payload = runCatching {
+                withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalArgumentException("Could not read selected image")
+                    bytes to (context.contentResolver.getType(uri) ?: "image/jpeg")
+                }
+            }.getOrElse {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = it.message ?: "Could not read selected image"
+                )
+                return@launch
+            }
+            profileRepository.uploadStudentCard(payload.first, payload.second).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    onUploaded()
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = it.message ?: "Student card upload failed"
+                    )
+                }
+            )
+        }
+    }
+
     fun dismissCourse(courseId: String) {
         viewModelScope.launch {
             suggestionRepository.dismissCourse(courseId).fold(
@@ -223,7 +295,7 @@ class ProfileViewModel : ViewModel() {
         githubUrl: String?,
         shortTermGoal: String?,
         roles: List<String>,
-        skills: Map<String, String>,
+        skillsByRole: Map<String, Map<String, String>>,
         interests: List<String>,
         onSuccess: () -> Unit
     ) {
@@ -234,13 +306,6 @@ class ProfileViewModel : ViewModel() {
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .distinctBy { it.lowercase() }
-
-            val normalizedSkills = skills
-                .mapKeys { it.key.trim() }
-                .filterKeys { it.isNotBlank() }
-                .entries
-                .distinctBy { it.key.lowercase() }
-                .associate { it.key to it.value }
 
             val normalizedInterests = interests
                 .map { it.trim() }
@@ -255,66 +320,28 @@ class ProfileViewModel : ViewModel() {
                     portfolioUrl = portfolioUrl,
                     githubUrl = githubUrl,
                     shortTermGoal = shortTermGoal,
-                    mode = mode
+                    mode = if (mode == "PROJECT_OWNER") "OWNER" else mode,
+                    roles = normalizedRoles.mapIndexed { index, role ->
+                        RoleProfileRequest(
+                            roleName = role,
+                            ordering = index,
+                            skills = skillsByRole[role].orEmpty()
+                                .filterKeys { it.isNotBlank() }
+                                .map { (skill, level) ->
+                                    RoleSkillRequest(skill.trim(), level)
+                                }
+                        )
+                    },
+                    interests = normalizedInterests
                 )
             ).fold(
                 onSuccess = { updatedProfile ->
-
-                    val existingRoles =
-                        updatedProfile.roles.map { it.roleName.trim().lowercase() }.toSet()
-
-                    normalizedRoles.forEach { role ->
-                        if (role.lowercase() !in existingRoles) {
-                            runCatching {
-                                profileRepository.addRole(RoleRequest(role))
-                            }
-                        }
-                    }
-
-                    val existingSkills =
-                        updatedProfile.skills.map { it.skillName.trim().lowercase() }.toSet()
-
-                    normalizedSkills.forEach { (skill, level) ->
-                        if (skill.lowercase() !in existingSkills) {
-                            runCatching {
-                                profileRepository.addSkill(
-                                    SkillRequest(skill, level, false)
-                                )
-                            }
-                        }
-                    }
-
-                    val existingInterests =
-                        updatedProfile.interests.map { it.interestName.trim().lowercase() }.toSet()
-
-                    normalizedInterests.forEach { interest ->
-                        if (interest.lowercase() !in existingInterests) {
-                            runCatching {
-                                profileRepository.addInterest(
-                                    InterestRequest(interest)
-                                )
-                            }
-                        }
-                    }
-
-                    profileRepository.getMyProfile().fold(
-                        onSuccess = { latestProfile ->
-                            _uiState.value = _uiState.value.copy(
-                                isLoading = false,
-                                profile = latestProfile,
-                                message = "Profile saved"
-                            )
-                            onSuccess()
-                        },
-                        onFailure = {
-                            _uiState.value = _uiState.value.copy(
-                                isLoading = false,
-                                profile = updatedProfile,
-                                message = "Profile saved"
-                            )
-                            onSuccess()
-                        }
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        profile = updatedProfile,
+                        message = "Profile saved"
                     )
+                    onSuccess()
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(

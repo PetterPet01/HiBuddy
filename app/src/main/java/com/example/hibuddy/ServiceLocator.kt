@@ -15,6 +15,9 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import com.example.hibuddy.data.repository.AdminRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object ServiceLocator {
     private lateinit var appContext: Context
@@ -33,7 +36,12 @@ object ServiceLocator {
             .authenticator(AuthAuthenticator(tokenManager, BuildConfig.BASE_URL))
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
+                    level = if (BuildConfig.DEBUG) {
+                        HttpLoggingInterceptor.Level.BASIC
+                    } else {
+                        HttpLoggingInterceptor.Level.NONE
+                    }
+                    redactHeader("Authorization")
                 }
             )
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -66,5 +74,16 @@ object ServiceLocator {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+    }
+
+    fun registerPushToken(token: String) {
+        if (!authRepository.isLoggedIn()) return
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                apiService.registerFcmToken(
+                    com.example.hibuddy.data.remote.dto.FcmTokenRequest(token)
+                )
+            }
+        }
     }
 }

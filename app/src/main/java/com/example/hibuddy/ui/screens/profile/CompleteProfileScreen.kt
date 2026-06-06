@@ -35,11 +35,13 @@ fun CompleteProfileScreen(
 
     val selectedRoles = remember { mutableStateListOf<String>() }
     val selectedInterests = remember { mutableStateListOf<String>() }
-    val selectedSkills = remember { mutableStateMapOf<String, String>() }
+    val selectedSkillsByRole = remember { mutableStateMapOf<String, Map<String, String>>() }
+    var activeSkillRole by remember { mutableStateOf("") }
+    val selectedSkills = selectedSkillsByRole[activeSkillRole].orEmpty()
 
     val modes = listOf(
         "CONTRIBUTOR" to "Contributor",
-        "PROJECT_OWNER" to "Project Owner",
+        "OWNER" to "Project Owner",
         "BOTH" to "Both"
     )
 
@@ -171,9 +173,15 @@ fun CompleteProfileScreen(
             selectedRoles.clear()
             selectedRoles.addAll(currentProfile.roles.map { it.roleName })
 
-            selectedSkills.clear()
-            currentProfile.skills.forEach { skill ->
-                selectedSkills[skill.skillName] = skill.level
+            selectedSkillsByRole.clear()
+            currentProfile.roles.forEach { role ->
+                selectedSkillsByRole[role.roleName] =
+                    role.skills.associate { it.skillName to it.level }
+            }
+            activeSkillRole = currentProfile.roles.firstOrNull()?.roleName.orEmpty()
+            if (selectedSkillsByRole.values.all { it.isEmpty() } && activeSkillRole.isNotBlank()) {
+                selectedSkillsByRole[activeSkillRole] =
+                    currentProfile.skills.associate { it.skillName to it.level }
             }
 
             selectedInterests.clear()
@@ -262,25 +270,49 @@ fun CompleteProfileScreen(
                 maxSelection = 3,
             )
 
+            LaunchedEffect(selectedRoles.toList()) {
+                val roleSet = selectedRoles.toSet()
+                selectedSkillsByRole.keys.filterNot(roleSet::contains).forEach(selectedSkillsByRole::remove)
+                selectedRoles.forEach { role ->
+                    if (role !in selectedSkillsByRole) selectedSkillsByRole[role] = emptyMap()
+                }
+                if (activeSkillRole !in roleSet) {
+                    activeSkillRole = selectedRoles.firstOrNull().orEmpty()
+                }
+            }
+
             Spacer(Modifier.height(20.dp))
 
             SectionTitle("Skills")
 
             Text(
-                text = "Suggested skills are based on your selected roles. You can also choose other skills.",
+                text = "Choose skills separately for each role.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall
             )
 
             Spacer(Modifier.height(12.dp))
 
+            if (selectedRoles.isNotEmpty()) {
+                SingleChoiceChips(
+                    options = selectedRoles.map { it to it },
+                    selectedValue = activeSkillRole,
+                    onSelected = { activeSkillRole = it }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
             SelectedSkillChips(
                 selectedSkills = selectedSkills,
                 onLevelChange = { skill, level ->
-                    selectedSkills[skill] = level
+                    if (activeSkillRole.isNotBlank()) {
+                        selectedSkillsByRole[activeSkillRole] = selectedSkills + (skill to level)
+                    }
                 },
                 onRemove = { skill ->
-                    selectedSkills.remove(skill)
+                    if (activeSkillRole.isNotBlank()) {
+                        selectedSkillsByRole[activeSkillRole] = selectedSkills - skill
+                    }
                 }
             )
 
@@ -309,12 +341,13 @@ fun CompleteProfileScreen(
                     .flatMap { role -> roleSkillMap[role].orEmpty() }
                     .toSet()
 
-                val skillsToRemove = selectedSkills.keys.filter { skill ->
+                val current = selectedSkillsByRole[activeSkillRole].orEmpty()
+                val skillsToRemove = current.keys.filter { skill ->
                     skill !in validRoleSkills && skill !in otherSkills
                 }
 
-                skillsToRemove.forEach { skill ->
-                    selectedSkills.remove(skill)
+                if (skillsToRemove.isNotEmpty() && activeSkillRole.isNotBlank()) {
+                    selectedSkillsByRole[activeSkillRole] = current - skillsToRemove.toSet()
                 }
             }
 
@@ -359,8 +392,11 @@ fun CompleteProfileScreen(
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                if (selected) selectedSkills.remove(skill)
-                                else selectedSkills[skill] = "BEGINNER"
+                                if (activeSkillRole.isNotBlank()) {
+                                    selectedSkillsByRole[activeSkillRole] =
+                                        if (selected) selectedSkills - skill
+                                        else selectedSkills + (skill to "BEGINNER")
+                                }
                             },
                             label = { Text(skill) },
                             colors = FilterChipDefaults.filterChipColors(
@@ -393,8 +429,11 @@ fun CompleteProfileScreen(
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                if (selected) selectedSkills.remove(skill)
-                                else selectedSkills[skill] = "BEGINNER"
+                                if (activeSkillRole.isNotBlank()) {
+                                    selectedSkillsByRole[activeSkillRole] =
+                                        if (selected) selectedSkills - skill
+                                        else selectedSkills + (skill to "BEGINNER")
+                                }
                             },
                             label = { Text(skill) },
                             colors = FilterChipDefaults.filterChipColors(
@@ -458,7 +497,7 @@ fun CompleteProfileScreen(
                         githubUrl = githubUrl.ifBlank { null },
                         shortTermGoal = goal.ifBlank { null },
                         roles = selectedRoles.toList(),
-                        skills = selectedSkills.toMap(),
+                        skillsByRole = selectedSkillsByRole.toMap(),
                         interests = selectedInterests.toList(),
                         onSuccess = {
                             println("DEBUG_SAVE_SUCCESS_CALL_ON_COMPLETE")
@@ -584,7 +623,7 @@ private fun SelectedSkillChips(
 ) {
     if (selectedSkills.isEmpty()) return
 
-    val levels = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERT")
+    val levels = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED")
 
     Column {
         Text(

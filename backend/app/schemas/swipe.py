@@ -1,17 +1,21 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 
 class SwipeActionRequest(BaseModel):
-    target_type: str
+    target_type: Literal["PROJECT", "USER"]
     target_id: str
-    action: str
+    action: Literal["PASS", "LIKE", "SUPER_LIKE"]
+    context_project_id: UUID | None = None
+    context_role_slot_id: UUID | None = None
 
 
 class QueueAddRequest(BaseModel):
     target_type: str
     target_id: str
+    context_project_id: UUID | None = None
 
 
 class QueueDecisionRequest(BaseModel):
@@ -19,9 +23,10 @@ class QueueDecisionRequest(BaseModel):
 
 
 class DiscoverResponse(BaseModel):
-    user_cards: list = []
-    project_cards: list = []
+    user_cards: list = Field(default_factory=list)
+    project_cards: list = Field(default_factory=list)
     next_cursor: str | None = None
+    context_project_id: UUID | None = None
     daily_likes_remaining: int = 50
     daily_superlikes_remaining: int = 3
 
@@ -36,6 +41,7 @@ class MatchResponse(BaseModel):
     matched_at: datetime
     is_unmatched: bool
     is_member_added: bool
+    score_explanation: dict | None = None
     user_name: str | None = None
     user_avatar: str | None = None
     user_is_online: bool = False
@@ -45,8 +51,7 @@ class MatchResponse(BaseModel):
     last_message_time: datetime | None = None
     is_unread: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApplicantResponse(BaseModel):

@@ -23,7 +23,8 @@ data class TokenResponse(
     @SerializedName("access_token") val accessToken: String,
     @SerializedName("refresh_token") val refreshToken: String,
     @SerializedName("token_type") val tokenType: String,
-    val user: UserResponse
+    val user: UserResponse,
+    @SerializedName("requires_email_verification") val requiresEmailVerification: Boolean = false
 )
 
 data class UserResponse(
@@ -42,7 +43,17 @@ data class RefreshTokenRequest(
 )
 
 data class VerifyEmailRequest(
+    val email: String,
     val code: String
+)
+
+data class ResendVerificationRequest(
+    val email: String
+)
+
+data class GoogleLoginRequest(
+    @SerializedName("id_token") val idToken: String,
+    @SerializedName("device_name") val deviceName: String? = "Android"
 )
 
 data class ForgotPasswordRequest(
@@ -51,6 +62,7 @@ data class ForgotPasswordRequest(
 )
 
 data class ResetPasswordRequest(
+    val email: String,
     val code: String,
     @SerializedName("new_password") val newPassword: String,
     @SerializedName("confirm_password") val confirmPassword: String
@@ -66,6 +78,17 @@ data class StudentVerificationRequest(
 
 data class GenericResponse(
     val message: String
+)
+
+data class MediaUploadResponse(
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    @SerializedName("image_url") val imageUrl: String? = null,
+    @SerializedName("thumbnail_url") val thumbnailUrl: String? = null
+)
+
+data class FcmTokenRequest(
+    val token: String,
+    @SerializedName("device_type") val deviceType: String = "android"
 )
 
 data class ProfileResponse(
@@ -100,7 +123,21 @@ data class ProfileUpdateRequest(
     @SerializedName("github_url") val githubUrl: String? = null,
     @SerializedName("facebook_url") val facebookUrl: String? = null,
     @SerializedName("short_term_goal") val shortTermGoal: String? = null,
-    val mode: String? = null
+    val mode: String? = null,
+    val roles: List<RoleProfileRequest>? = null,
+    val interests: List<String>? = null
+)
+
+data class RoleSkillRequest(
+    @SerializedName("skill_name") val skillName: String,
+    val level: String = "BEGINNER",
+    @SerializedName("needs_improvement") val needsImprovement: Boolean = false
+)
+
+data class RoleProfileRequest(
+    @SerializedName("role_name") val roleName: String,
+    val ordering: Int,
+    val skills: List<RoleSkillRequest> = emptyList()
 )
 
 data class SkillRequest(
@@ -124,7 +161,8 @@ data class RoleRequest(
 data class RoleResponse(
     val id: String,
     @SerializedName("role_name") val roleName: String,
-    val ordering: Int
+    val ordering: Int,
+    val skills: List<SkillResponse> = emptyList()
 )
 
 data class InterestRequest(
@@ -150,10 +188,16 @@ data class CompletedCourseResponse(
     @SerializedName("completed_date") val completedDate: String
 )
 
+data class SkillRequirementRequest(
+    @SerializedName("skill_name") val skillName: String,
+    @SerializedName("minimum_level") val minimumLevel: String = "BEGINNER",
+    @SerializedName("is_required") val isRequired: Boolean = true
+)
+
 data class RoleSlotRequest(
     @SerializedName("role_name") val roleName: String,
     val count: Int,
-    @SerializedName("skill_requirements") val skillRequirements: String? = null
+    @SerializedName("skill_requirements") val skillRequirements: List<SkillRequirementRequest> = emptyList()
 )
 
 data class CreateProjectRequest(
@@ -186,6 +230,8 @@ data class ProjectResponse(
     @SerializedName("max_members") val maxMembers: Int,
     val status: String,
     @SerializedName("review_status") val reviewStatus: String = "APPROVED",
+    @SerializedName("moderation_categories") val moderationCategories: List<String>? = null,
+    @SerializedName("moderation_reasons") val moderationReasons: List<String>? = null,
     @SerializedName("additional_requirements") val additionalRequirements: String?,
     @SerializedName("member_benefits") val memberBenefits: String?,
     @SerializedName("role_slots") val roleSlots: List<RoleSlotResponse>,
@@ -215,6 +261,7 @@ data class DiscoverResponse(
     @SerializedName("user_cards") val userCards: List<UserCardResponse> = emptyList(),
     @SerializedName("project_cards") val projectCards: List<ProjectCardResponse> = emptyList(),
     @SerializedName("next_cursor") val nextCursor: String? = null,
+    @SerializedName("context_project_id") val contextProjectId: String? = null,
     @SerializedName("daily_likes_remaining") val dailyLikesRemaining: Int = 50,
     @SerializedName("daily_superlikes_remaining") val dailySuperlikesRemaining: Int = 3
 )
@@ -232,7 +279,9 @@ data class UserCardResponse(
     @SerializedName("github_url") val githubUrl: String?,
     @SerializedName("reputation_score") val reputationScore: Double,
     @SerializedName("projects_completed") val projectsCompleted: Int,
-    @SerializedName("match_score") val matchScore: Double
+    @SerializedName("match_score") val matchScore: Double,
+    @SerializedName("matched_role") val matchedRole: String? = null,
+    @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null
 )
 
 data class ProjectCardResponse(
@@ -250,13 +299,17 @@ data class ProjectCardResponse(
     @SerializedName("end_date") val endDate: String?,
     @SerializedName("total_slots") val totalSlots: Int,
     @SerializedName("filled_slots") val filledSlots: Int,
-    @SerializedName("match_score") val matchScore: Double
+    @SerializedName("match_score") val matchScore: Double,
+    @SerializedName("matched_role") val matchedRole: String? = null,
+    @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null
 )
 
 data class SwipeActionRequest(
     @SerializedName("target_type") val targetType: String,
     @SerializedName("target_id") val targetId: String,
-    val action: String
+    val action: String,
+    @SerializedName("context_project_id") val contextProjectId: String? = null,
+    @SerializedName("context_role_slot_id") val contextRoleSlotId: String? = null
 )
 
 data class SwipeActionResponse(
@@ -267,7 +320,8 @@ data class SwipeActionResponse(
 
 data class QueueAddRequest(
     @SerializedName("target_type") val targetType: String,
-    @SerializedName("target_id") val targetId: String
+    @SerializedName("target_id") val targetId: String,
+    @SerializedName("context_project_id") val contextProjectId: String? = null
 )
 
 data class QueueDecisionRequest(
@@ -327,6 +381,9 @@ data class ApplicantResponse(
     @SerializedName("verified_student") val verifiedStudent: Boolean,
     @SerializedName("reputation_score") val reputationScore: Double,
     @SerializedName("match_score") val matchScore: Double,
+    @SerializedName("matched_role") val matchedRole: String? = null,
+    @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null,
+    @SerializedName("is_super_like") val isSuperLike: Boolean = false,
     @SerializedName("swiped_at") val swipedAt: String
 )
 
@@ -503,7 +560,8 @@ data class MessageResponse(
     val content: String,
     @SerializedName("is_read") val isRead: Boolean,
     @SerializedName("created_at") val createdAt: String,
-    @SerializedName("sender_name") val senderName: String? = null
+    @SerializedName("sender_name") val senderName: String? = null,
+    @SerializedName("client_message_id") val clientMessageId: String? = null
 )
 
 data class NotificationResponse(
@@ -529,6 +587,9 @@ data class AdminUserResponse(
     @SerializedName("student_id") val studentId: String?,
     @SerializedName("verification_status") val verificationStatus: String,
     @SerializedName("verification_rejection_reason") val verificationRejectionReason: String?,
+    @SerializedName("academic_year") val academicYear: String? = null,
+    @SerializedName("student_card_image_url") val studentCardImageUrl: String? = null,
+    @SerializedName("verification_submitted_at") val verificationSubmittedAt: String? = null,
     val role: String,
     @SerializedName("is_active") val isActive: Boolean
 )
@@ -545,6 +606,9 @@ data class AdminReportResponse(
 
     val reason: String,
     val description: String?,
+    @SerializedName("evidence_url") val evidenceUrl: String? = null,
+    @SerializedName("context_type") val contextType: String? = null,
+    @SerializedName("context_id") val contextId: String? = null,
 
     val status: String,
     val created_at: String,
@@ -554,5 +618,8 @@ data class AdminReportResponse(
 )
 
 data class ResolveReportRequest(
-    val action: String
+    val action: String,
+    val reason: String
 )
+
+data class AdminActionRequest(val reason: String)

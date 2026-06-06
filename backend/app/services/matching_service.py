@@ -1,374 +1,215 @@
-"""
-Multi-factor matching & scoring engine for HiBuddy.
+"""Deterministic, explainable matching for project role slots."""
 
-Two modes:
-  - CONTRIBUTOR: score each Project for a given User (browsing projects to join)
-  - OWNER:       score each User for a given Owner's recruiting projects
+import re
+from datetime import datetime, timezone
 
-Each mode uses weighted factors (role match is the dominant signal at 40 %).
-Final score is a weighted sum capped at 100.
-"""
-
-import logging
-from datetime import datetime, timezone, timedelta
-
+from app.models.project import Project, ProjectRoleSlot
 from app.models.user import User
-from app.models.profile import UserProfile
-from app.models.project import Project
 
-logger = logging.getLogger(__name__)
 
-# ── helpers ──────────────────────────────────────────────────────────
+ROLE_ALIASES = {
+    "ai ml engineer": "ai engineer",
+    "machine learning engineer": "ai engineer",
+    "android developer": "mobile developer",
+    "ios developer": "mobile developer",
+    "full stack developer": "fullstack developer",
+    "fullstack engineer": "fullstack developer",
+    "front end developer": "frontend developer",
+    "back end developer": "backend developer",
+    "ui ux designer": "ui ux designer",
+}
+LEVEL_VALUE = {"BEGINNER": 1, "INTERMEDIATE": 2, "ADVANCED": 3}
 
-def _jaccard(set1: set[str], set2: set[str]) -> float:
-    """Jaccard similarity 0-1. Returns 0.5 when both sets are empty (neutral)."""
-    if not set1 and not set2:
+
+def normalize_name(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+    return ROLE_ALIASES.get(normalized, normalized)
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    if not left and not right:
         return 0.5
-    union = set1 | set2
-    if not union:
-        return 0.0
-    return len(set1 & set2) / len(union)
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
 
 
-def _norm(value: float, max_val: float) -> float:
-    """Normalise *value* to 0-100 against *max_val*."""
-    if max_val <= 0:
-        return 0.0
-    return min(value / max_val, 1.0) * 100.0
-
-
-# ── CONTRIBUTOR mode: project → user ─────────────────────────────────
-
-def calculate_project_score(user: User, project: Project,
-                            owner: User | None = None) -> float:
-    """
-    Score a project for a contributor browsing projects.
-
-    Weights (total 100):
-      Role fit               40 %
-      Skill match            25 %
-      Interest / field       10 %
-      Commitment compatibility  8 %
-      Work-mode match         5 %
-      Quality signals         7 %
-      Recency boost           5 %
-    """
-    weights = {
-        "role_fit":             40,
-        "skill_match":          25,
-        "interest_field":       10,
-        "commitment":            8,
-        "work_mode":             5,
-        "quality":               7,
-        "recency":               5,
+def _user_role_skills(user: User, role_name: str) -> dict[str, str]:
+    normalized_role = normalize_name(role_name)
+    scoped: dict[str, str] = {}
+    for role in getattr(user, "roles", []):
+        if normalize_name(role.role_name) != normalized_role:
+            continue
+        for assignment in getattr(role, "role_skills", []):
+            skill = getattr(assignment, "skill", None)
+            if skill:
+                scoped[normalize_name(skill.name)] = assignment.level
+    if scoped:
+        return scoped
+    return {
+        normalize_name(skill.skill_name): skill.level
+        for skill in getattr(user, "skills", [])
     }
 
-    scores: dict[str, float] = {}
 
-    scores["role_fit"] = _role_fit_score(user, project)
-    scores["skill_match"] = _skill_match_score_project(user, project)
-    scores["interest_field"] = _interest_field_score(user, project)
-    scores["commitment"] = _commitment_score(user, project)
-    scores["work_mode"] = _work_mode_score(user, project)
-    scores["quality"] = _quality_signal_score(project, owner)
-    scores["recency"] = _recency_score(project)
-
-    total = sum(scores[k] * weights[k] / 100.0 for k in weights)
-    return round(min(total, 100.0), 1)
-
-
-# ── OWNER mode: user → owner's projects ──────────────────────────────
-
-def calculate_user_score(owner: User, target_user: User,
-                         target_profile: UserProfile,
-                         owner_projects: list[Project]) -> float:
-    """
-    Score a contributor for an owner browsing people.
-
-    Weights (total 100):
-      Role compatibility     40 %
-      Skill match            25 %
-      Reputation             10 %
-      Experience              8 %
-      Interest alignment      7 %
-      Location                5 %
-      Verified student        5 %
-    """
-    weights = {
-        "role_compat":          40,
-        "skill_match":          25,
-        "reputation":           10,
-        "experience":            8,
-        "interest_alignment":    7,
-        "location":              5,
-        "verified_student":      5,
+def _slot_requirements(slot: ProjectRoleSlot) -> dict[str, tuple[str, bool]]:
+    rows = getattr(slot, "skill_requirements_rows", [])
+    structured = {
+        normalize_name(row.skill.name): (row.minimum_level, row.is_required)
+        for row in rows
+        if getattr(row, "skill", None)
+    }
+    if structured:
+        return structured
+    legacy = slot.skill_requirements or {}
+    return {
+        normalize_name(name): (str(level or "BEGINNER").upper(), True)
+        for name, level in legacy.items()
+        if normalize_name(name) != "requirements"
     }
 
-    rec = [p for p in owner_projects if p.status == "RECRUITING"]
 
-    scores: dict[str, float] = {}
+def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
+    user_roles = {normalize_name(role.role_name) for role in getattr(user, "roles", [])}
+    slot_role = normalize_name(slot.role_name)
+    role_score = 100.0 if slot_role in user_roles else 0.0
+    user_skills = _user_role_skills(user, slot.role_name)
+    requirements = _slot_requirements(slot)
 
-    # 1. Role compatibility (40 %)
-    scores["role_compat"] = _owner_role_compat_score(target_user, rec)
+    if not requirements:
+        skill_score = 60.0
+        matched_skills: list[str] = []
+        missing_skills: list[str] = []
+    else:
+        earned = 0.0
+        total = 0.0
+        matched_skills = []
+        missing_skills = []
+        for skill_name, (minimum_level, required) in requirements.items():
+            weight = 2.0 if required else 1.0
+            total += weight
+            actual = LEVEL_VALUE.get(user_skills.get(skill_name, ""), 0)
+            required_level = LEVEL_VALUE.get(minimum_level.upper(), 1)
+            if actual >= required_level:
+                earned += weight
+                matched_skills.append(skill_name)
+            else:
+                missing_skills.append(skill_name)
+        skill_score = earned / total * 100 if total else 60.0
 
-    # 2. Skill match (25 %)
-    scores["skill_match"] = _owner_skill_match_score(target_user, rec)
-
-    # 3. Reputation (10 %)
-    scores["reputation"] = _norm(target_profile.reputation_score, 5.0)
-
-    # 4. Experience (8 %)
-    scores["experience"] = _norm(target_profile.projects_completed, 10.0)
-
-    # 5. Interest alignment (7 %)
-    scores["interest_alignment"] = _owner_interest_score(target_user, rec)
-
-    # 6. Location (5 %)
-    scores["location"] = _owner_location_score(owner, target_profile)
-
-    # 7. Verified student (5 %)
-    scores["verified_student"] = 100.0 if target_user.verified_student else 0.0
-
-    total = sum(scores[k] * weights[k] / 100.0 for k in weights)
-    return round(min(total, 100.0), 1)
-
-
-# ── Combined score when a match is created ────────────────────────────
-
-def calculate_match_score_for_pair(user: User, project: Project, owner: User | None = None) -> float:
-    """Average of both perspectives when a mutual like occurs."""
-    proj_score = calculate_project_score(user, project, owner)
-    user_score = _calculate_user_score_single_project(user, project, owner)
-    return round((proj_score + user_score) / 2.0, 1)
-
-
-# ── Factor implementations: CONTRIBUTOR mode ─────────────────────────
-
-def _role_fit_score(user: User, project: Project) -> float:
-    """40 % — user role vs unfilled project role slots."""
-    user_roles = {r.role_name.lower() for r in user.roles}
-    if not user_roles:
-        return 50.0
-
-    has_unfilled_match = False
-    has_any_match = False
-
-    for slot in project.role_slots:
-        slot_name = slot.role_name.lower()
-        if slot_name in user_roles:
-            has_any_match = True
-            if slot.filled < slot.count:
-                has_unfilled_match = True
-                break
-
-    if has_unfilled_match:
-        return 100.0
-    if has_any_match:
-        return 40.0
-    return 0.0
+    availability_score = 100.0 if slot.filled < slot.count else 0.0
+    score = role_score * 0.55 + skill_score * 0.35 + availability_score * 0.10
+    return score, {
+        "role": slot.role_name,
+        "role_fit": round(role_score, 1),
+        "skill_fit": round(skill_score, 1),
+        "slot_available": slot.filled < slot.count,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
+    }
 
 
-def _skill_match_score_project(user: User, project: Project) -> float:
-    """25 % — Jaccard between user skills and project role-slot skill requirements."""
-    user_skills = {s.skill_name.lower() for s in user.skills}
-
-    required: set[str] = set()
-    for slot in project.role_slots:
-        if slot.skill_requirements:
-            required.update(k.lower() for k in slot.skill_requirements)
-
-    return _jaccard(user_skills, required) * 100.0
+def best_role_slot(user: User, project: Project) -> tuple[ProjectRoleSlot | None, float, dict]:
+    open_slots = [slot for slot in project.role_slots if slot.filled < slot.count]
+    if not open_slots:
+        return None, 0.0, {"reason": "No open role slots"}
+    ranked = [(slot, *_slot_score(user, slot)) for slot in open_slots]
+    slot, score, details = max(ranked, key=lambda item: (item[1], str(item[0].id)))
+    return slot, score, details
 
 
-def _interest_field_score(user: User, project: Project) -> float:
-    """10 % — Jaccard(user interests ↔ project field + description words)."""
-    interests = {i.interest_name.lower() for i in user.interests}
-    project_words = _tokenise(f"{project.field} {project.description or ''}")
-    if not interests:
-        return 50.0
-    return _jaccard(interests, project_words) * 100.0
-
-
-def _commitment_score(user: User, project: Project) -> float:
-    """8 % — match user mode preference against project commitment level."""
+def calculate_project_score_details(
+    user: User, project: Project, owner: User | None = None
+) -> tuple[float, dict, ProjectRoleSlot | None]:
+    slot, slot_fit, slot_details = best_role_slot(user, project)
+    interests = {normalize_name(item.interest_name) for item in getattr(user, "interests", [])}
+    project_terms = {
+        normalize_name(project.field),
+        *re.findall(r"[a-z0-9]+", (project.description or "").lower()),
+    }
+    interest_score = _jaccard(interests, project_terms) * 100 if interests else 50.0
     profile = getattr(user, "profile", None)
-    user_mode = (profile.mode if profile else "BOTH").upper()
-    proj_level = (project.commitment_level or "MODERATE").upper()
-
-    # mapping  user_mode  →  preferred commitment
-    preference_map = {
-        "CONTRIBUTOR": {"CASUAL": 100, "MODERATE": 70, "INTENSIVE": 40},
-        "OWNER":       {"INTENSIVE": 100, "MODERATE": 70, "CASUAL": 40},
-        "BOTH":        {"CASUAL": 80, "MODERATE": 90, "INTENSIVE": 80},
+    mode = (profile.mode if profile else "BOTH").upper()
+    commitment = {
+        "CONTRIBUTOR": {"CASUAL": 100, "MODERATE": 80, "INTENSIVE": 55},
+        "OWNER": {"CASUAL": 50, "MODERATE": 80, "INTENSIVE": 100},
+        "BOTH": {"CASUAL": 80, "MODERATE": 100, "INTENSIVE": 80},
+    }.get(mode, {}).get((project.commitment_level or "MODERATE").upper(), 60)
+    owner_reputation = (
+        float(owner.profile.reputation_score)
+        if owner and owner.profile
+        else 3.0
+    )
+    quality = min(owner_reputation / 5.0, 1.0) * 100
+    age_days = _days_ago(project.created_at)
+    recency = 100 if age_days <= 7 else 70 if age_days <= 14 else 40 if age_days <= 30 else 10
+    factors = {
+        "role_and_skills": round(slot_fit, 1),
+        "interest": round(interest_score, 1),
+        "commitment": float(commitment),
+        "owner_quality": round(quality, 1),
+        "recency": float(recency),
     }
-    return float(preference_map.get(user_mode, {}).get(proj_level, 50))
-
-
-def _work_mode_score(user: User, project: Project) -> float:
-    """5 % — work-mode match."""
-    profile = getattr(user, "profile", None)
-    has_location = bool(profile and profile.location)
-    if not has_location:
-        return 60.0  # neutral
-
-    pw = (project.work_mode or "").upper()
-    # simplified: ONLINE <-> OFFLINE conflict, HYBRID bridges
-    match_map = {
-        ("ONLINE", "ONLINE"):   100,
-        ("OFFLINE", "OFFLINE"): 100,
-        ("HYBRID", "HYBRID"):   100,
-        ("HYBRID", "ONLINE"):   60,
-        ("ONLINE", "HYBRID"):   60,
-        ("HYBRID", "OFFLINE"):  60,
-        ("OFFLINE", "HYBRID"):  60,
+    score = (
+        factors["role_and_skills"] * 0.65
+        + factors["interest"] * 0.10
+        + factors["commitment"] * 0.10
+        + factors["owner_quality"] * 0.10
+        + factors["recency"] * 0.05
+    )
+    explanation = {
+        "matched_role": slot.role_name if slot else None,
+        "factors": factors,
+        "slot": slot_details,
     }
-    # user doesn't declare a work mode, infer from location presence
-    return float(match_map.get(("HYBRID", pw), 30))
+    return round(min(score, 100.0), 1), explanation, slot
 
 
-def _quality_signal_score(project: Project,
-                         owner: User | None = None) -> float:
-    """7 % — owner reputation + slot fill rate."""
-    owner_reputation = 3.0
-    if owner and owner.profile:
-        owner_reputation = float(owner.profile.reputation_score)
-    elif hasattr(project, "owner") and project.owner:
-        owner_reputation = float(project.owner.profile.reputation_score) if project.owner.profile else 3.0
-    rep_score = _norm(owner_reputation, 5.0)  # 0-100
-
-    total_count = sum(s.count for s in project.role_slots)
-    total_filled = sum(s.filled for s in project.role_slots)
-    fill_score = (total_filled / total_count * 100.0) if total_count > 0 else 0.0
-
-    return rep_score * 0.6 + fill_score * 0.4   # 60 % rep, 40 % fill rate
-
-
-def _recency_score(project: Project) -> float:
-    """5 % — newer projects get a small boost."""
-    age = _days_ago(getattr(project, "created_at", None))
-    if age <= 7:
-        return 100.0
-    if age <= 14:
-        return 70.0
-    if age <= 30:
-        return 40.0
-    return 10.0
+def calculate_user_score_details(
+    owner: User,
+    target_user: User,
+    project: Project,
+) -> tuple[float, dict, ProjectRoleSlot | None]:
+    project_score, explanation, slot = calculate_project_score_details(
+        target_user, project, owner
+    )
+    profile = target_user.profile
+    reputation = min((profile.reputation_score if profile else 3.0) / 5.0, 1.0) * 100
+    experience = min((profile.projects_completed if profile else 0) / 10.0, 1.0) * 100
+    verified = 100.0 if target_user.verified_student else 0.0
+    score = project_score * 0.75 + reputation * 0.12 + experience * 0.08 + verified * 0.05
+    explanation["factors"].update(
+        {
+            "reputation": round(reputation, 1),
+            "experience": round(experience, 1),
+            "verified_student": verified,
+        }
+    )
+    return round(min(score, 100.0), 1), explanation, slot
 
 
-# ── Factor implementations: OWNER mode ───────────────────────────────
-
-def _owner_role_compat_score(target_user: User,
-                             owner_projects: list[Project]) -> float:
-    """40 % — target user's roles vs unfilled slots across all owner's recruiting projects."""
-    user_roles = {r.role_name.lower() for r in target_user.roles}
-    if not user_roles:
-        return 50.0
-
-    for proj in owner_projects:
-        if proj.status != "RECRUITING":
-            continue
-        for slot in proj.role_slots:
-            if slot.role_name.lower() in user_roles and slot.filled < slot.count:
-                return 100.0
-
-    for proj in owner_projects:
-        if proj.status != "RECRUITING":
-            continue
-        for slot in proj.role_slots:
-            if slot.role_name.lower() in user_roles:
-                return 40.0
-
-    return 0.0
+def calculate_project_score(user: User, project: Project, owner: User | None = None) -> float:
+    return calculate_project_score_details(user, project, owner)[0]
 
 
-def _owner_skill_match_score(target_user: User,
-                             owner_projects: list[Project]) -> float:
-    """25 % — Jaccard(target skills ↔ all required skills from owner's recruiting projects)."""
-    target_skills = {s.skill_name.lower() for s in target_user.skills}
-
-    required: set[str] = set()
-    for proj in owner_projects:
-        if proj.status != "RECRUITING":
-            continue
-        for slot in proj.role_slots:
-            if slot.skill_requirements:
-                required.update(k.lower() for k in slot.skill_requirements)
-
-    return _jaccard(target_skills, required) * 100.0
-
-
-def _owner_interest_score(target_user: User,
-                          owner_projects: list[Project]) -> float:
-    """7 % — Jaccard(target interests ↔ project fields of owner's recruiting projects)."""
-    interests = {i.interest_name.lower() for i in target_user.interests}
-    project_fields: set[str] = set()
-    for proj in owner_projects:
-        if proj.status == "RECRUITING" and proj.field:
-            project_fields.update(_tokenise(proj.field))
-    if not interests:
-        return 50.0
-    return _jaccard(interests, project_fields) * 100.0
-
-
-def _owner_location_score(owner: User | None, target_profile: UserProfile) -> float:
-    """5 % — same location (case-insensitive)."""
-    owner_location = (owner.profile.location or "").strip().lower() if owner and owner.profile else ""
-    target_location = (target_profile.location or "").strip().lower()
-    if owner_location and target_location and owner_location == target_location:
-        return 100.0
-    return 0.0
-
-
-# ── Single-project version (for match creation) ──────────────────────
-
-def _calculate_user_score_single_project(user: User,
-                                         project: Project,
-                                         owner: User | None = None) -> float:
-    """Owner-mode scoring limited to one project."""
-    weights = {
-        "role_compat":          40,
-        "skill_match":          25,
-        "reputation":           10,
-        "experience":            8,
-        "interest_alignment":    7,
-        "location":              5,
-        "verified_student":      5,
-    }
-
-    profile = user.profile if user.profile else None
-    if profile is None:
+def calculate_user_score(owner: User, target_user: User, target_profile, owner_projects: list[Project]) -> float:
+    recruiting = [project for project in owner_projects if project.status == "RECRUITING"]
+    if not recruiting:
         return 0.0
-
-    rec = [project] if project.status == "RECRUITING" else []
-
-    scores: dict[str, float] = {}
-    scores["role_compat"]       = _owner_role_compat_score(user, rec)
-    scores["skill_match"]       = _owner_skill_match_score(user, rec)
-    scores["reputation"]        = _norm(profile.reputation_score, 5.0)
-    scores["experience"]        = _norm(profile.projects_completed, 10.0)
-    scores["interest_alignment"]= _owner_interest_score(user, rec)
-    scores["location"]          = _owner_location_score(owner or _owner_of(project), profile)
-    scores["verified_student"]  = 100.0 if user.verified_student else 0.0
-
-    total = sum(scores[k] * weights[k] / 100.0 for k in weights)
-    return round(min(total, 100.0), 1)
+    return max(
+        calculate_user_score_details(owner, target_user, project)[0]
+        for project in recruiting
+    )
 
 
-# ── tiny utils ───────────────────────────────────────────────────────
-
-def _tokenise(text: str) -> set[str]:
-    return set((text or "").lower().split())
-
-
-def _days_ago(dt) -> float:
-    if dt is None:
-        return 999
-    now = datetime.now(timezone.utc)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return (now - dt).total_seconds() / 86400.0
+def calculate_match_score_for_pair(
+    user: User, project: Project, owner: User | None = None
+) -> float:
+    return calculate_project_score_details(user, project, owner)[0]
 
 
-def _owner_of(project: Project):
-    """Return the project's owner User (may trigger lazy load)."""
-    return getattr(project, "owner", None) or getattr(project, "_owner", None)
+def _days_ago(value) -> float:
+    if value is None:
+        return 999.0
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - value).total_seconds() / 86400.0

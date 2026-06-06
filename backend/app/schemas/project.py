@@ -1,12 +1,19 @@
 from datetime import datetime, date
 from uuid import UUID
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Literal
+
+
+class SkillRequirementCreate(BaseModel):
+    skill_name: str = Field(min_length=1, max_length=100)
+    minimum_level: Literal["BEGINNER", "INTERMEDIATE", "ADVANCED"] = "BEGINNER"
+    is_required: bool = True
 
 
 class RoleSlotCreate(BaseModel):
-    role_name: str
-    count: int
-    skill_requirements: str | None = None
+    role_name: str = Field(min_length=1, max_length=100)
+    count: int = Field(ge=1, le=20)
+    skill_requirements: list[SkillRequirementCreate] = Field(default_factory=list, max_length=30)
 
     @field_validator("count")
     @classmethod
@@ -23,20 +30,19 @@ class RoleSlotResponse(BaseModel):
     filled: int
     skill_requirements: dict | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectCreate(BaseModel):
-    title: str
-    field: str
-    description: str
+    title: str = Field(min_length=3, max_length=200)
+    field: str = Field(min_length=2, max_length=50)
+    description: str = Field(min_length=20, max_length=500)
     specific_goal: str | None = None
     start_date: str
     end_date: str
-    max_members: int
-    work_mode: str = "ONLINE"
-    commitment_level: str = "CASUAL"
+    max_members: int = Field(ge=2, le=50)
+    work_mode: Literal["ONLINE", "OFFLINE", "HYBRID"] = "ONLINE"
+    commitment_level: Literal["CASUAL", "MODERATE", "INTENSIVE"] = "CASUAL"
     role_slots: list[RoleSlotCreate]
     additional_requirements: str | None = None
     member_benefits: str | None = None
@@ -55,6 +61,12 @@ class ProjectCreate(BaseModel):
             raise ValueError("At least one role slot is required")
         return v
 
+    @model_validator(mode="after")
+    def validate_capacity(self):
+        if sum(slot.count for slot in self.role_slots) + 1 > self.max_members:
+            raise ValueError("Max members must include the owner and all recruiting slots")
+        return self
+
 
 class ProjectUpdate(BaseModel):
     title: str | None = None
@@ -62,8 +74,8 @@ class ProjectUpdate(BaseModel):
     specific_goal: str | None = None
     start_date: str | None = None
     end_date: str | None = None
-    work_mode: str | None = None
-    commitment_level: str | None = None
+    work_mode: Literal["ONLINE", "OFFLINE", "HYBRID"] | None = None
+    commitment_level: Literal["CASUAL", "MODERATE", "INTENSIVE"] | None = None
     additional_requirements: str | None = None
     member_benefits: str | None = None
 
@@ -93,14 +105,15 @@ class ProjectResponse(BaseModel):
     max_members: int
     status: str
     review_status: str = "APPROVED"
+    moderation_categories: list[str] | None = None
+    moderation_reasons: list[str] | None = None
     additional_requirements: str | None
     member_benefits: str | None
     role_slots: list[RoleSlotResponse] = []
     members: list[ProjectMemberResponse] = []
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectCardResponse(BaseModel):
@@ -120,5 +133,4 @@ class ProjectCardResponse(BaseModel):
     filled_slots: int
     match_score: float = 0.0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

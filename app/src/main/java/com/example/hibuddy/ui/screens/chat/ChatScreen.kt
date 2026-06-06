@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.hibuddy.data.remote.dto.InvitationRoleSlotResponse
 import com.example.hibuddy.data.remote.dto.ProjectInvitationResponse
 import com.example.hibuddy.ui.theme.HiBuddyColors
@@ -101,6 +102,7 @@ fun ChatScreen(
     matchId: String,
     userName: String,
     targetUserId: String,
+    userAvatar: String? = null,
     onBack: () -> Unit,
     viewModel: ChatViewModel = viewModel(
         key = "chat_$matchId",
@@ -155,6 +157,7 @@ fun ChatScreen(
         topBar = {
             ChatTopBar(
                 userName = userName,
+                userAvatar = userAvatar,
                 isTyping = uiState.isTyping,
                 otherUserIsOnline = uiState.otherUserIsOnline,
                 otherUserLastSeenAt = uiState.otherUserLastSeenAt,
@@ -284,6 +287,7 @@ fun ChatScreen(
 @Composable
 private fun ChatTopBar(
     userName: String,
+    userAvatar: String?,
     isTyping: Boolean,
     otherUserIsOnline: Boolean,
     otherUserLastSeenAt: String?,
@@ -300,7 +304,17 @@ private fun ChatTopBar(
         modifier = Modifier.statusBarsPadding(),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                InitialsAvatar(name = userName, size = 42.dp)
+                if (!userAvatar.isNullOrBlank()) {
+                    AsyncImage(
+                        model = userAvatar,
+                        contentDescription = "$userName avatar",
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    InitialsAvatar(name = userName, size = 42.dp)
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

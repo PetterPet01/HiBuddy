@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.data.remote.dto.*
 import com.example.hibuddy.ui.theme.HiBuddyColors
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -316,7 +317,15 @@ private fun MembersTab(
                         modifier = Modifier.size(40.dp).clip(CircleShape).background(memberColor),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(member.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 18.sp, color = memberTextColor)
+                        if (!member.avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = member.avatarUrl,
+                                contentDescription = "${member.displayName} avatar",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(member.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 18.sp, color = memberTextColor)
+                        }
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -349,7 +358,39 @@ private fun MembersTab(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(applicant.displayName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (!applicant.avatarUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = applicant.avatarUrl,
+                                        contentDescription = "${applicant.displayName} avatar",
+                                        modifier = Modifier.size(42.dp).clip(CircleShape)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        applicant.displayName,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "${applicant.matchScore.toInt()}% fit" +
+                                            (applicant.matchedRole?.let { " as $it" } ?: ""),
+                                        fontSize = 12.sp,
+                                        color = colorScheme.primary
+                                    )
+                                }
+                                if (applicant.isSuperLike) {
+                                    Icon(
+                                        Icons.Filled.Star,
+                                        contentDescription = "Super Like",
+                                        tint = HiBuddyColors.warning
+                                    )
+                                }
+                            }
                             Text(
                                 applicant.roles.joinToString { it.roleName } + " · " + applicant.skills.joinToString { it.skillName },
                                 fontSize = 12.sp,

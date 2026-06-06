@@ -10,7 +10,7 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-MISTRAL_URL = "https://mistral.24102006.xyz/v1/chat/completions"
+MISTRAL_URL = f"{settings.MISTRAL_BASE_URL.rstrip('/')}/chat/completions"
 
 SYSTEM_PROMPT = """You are a skill gap analyzer. Given anonymous peer feedback about a team member, identify the specific technical or soft skills the person is weak at and should improve.
 
@@ -119,4 +119,8 @@ async def moderate_project_content(title: str, description: str, specific_goal: 
         }
     except Exception as e:
         logger.error(f"Failed to parse Mistral moderation result: {e}")
-        return {"is_flagged": False, "categories": [], "reasons": []}
+        return {
+            "is_flagged": True,
+            "categories": ["error"],
+            "reasons": ["Moderation response was invalid and requires manual review"],
+        }

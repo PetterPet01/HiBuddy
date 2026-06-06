@@ -30,11 +30,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.ui.components.DatePickerField
 
 @Composable
 fun RegisterScreen(
     onNavigateBack: () -> Unit,
-    onRegisterSuccess: () -> Unit,
+    onRegisterSuccess: (String) -> Unit,
     viewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -70,8 +71,10 @@ fun RegisterScreen(
             isPasswordValid &&
             agreeTerms
 
-    LaunchedEffect(uiState.isLoggedIn) {
-        if (uiState.isLoggedIn) onRegisterSuccess()
+    LaunchedEffect(uiState.requiresEmailVerification) {
+        if (uiState.requiresEmailVerification) {
+            onRegisterSuccess(uiState.pendingEmail ?: email.trim())
+        }
     }
 
     AuthScreenFrame(
@@ -115,16 +118,13 @@ fun RegisterScreen(
             )
         )
 
-        AuthTextField(
+        DatePickerField(
             value = dateOfBirth,
             onValueChange = {
                 dateOfBirth = it
                 if (uiState.error != null) viewModel.clearError()
             },
-            label = "Date of birth",
-            placeholder = "DD/MM/YYYY",
-            leadingIcon = Icons.Filled.DateRange,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            label = "Date of birth"
         )
 
         AuthTextField(

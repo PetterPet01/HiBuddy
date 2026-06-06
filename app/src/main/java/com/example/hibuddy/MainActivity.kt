@@ -20,6 +20,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.example.hibuddy.ui.theme.HiBuddyTheme
 import com.example.hibuddy.ui.screens.DiscoverScreen
 import com.example.hibuddy.ui.screens.MatchesScreen
@@ -30,6 +32,7 @@ import com.example.hibuddy.ui.screens.NotificationScreen
 import com.example.hibuddy.ui.screens.auth.LoginScreen
 import com.example.hibuddy.ui.screens.auth.RegisterScreen
 import com.example.hibuddy.ui.screens.auth.ForgotPasswordScreen
+import com.example.hibuddy.ui.screens.auth.VerifyEmailScreen
 import com.example.hibuddy.ui.screens.chat.ChatScreen
 import com.example.hibuddy.ui.screens.projects.CreateProjectScreen
 import com.example.hibuddy.ui.screens.projects.ProjectDetailScreen
@@ -44,7 +47,13 @@ import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
 import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
 import com.example.hibuddy.ui.screens.admin.UserManagementScreen
 import com.example.hibuddy.ui.screens.admin.ReportManagementScreen
+import com.example.hibuddy.ui.screens.admin.FlaggedProjectsScreen
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,16 +85,18 @@ object Routes {
     const val LOGIN = "auth/login"
     const val REGISTER = "auth/register"
     const val FORGOT = "auth/forgot"
+    const val VERIFY_EMAIL = "auth/verify-email?email={email}"
+    fun verifyEmail(email: String) = "auth/verify-email?email=${Uri.encode(email)}"
     const val DISCOVER = "main/discover"
     const val QUEUE = "main/queue"
     const val MATCHES = "main/matches"
     const val TASKS = "main/tasks"
     const val PROFILE = "main/profile"
-    const val CHAT = "main/chat/{matchId}/{userName}/{targetUserId}"
+    const val CHAT = "main/chat/{matchId}/{userName}/{targetUserId}?avatar={avatar}"
     const val COMPLETE_PROFILE = "auth/complete-profile/{from}"
     fun completeProfile(from: String) = "auth/complete-profile/$from"
-    fun chat(matchId: String, userName: String, targetUserId: String) =
-        "main/chat/$matchId/${Uri.encode(userName)}/${Uri.encode(targetUserId)}"
+    fun chat(matchId: String, userName: String, targetUserId: String, avatar: String?) =
+        "main/chat/$matchId/${Uri.encode(userName)}/${Uri.encode(targetUserId)}?avatar=${Uri.encode(avatar.orEmpty())}"
     const val PROJECT_DETAIL = "main/project/{projectId}"
     fun projectDetail(projectId: String) = "main/project/$projectId"
     const val USER_DETAIL = "main/user/{userId}"
@@ -98,9 +109,20 @@ object Routes {
     const val STUDENT_VERIFICATION = "main/profile/student-verification"
     const val ADMIN_USER_MANAGEMENT = "main/admin/users"
     const val ADMIN_REPORT_MANAGEMENT = "main/admin/reports"
+    const val ADMIN_FLAGGED_PROJECTS = "main/admin/projects"
     const val NOTIFICATIONS = "main/notifications"
     const val FEEDBACK = "main/feedback/{projectId}"
     fun feedback(projectId: String) = "main/feedback/$projectId"
+}
+
+private fun NavHostController.navigateMain(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
 @Composable
@@ -108,24 +130,46 @@ fun HiBuddyApp() {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     val isLoggedIn by ServiceLocator.authRepository.authState.collectAsState()
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
     var dismissProfileCompletionHint by rememberSaveable {
         mutableStateOf(false)
     }
     val startDestination = remember {
-        if (ServiceLocator.authRepository.isLoggedIn()) {
-            if (ServiceLocator.authRepository.isAdmin()) Routes.ADMIN else Routes.DISCOVER
+        if (ServiceLocator.authRepository.hasSession()) {
+            if (!ServiceLocator.authRepository.isEmailVerified()) {
+                Routes.verifyEmail(ServiceLocator.authRepository.getPendingEmail().orEmpty())
+            } else if (ServiceLocator.authRepository.isAdmin()) Routes.ADMIN else Routes.DISCOVER
         } else {
             Routes.LOGIN
         }
     }
 
     LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            runCatching {
+                FirebaseMessaging.getInstance().token.addOnSuccessListener(
+                    ServiceLocator::registerPushToken
+                )
+            }
+        }
         if (!isLoggedIn) {
             ServiceLocator.presenceWebSocketManager.disconnect()
             val currentRoute = navController.currentDestination?.route
-            val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER, Routes.FORGOT)
+            val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER, Routes.FORGOT, Routes.VERIFY_EMAIL)
             if (currentRoute != null && currentRoute !in authRoutes) {
-                navController.navigate(Routes.LOGIN) {
+                val destination = if (ServiceLocator.authRepository.hasSession()) {
+                    Routes.verifyEmail(
+                        ServiceLocator.authRepository.getPendingEmail().orEmpty()
+                    )
+                } else {
+                    Routes.LOGIN
+                }
+                navController.navigate(destination) {
                     popUpTo(0) { inclusive = true }
                     launchSingleTop = true
                 }
@@ -146,38 +190,59 @@ fun HiBuddyApp() {
 
             val from = backStackEntry.arguments?.getString("from") ?: "signup"
 
-            CompleteProfileScreen(
-                onSkip = {
-                    if (from == "signup") {
-                        navController.navigate(Routes.DISCOVER) {
-                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    } else {
-                        navController.popBackStack()
-                    }
-                },
-
-                onComplete = {
-                    if (from == "signup") {
-                        navController.navigate(Routes.DISCOVER) {
-                            popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    } else {
-                        navController.popBackStack(
-                            Routes.PROFILE,
-                            false
+            if (!isLoggedIn) {
+                LaunchedEffect(Unit) {
+                    val destination = if (ServiceLocator.authRepository.hasSession()) {
+                        Routes.verifyEmail(
+                            ServiceLocator.authRepository.getPendingEmail().orEmpty()
                         )
+                    } else {
+                        Routes.LOGIN
+                    }
+                    navController.navigate(destination) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
-            )
+            } else {
+                CompleteProfileScreen(
+                    onSkip = {
+                        if (from == "signup") {
+                            navController.navigate(Routes.DISCOVER) {
+                                popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    },
+
+                    onComplete = {
+                        if (from == "signup") {
+                            navController.navigate(Routes.DISCOVER) {
+                                popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            navController.popBackStack(
+                                Routes.PROFILE,
+                                false
+                            )
+                        }
+                    }
+                )
+            }
         }
 
         composable(Routes.LOGIN) {
             LoginScreen(
                 onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
                 onNavigateToForgotPassword = { navController.navigate(Routes.FORGOT) },
+                onEmailVerificationRequired = { email ->
+                    navController.navigate(Routes.verifyEmail(email)) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
                 onLoginSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
 
@@ -197,10 +262,36 @@ fun HiBuddyApp() {
         composable(Routes.REGISTER) {
             RegisterScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onRegisterSuccess = {
-                    ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
-                    navController.navigate(Routes.completeProfile("signup")) {
+                onRegisterSuccess = { email ->
+                    navController.navigate(Routes.verifyEmail(email)) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(
+            Routes.VERIFY_EMAIL,
+            arguments = listOf(
+                navArgument("email") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { entry ->
+            VerifyEmailScreen(
+                initialEmail = Uri.decode(entry.arguments?.getString("email").orEmpty()),
+                onVerified = {
+                    ServiceLocator.presenceWebSocketManager.connect(
+                        ServiceLocator.authRepository.getAccessToken()
+                    )
+                    navController.navigate(Routes.completeProfile("signup")) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onBackToLogin = {
+                    scope.launch { ServiceLocator.authRepository.logout() }
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
@@ -215,10 +306,10 @@ fun HiBuddyApp() {
                 currentTab = "discover",
                 onTabSelect = { tab ->
                     when (tab) {
-                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
-                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
-                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
-                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "discover" -> navController.navigateMain(Routes.DISCOVER)
+                        "matches" -> navController.navigateMain(Routes.MATCHES)
+                        "tasks" -> navController.navigateMain(Routes.TASKS)
+                        "profile" -> navController.navigateMain(Routes.PROFILE)
                         "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
@@ -238,10 +329,10 @@ fun HiBuddyApp() {
                 currentTab = "discover",
                 onTabSelect = { tab ->
                     when (tab) {
-                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
-                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
-                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
-                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "discover" -> navController.navigateMain(Routes.DISCOVER)
+                        "matches" -> navController.navigateMain(Routes.MATCHES)
+                        "tasks" -> navController.navigateMain(Routes.TASKS)
+                        "profile" -> navController.navigateMain(Routes.PROFILE)
                         "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
@@ -258,17 +349,17 @@ fun HiBuddyApp() {
                 currentTab = "matches",
                 onTabSelect = { tab ->
                     when (tab) {
-                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
-                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
-                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
-                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "discover" -> navController.navigateMain(Routes.DISCOVER)
+                        "matches" -> navController.navigateMain(Routes.MATCHES)
+                        "tasks" -> navController.navigateMain(Routes.TASKS)
+                        "profile" -> navController.navigateMain(Routes.PROFILE)
                         "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
             ) {
                 MatchesScreen(
-                    onChatClick = { matchId, userName, targetUserId ->
-                        navController.navigate(Routes.chat(matchId, userName, targetUserId))
+                    onChatClick = { matchId, userName, targetUserId, avatar ->
+                        navController.navigate(Routes.chat(matchId, userName, targetUserId, avatar))
                     }
                 )
             }
@@ -278,10 +369,10 @@ fun HiBuddyApp() {
                 currentTab = "tasks",
                 onTabSelect = { tab ->
                     when (tab) {
-                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
-                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
-                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
-                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "discover" -> navController.navigateMain(Routes.DISCOVER)
+                        "matches" -> navController.navigateMain(Routes.MATCHES)
+                        "tasks" -> navController.navigateMain(Routes.TASKS)
+                        "profile" -> navController.navigateMain(Routes.PROFILE)
                         "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
@@ -301,10 +392,10 @@ fun HiBuddyApp() {
                 currentTab = "profile",
                 onTabSelect = { tab ->
                     when (tab) {
-                        "discover" -> navController.navigate(Routes.DISCOVER) { launchSingleTop = true }
-                        "matches" -> navController.navigate(Routes.MATCHES) { launchSingleTop = true }
-                        "tasks" -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
-                        "profile" -> navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+                        "discover" -> navController.navigateMain(Routes.DISCOVER)
+                        "matches" -> navController.navigateMain(Routes.MATCHES)
+                        "tasks" -> navController.navigateMain(Routes.TASKS)
+                        "profile" -> navController.navigateMain(Routes.PROFILE)
                         "notifications" -> navController.navigate(Routes.NOTIFICATIONS)
                     }
                 }
@@ -338,16 +429,22 @@ fun HiBuddyApp() {
             arguments = listOf(
                 navArgument("matchId") { type = NavType.StringType },
                 navArgument("userName") { type = NavType.StringType },
-                navArgument("targetUserId") { type = NavType.StringType }
+                navArgument("targetUserId") { type = NavType.StringType },
+                navArgument("avatar") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
             )
         ) { backStackEntry ->
             val matchId = backStackEntry.arguments?.getString("matchId") ?: ""
             val userName = Uri.decode(backStackEntry.arguments?.getString("userName") ?: "")
             val targetUserId = Uri.decode(backStackEntry.arguments?.getString("targetUserId") ?: "")
+            val avatar = Uri.decode(backStackEntry.arguments?.getString("avatar") ?: "")
             ChatScreen(
                 matchId = matchId,
                 userName = userName,
                 targetUserId = targetUserId,
+                userAvatar = avatar.takeIf { it.isNotBlank() },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -416,6 +513,9 @@ fun HiBuddyApp() {
                 },
                 onOpenUserManagement = {
                     navController.navigate(Routes.ADMIN_USER_MANAGEMENT)
+                },
+                onOpenFlaggedProjects = {
+                    navController.navigate(Routes.ADMIN_FLAGGED_PROJECTS)
                 }
             )
         }
@@ -446,6 +546,9 @@ fun HiBuddyApp() {
                     navController.popBackStack()
                 }
             )
+        }
+        composable(Routes.ADMIN_FLAGGED_PROJECTS) {
+            FlaggedProjectsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.NOTIFICATIONS) {

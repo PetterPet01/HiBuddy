@@ -22,13 +22,29 @@ from app.api.feedback import router as feedback_router
 from app.api.admin import router as project_review_admin_router
 from app.api.endpoints.admin import router as user_admin_router
 from app.services.fcm_service import init_firebase
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.services.task_scheduler import (
+    check_deadline_reminders,
+    expire_unchecked_tasks,
+    auto_confirm_checkouts,
+)
+from app.services.outbox_service import process_outbox
+from app.services.swipe_service import expire_all_queued_items
 
 settings = get_settings()
+settings.validate_runtime()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(check_deadline_reminders, "interval", hours=1, id="deadline-reminders", replace_existing=True)
+    scheduler.add_job(expire_unchecked_tasks, "interval", minutes=15, id="task-expiry", replace_existing=True)
+    scheduler.add_job(auto_confirm_checkouts, "interval", minutes=30, id="checkout-confirmation", replace_existing=True)
+    scheduler.add_job(process_outbox, "interval", seconds=10, id="outbox", replace_existing=True)
+    scheduler.add_job(expire_all_queued_items, "interval", minutes=10, id="queue-expiry", replace_existing=True)
+    scheduler.start()
     try:
         pass
         #init_milvus_collections()
@@ -40,6 +56,7 @@ async def lifespan(app: FastAPI):
         pass
     await get_redis()
     yield
+    scheduler.shutdown(wait=False)
     await close_redis()
 
 
@@ -52,7 +69,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials="*" not in settings.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

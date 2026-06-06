@@ -27,10 +27,64 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 enum class CardMode { PEOPLE, PROJECTS }
 
-private enum class SwipeIntent { Pass, Like, SuperLike, Queue }
+internal enum class SwipeIntent { Pass, Like, SuperLike, Queue }
+
+internal data class SwipeDecisionThresholds(
+    val horizontalThreshold: Float,
+    val verticalThreshold: Float,
+    val flingVelocityThreshold: Float,
+)
+
+internal fun resolveSwipeIntent(
+    offset: Offset,
+    velocity: Offset,
+    thresholds: SwipeDecisionThresholds,
+): SwipeIntent? {
+    val horizontal = offset.x
+    val upward = (-offset.y).coerceAtLeast(0f)
+    val absHorizontal = abs(horizontal)
+    val horizontalVelocity = velocity.x
+    val upwardVelocity = (-velocity.y).coerceAtLeast(0f)
+    val absHorizontalVelocity = abs(horizontalVelocity)
+    val absVerticalVelocity = abs(velocity.y)
+
+    val nearCenter = absHorizontal < thresholds.horizontalThreshold * 0.62f &&
+        upward < thresholds.verticalThreshold * 0.62f
+    val notFlinging = absHorizontalVelocity < thresholds.flingVelocityThreshold * 0.92f &&
+        upwardVelocity < thresholds.flingVelocityThreshold * 0.92f
+    if (nearCenter && notFlinging) return null
+
+    val intentionalQueueDrag = horizontal >= thresholds.horizontalThreshold * 0.92f &&
+        upward >= thresholds.verticalThreshold * 0.88f
+    val intentionalQueueFling = horizontal >= thresholds.horizontalThreshold * 0.45f &&
+        upward >= thresholds.verticalThreshold * 0.45f &&
+        horizontalVelocity >= thresholds.flingVelocityThreshold * 0.7f &&
+        upwardVelocity >= thresholds.flingVelocityThreshold * 0.7f
+    if (intentionalQueueDrag || intentionalQueueFling) return SwipeIntent.Queue
+
+    val intentionalSuperLikeDrag = upward >= thresholds.verticalThreshold * 1.05f &&
+        upward >= absHorizontal * 0.72f
+    val intentionalSuperLikeFling = upward >= thresholds.verticalThreshold * 0.35f &&
+        upwardVelocity >= thresholds.flingVelocityThreshold &&
+        upwardVelocity >= absHorizontalVelocity * 0.82f
+    if (intentionalSuperLikeDrag || intentionalSuperLikeFling) return SwipeIntent.SuperLike
+
+    val intentionalHorizontalDrag = absHorizontal >= thresholds.horizontalThreshold &&
+        absHorizontal >= upward * 0.78f
+    val intentionalHorizontalFling = absHorizontal >= thresholds.horizontalThreshold * 0.35f &&
+        absHorizontalVelocity >= thresholds.flingVelocityThreshold &&
+        absHorizontalVelocity >= absVerticalVelocity * 0.86f
+    if (intentionalHorizontalDrag || intentionalHorizontalFling) {
+        return if (horizontal >= 0f || horizontalVelocity > 0f) SwipeIntent.Like else SwipeIntent.Pass
+    }
+
+    return null
+}
 
 @Composable
 fun DiscoverScreen(
@@ -56,6 +110,32 @@ fun DiscoverScreen(
     val cardIndex = uiState.currentCardIndex
     val topCards = cards.drop(cardIndex)
 
+    val topCardKey = topCards.firstOrNull()?.let { card ->
+        if (uiState.mode == "OWNER") {
+            (card as UserCardResponse).userId
+        } else {
+            (card as ProjectCardResponse).projectId
+        }
+    }
+    var requestedSwipeIntent by remember(topCardKey) { mutableStateOf<SwipeIntent?>(null) }
+    var cardInteractionBusy by remember(topCardKey) { mutableStateOf(false) }
+    val interactionBlocked = uiState.isSwiping || cardInteractionBusy
+
+    fun requestSwipeIntent(intent: SwipeIntent) {
+        if (!interactionBlocked && topCards.isNotEmpty()) {
+            requestedSwipeIntent = intent
+        }
+    }
+
+    fun reportBlockedSwipe(intent: SwipeIntent) {
+        when (intent) {
+            SwipeIntent.Like -> viewModel.swipe("LIKE")
+            SwipeIntent.SuperLike -> viewModel.swipe("SUPER_LIKE")
+            SwipeIntent.Queue -> viewModel.queueCurrentCard()
+            SwipeIntent.Pass -> Unit
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -69,11 +149,21 @@ fun DiscoverScreen(
             DiscoverHeader(
                 isPeopleMode = uiState.mode == "OWNER",
                 onToggle = {
-                    val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
-                    viewModel.switchMode(newMode)
+                    if (!interactionBlocked) {
+                        val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
+                        viewModel.switchMode(newMode)
+                    }
                 },
                 onCreateProject = onCreateProject,
             )
+
+            if (uiState.mode == "OWNER" && uiState.ownerProjects.isNotEmpty()) {
+                OwnerProjectSelector(
+                    projects = uiState.ownerProjects,
+                    selectedId = uiState.selectedOwnerProjectId,
+                    onSelected = viewModel::selectOwnerProject
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -115,6 +205,18 @@ fun DiscoverScreen(
                             card = first as UserCardResponse,
                             modifier = Modifier.fillMaxSize(),
                             enabled = !uiState.isSwiping,
+                            requestedSwipeIntent = requestedSwipeIntent,
+                            onRequestedSwipeIntentConsumed = { requestedSwipeIntent = null },
+                            onInteractionBusyChanged = { cardInteractionBusy = it },
+                            canStartSwipe = { intent ->
+                                when (intent) {
+                                    SwipeIntent.Like -> uiState.dailyLikesRemaining > 0
+                                    SwipeIntent.SuperLike -> uiState.dailyLikesRemaining > 0 && uiState.dailySuperlikesRemaining > 0
+                                    SwipeIntent.Queue -> uiState.queuedUserCount < 3
+                                    SwipeIntent.Pass -> true
+                                }
+                            },
+                            onBlockedSwipe = ::reportBlockedSwipe,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
                             onSuperLike = { viewModel.swipe("SUPER_LIKE") },
@@ -125,6 +227,18 @@ fun DiscoverScreen(
                             card = first as ProjectCardResponse,
                             modifier = Modifier.fillMaxSize(),
                             enabled = !uiState.isSwiping,
+                            requestedSwipeIntent = requestedSwipeIntent,
+                            onRequestedSwipeIntentConsumed = { requestedSwipeIntent = null },
+                            onInteractionBusyChanged = { cardInteractionBusy = it },
+                            canStartSwipe = { intent ->
+                                when (intent) {
+                                    SwipeIntent.Like -> uiState.dailyLikesRemaining > 0
+                                    SwipeIntent.SuperLike -> uiState.dailyLikesRemaining > 0 && uiState.dailySuperlikesRemaining > 0
+                                    SwipeIntent.Queue -> uiState.queuedProjectCount < 3
+                                    SwipeIntent.Pass -> true
+                                }
+                            },
+                            onBlockedSwipe = ::reportBlockedSwipe,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
                             onSuperLike = { viewModel.swipe("SUPER_LIKE") },
@@ -135,12 +249,12 @@ fun DiscoverScreen(
             }
 
             ActionButtons(
-                onPass = { viewModel.swipe("PASS") },
-                onSuperLike = { viewModel.swipe("SUPER_LIKE") },
-                onLike = { viewModel.swipe("LIKE") },
+                onPass = { requestSwipeIntent(SwipeIntent.Pass) },
+                onSuperLike = { requestSwipeIntent(SwipeIntent.SuperLike) },
+                onLike = { requestSwipeIntent(SwipeIntent.Like) },
                 superLikesLeft = uiState.dailySuperlikesRemaining,
                 likesLeft = uiState.dailyLikesRemaining,
-                enabled = topCards.isNotEmpty() && !uiState.isSwiping
+                enabled = topCards.isNotEmpty() && !interactionBlocked
             )
 
             Spacer(Modifier.height(4.dp))
@@ -164,6 +278,47 @@ fun DiscoverScreen(
 
     if (uiState.matchedProjectId != null) {
         MatchDialog(onDismiss = { viewModel.clearMatch() })
+    }
+}
+
+@Composable
+private fun OwnerProjectSelector(
+    projects: List<ProjectResponse>,
+    selectedId: String?,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = projects.firstOrNull { it.id == selectedId }
+    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Icon(Icons.Filled.Work, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                selected?.title ?: "Select recruiting project",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            projects.forEach { project ->
+                DropdownMenuItem(
+                    text = { Text(project.title) },
+                    onClick = {
+                        expanded = false
+                        onSelected(project.id)
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -268,6 +423,11 @@ private fun SwipeableCardFrame(
     positiveLabel: String,
     negativeLabel: String,
     enabled: Boolean = true,
+    requestedSwipeIntent: SwipeIntent? = null,
+    onRequestedSwipeIntentConsumed: () -> Unit = {},
+    onInteractionBusyChanged: (Boolean) -> Unit = {},
+    canStartSwipe: (SwipeIntent) -> Boolean = { true },
+    onBlockedSwipe: (SwipeIntent) -> Unit = {},
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -280,6 +440,10 @@ private fun SwipeableCardFrame(
     val latestOnSwipeRight by rememberUpdatedState(onSwipeRight)
     val latestOnSuperLike by rememberUpdatedState(onSuperLike)
     val latestOnQueueDrop by rememberUpdatedState(onQueueDrop)
+    val latestOnRequestedSwipeIntentConsumed by rememberUpdatedState(onRequestedSwipeIntentConsumed)
+    val latestOnInteractionBusyChanged by rememberUpdatedState(onInteractionBusyChanged)
+    val latestCanStartSwipe by rememberUpdatedState(canStartSwipe)
+    val latestOnBlockedSwipe by rememberUpdatedState(onBlockedSwipe)
 
     var cardOffset by remember(cardKey) { mutableStateOf(Offset.Zero) }
     var isDragging by remember(cardKey) { mutableStateOf(false) }
@@ -289,7 +453,10 @@ private fun SwipeableCardFrame(
     var animationJob by remember(cardKey) { mutableStateOf<Job?>(null) }
 
     DisposableEffect(cardKey) {
-        onDispose { animationJob?.cancel() }
+        onDispose {
+            animationJob?.cancel()
+            onInteractionBusyChanged(false)
+        }
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -308,6 +475,35 @@ private fun SwipeableCardFrame(
         val velocityThreshold = with(density) { 850.dp.toPx() }
         val exitPadding = with(density) { 280.dp.toPx() }
         val maxAnimationVelocity = with(density) { 2600.dp.toPx() }
+        val thresholds = SwipeDecisionThresholds(
+            horizontalThreshold = horizontalThreshold,
+            verticalThreshold = verticalThreshold,
+            flingVelocityThreshold = velocityThreshold,
+        )
+
+        fun targetOffsetFor(intent: SwipeIntent, velocity: Offset): Offset = when (intent) {
+            SwipeIntent.Like -> Offset(
+                x = widthPx + exitPadding,
+                y = (cardOffset.y + velocity.y * 0.12f).coerceIn(-heightPx * 0.7f, heightPx * 0.7f),
+            )
+            SwipeIntent.Pass -> Offset(
+                x = -widthPx - exitPadding,
+                y = (cardOffset.y + velocity.y * 0.12f).coerceIn(-heightPx * 0.7f, heightPx * 0.7f),
+            )
+            SwipeIntent.SuperLike -> Offset(
+                x = (cardOffset.x + velocity.x * 0.08f).coerceIn(-widthPx * 0.35f, widthPx * 0.35f),
+                y = -heightPx - exitPadding,
+            )
+            SwipeIntent.Queue -> Offset(
+                x = widthPx * 0.46f,
+                y = -heightPx * 0.48f,
+            )
+        }
+
+        fun capVelocity(velocity: Offset) = Offset(
+            x = velocity.x.coerceIn(-maxAnimationVelocity, maxAnimationVelocity),
+            y = velocity.y.coerceIn(-maxAnimationVelocity, maxAnimationVelocity),
+        )
 
         fun launchSettleAnimation(
             targetOffset: Offset,
@@ -318,15 +514,16 @@ private fun SwipeableCardFrame(
             if (intent != null) hasDispatched = true
             animationJob = scope.launch {
                 isSettling = true
+                latestOnInteractionBusyChanged(true)
                 val animatable = Animatable(cardOffset, Offset.VectorConverter)
                 val animationSpec: AnimationSpec<Offset> = if (intent == null) {
                     spring(
-                        dampingRatio = 0.78f,
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
                         stiffness = Spring.StiffnessMediumLow,
                     )
                 } else {
                     spring(
-                        dampingRatio = 0.9f,
+                        dampingRatio = 0.92f,
                         stiffness = Spring.StiffnessMedium,
                     )
                 }
@@ -346,66 +543,61 @@ private fun SwipeableCardFrame(
                     SwipeIntent.Like -> latestOnSwipeRight()
                     SwipeIntent.SuperLike -> latestOnSuperLike()
                     SwipeIntent.Queue -> latestOnQueueDrop()
-                    null -> Unit
+                    null -> latestOnInteractionBusyChanged(false)
                 }
             }
         }
 
-        fun settleCard(velocityX: Float, velocityY: Float) {
-            val projectedOffset = Offset(
-                x = cardOffset.x + velocityX * 0.16f,
-                y = cardOffset.y + velocityY * 0.16f,
-            )
-            val horizontalScore =
-                abs(projectedOffset.x) / horizontalThreshold +
-                    abs(velocityX) / velocityThreshold * 0.3f
-            val superLikeScore =
-                (-projectedOffset.y).coerceAtLeast(0f) / verticalThreshold +
-                    (-velocityY).coerceAtLeast(0f) / velocityThreshold * 0.3f
-            val queueScore =
-                projectedOffset.x.coerceAtLeast(0f) / horizontalThreshold * 0.6f +
-                    (-projectedOffset.y).coerceAtLeast(0f) / verticalThreshold * 0.8f
-
-            val intent = when {
-                queueScore >= 1.15f &&
-                    projectedOffset.x > horizontalThreshold * 0.55f &&
-                    projectedOffset.y < -verticalThreshold * 0.45f -> SwipeIntent.Queue
-                horizontalScore >= 1f && horizontalScore >= superLikeScore ->
-                    if (projectedOffset.x >= 0f) SwipeIntent.Like else SwipeIntent.Pass
-                superLikeScore >= 1f -> SwipeIntent.SuperLike
-                else -> null
+        fun animateIntent(intent: SwipeIntent, velocity: Offset = Offset.Zero) {
+            if (hasDispatched || isSettling) return
+            if (!latestCanStartSwipe(intent)) {
+                latestOnBlockedSwipe(intent)
+                launchSettleAnimation(
+                    targetOffset = Offset.Zero,
+                    initialVelocity = Offset.Zero,
+                    intent = null,
+                )
+                return
             }
-
-            val cappedVelocity = Offset(
-                x = velocityX.coerceIn(-maxAnimationVelocity, maxAnimationVelocity),
-                y = velocityY.coerceIn(-maxAnimationVelocity, maxAnimationVelocity),
-            )
-
-            val targetOffset = when (intent) {
-                SwipeIntent.Like -> Offset(
-                    x = widthPx + exitPadding,
-                    y = (cardOffset.y + velocityY * 0.12f).coerceIn(-heightPx * 0.7f, heightPx * 0.7f),
-                )
-                SwipeIntent.Pass -> Offset(
-                    x = -widthPx - exitPadding,
-                    y = (cardOffset.y + velocityY * 0.12f).coerceIn(-heightPx * 0.7f, heightPx * 0.7f),
-                )
-                SwipeIntent.SuperLike -> Offset(
-                    x = (cardOffset.x + velocityX * 0.08f).coerceIn(-widthPx * 0.35f, widthPx * 0.35f),
-                    y = -heightPx - exitPadding,
-                )
-                SwipeIntent.Queue -> Offset(
-                    x = widthPx * 0.42f,
-                    y = -heightPx * 0.42f,
-                )
-                null -> Offset.Zero
-            }
-
+            val cappedVelocity = capVelocity(velocity)
             launchSettleAnimation(
-                targetOffset = targetOffset,
+                targetOffset = targetOffsetFor(intent, cappedVelocity),
                 initialVelocity = cappedVelocity,
                 intent = intent,
             )
+        }
+
+        fun settleCard(velocityX: Float, velocityY: Float) {
+            val rawVelocity = Offset(velocityX, velocityY)
+            val cappedVelocity = capVelocity(rawVelocity)
+            val intent = resolveSwipeIntent(
+                offset = cardOffset,
+                velocity = cappedVelocity,
+                thresholds = thresholds,
+            )
+
+            if (intent == null) {
+                launchSettleAnimation(
+                    targetOffset = Offset.Zero,
+                    initialVelocity = cappedVelocity,
+                    intent = null,
+                )
+            } else {
+                animateIntent(intent, cappedVelocity)
+            }
+        }
+
+        LaunchedEffect(requestedSwipeIntent, enabled, widthPx, heightPx) {
+            val intent = requestedSwipeIntent ?: return@LaunchedEffect
+            latestOnRequestedSwipeIntentConsumed()
+            if (!enabled || hasDispatched || isSettling) return@LaunchedEffect
+            val buttonVelocity = when (intent) {
+                SwipeIntent.Pass -> Offset(-velocityThreshold * 0.85f, 0f)
+                SwipeIntent.Like -> Offset(velocityThreshold * 0.85f, 0f)
+                SwipeIntent.SuperLike -> Offset(0f, -velocityThreshold * 0.9f)
+                SwipeIntent.Queue -> Offset(velocityThreshold * 0.72f, -velocityThreshold * 0.72f)
+            }
+            animateIntent(intent, buttonVelocity)
         }
 
         val rotation = (cardOffset.x / widthPx * 14f).coerceIn(-16f, 16f)
@@ -425,6 +617,7 @@ private fun SwipeableCardFrame(
                         if (!hasDispatched) {
                             animationJob?.cancel()
                             isDragging = true
+                            latestOnInteractionBusyChanged(true)
                             isSettling = false
                             velocityTracker = VelocityTracker()
                         }
@@ -451,6 +644,7 @@ private fun SwipeableCardFrame(
                             change.consume()
                         } else {
                             change.consume()
+                            velocityTracker.addPosition(change.uptimeMillis, change.previousPosition)
                             velocityTracker.addPosition(change.uptimeMillis, change.position)
                             val dampedVerticalDrag = if (cardOffset.y > 0f && drag.y > 0f) {
                                 drag.y * 0.35f
@@ -568,10 +762,15 @@ private fun SwipeableCardFrame(
 }
 
 @Composable
-fun SwipeableUserCard(
+private fun SwipeableUserCard(
     card: UserCardResponse,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    requestedSwipeIntent: SwipeIntent? = null,
+    onRequestedSwipeIntentConsumed: () -> Unit = {},
+    onInteractionBusyChanged: (Boolean) -> Unit = {},
+    canStartSwipe: (SwipeIntent) -> Boolean = { true },
+    onBlockedSwipe: (SwipeIntent) -> Unit = {},
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -584,6 +783,11 @@ fun SwipeableUserCard(
         positiveLabel = "LIKE",
         negativeLabel = "PASS",
         enabled = enabled,
+        requestedSwipeIntent = requestedSwipeIntent,
+        onRequestedSwipeIntentConsumed = onRequestedSwipeIntentConsumed,
+        onInteractionBusyChanged = onInteractionBusyChanged,
+        canStartSwipe = canStartSwipe,
+        onBlockedSwipe = onBlockedSwipe,
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,
@@ -614,10 +818,19 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center
         ) {
             Box(
-                modifier = Modifier.size(100.dp).background(avatarColor, CircleShape).border(2.dp, colorScheme.surface, CircleShape),
+                modifier = Modifier.size(100.dp).clip(CircleShape).background(avatarColor).border(2.dp, colorScheme.surface, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = card.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 48.sp, color = avatarTextColor)
+                if (!card.avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = card.avatarUrl,
+                        contentDescription = "${card.displayName} avatar",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(text = card.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 48.sp, color = avatarTextColor)
+                }
             }
             Surface(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), shape = RoundedCornerShape(20.dp), color = colorScheme.surface.copy(alpha = 0.88f)) {
                 Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -699,10 +912,15 @@ fun StatChip(icon: String, value: String, label: String) {
 // ─── Swipeable Project Card (API DTO) ─────────────────────────────────────
 
 @Composable
-fun SwipeableProjectCard(
+private fun SwipeableProjectCard(
     card: ProjectCardResponse,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    requestedSwipeIntent: SwipeIntent? = null,
+    onRequestedSwipeIntentConsumed: () -> Unit = {},
+    onInteractionBusyChanged: (Boolean) -> Unit = {},
+    canStartSwipe: (SwipeIntent) -> Boolean = { true },
+    onBlockedSwipe: (SwipeIntent) -> Unit = {},
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
@@ -715,6 +933,11 @@ fun SwipeableProjectCard(
         positiveLabel = "APPLY",
         negativeLabel = "SKIP",
         enabled = enabled,
+        requestedSwipeIntent = requestedSwipeIntent,
+        onRequestedSwipeIntentConsumed = onRequestedSwipeIntentConsumed,
+        onInteractionBusyChanged = onInteractionBusyChanged,
+        canStartSwipe = canStartSwipe,
+        onBlockedSwipe = onBlockedSwipe,
         onSwipeLeft = onSwipeLeft,
         onSwipeRight = onSwipeRight,
         onSuperLike = onSuperLike,
@@ -762,8 +985,17 @@ fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modif
 
         Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.size(30.dp).background(accentColor, CircleShape).border(1.dp, colorScheme.surface, CircleShape), contentAlignment = Alignment.Center) {
-                    Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, color = avatarTextColor)
+                Box(modifier = Modifier.size(30.dp).clip(CircleShape).background(accentColor).border(1.dp, colorScheme.surface, CircleShape), contentAlignment = Alignment.Center) {
+                    if (!card.ownerAvatar.isNullOrBlank()) {
+                        AsyncImage(
+                            model = card.ownerAvatar,
+                            contentDescription = "${card.ownerName} avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, color = avatarTextColor)
+                    }
                 }
                 Text("by ${card.ownerName}", fontSize = 13.sp, color = colorScheme.onSurfaceVariant)
                 Spacer(Modifier.weight(1f))

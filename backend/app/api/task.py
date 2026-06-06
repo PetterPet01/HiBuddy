@@ -33,7 +33,10 @@ async def create_task(
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only project owner can create tasks")
 
-    assignee_uuid = UUID(data.assignee_id)
+    try:
+        assignee_uuid = UUID(data.assignee_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid assignee id") from exc
     is_owner_assignee = assignee_uuid == project.owner_id
     member_result = await db.execute(
         select(ProjectMember).where(
@@ -44,8 +47,11 @@ async def create_task(
     if not is_owner_assignee and not member_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Assignee must be a member of the project")
 
-    start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
-    deadline = datetime.strptime(data.deadline, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+    try:
+        start = datetime.strptime(data.start_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+        deadline = datetime.strptime(data.deadline, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Dates must use DD/MM/YYYY") from exc
 
     if start < project.start_date or start > project.end_date:
         raise HTTPException(status_code=400, detail="Task start date must be within the project timeline")
@@ -124,13 +130,33 @@ async def update_task(
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only project owner can update tasks")
 
+    prospective_deadline = task.deadline
+    prospective_assignee = task.assignee_id
     for field, value in data.model_dump(exclude_unset=True).items():
         if value is not None:
             if field == "deadline":
-                value = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+                try:
+                    value = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="Deadline must use DD/MM/YYYY") from exc
+                prospective_deadline = value
             if field == "assignee_id":
-                value = UUID(value)
+                try:
+                    value = UUID(value)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="Invalid assignee id") from exc
+                prospective_assignee = value
             setattr(task, field, value)
+    if prospective_deadline <= task.start_date or prospective_deadline > project.end_date:
+        raise HTTPException(status_code=400, detail="Deadline must be inside the project timeline")
+    member = await db.scalar(
+        select(ProjectMember.id).where(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == prospective_assignee,
+        )
+    )
+    if prospective_assignee != project.owner_id and not member:
+        raise HTTPException(status_code=400, detail="Assignee must be a project member")
 
     return await _build_task_response(db, task)
 

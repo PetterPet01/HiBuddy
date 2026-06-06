@@ -50,6 +50,7 @@ async def expire_unchecked_tasks():
                 )
             )
             for task in tasks_result.scalars():
+                previous_status = task.status
                 task.checkout_status = "LATE_CHECKOUT"
                 task.status = "CLOSED"
 
@@ -57,7 +58,7 @@ async def expire_unchecked_tasks():
                     task_id=task.id,
                     action="EXPIRE",
                     actor_id=task.assignee_id,
-                    previous_status=task.status,
+                    previous_status=previous_status,
                     new_status="CLOSED",
                     notes="Auto-expired: deadline passed without checkout",
                 )

@@ -16,14 +16,24 @@ data class AuthUiState(
     val isLoggedIn: Boolean = false,
     val error: String? = null,
     val message: String? = null,
-    val currentUser: UserResponse? = null
+    val currentUser: UserResponse? = null,
+    val requiresEmailVerification: Boolean = false,
+    val pendingEmail: String? = null,
+    val verificationSucceeded: Boolean = false
 )
 
 class AuthViewModel : ViewModel() {
 
     private val authRepository = ServiceLocator.authRepository
 
-    private val _uiState = MutableStateFlow(AuthUiState(isLoggedIn = authRepository.isLoggedIn()))
+    private val _uiState = MutableStateFlow(
+        AuthUiState(
+            isLoggedIn = authRepository.isLoggedIn(),
+            requiresEmailVerification =
+                authRepository.hasSession() && !authRepository.isEmailVerified(),
+            pendingEmail = authRepository.getPendingEmail()
+        )
+    )
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
     fun register(
@@ -37,7 +47,12 @@ class AuthViewModel : ViewModel() {
             ).fold(
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
-                        isLoading = false, isLoggedIn = true, currentUser = response.user,
+                        isLoading = false,
+                        isLoggedIn = response.user.emailVerified,
+                        currentUser = response.user,
+                        requiresEmailVerification = response.requiresEmailVerification,
+                        pendingEmail = response.user.email,
+                        verificationSucceeded = false,
                         message = "Registration successful! Please verify your email."
                     )
                 },
@@ -56,8 +71,11 @@ class AuthViewModel : ViewModel() {
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        isLoggedIn = true,
-                        currentUser = response.user
+                        isLoggedIn = response.user.emailVerified,
+                        currentUser = response.user,
+                        requiresEmailVerification = response.requiresEmailVerification,
+                        pendingEmail = response.user.email.takeUnless { response.user.emailVerified },
+                        verificationSucceeded = false
                     )
                 },
                 onFailure = { e ->
@@ -83,15 +101,72 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun verifyEmail(code: String) {
+    fun googleLogin(idToken: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            authRepository.verifyEmail(code).fold(
+            authRepository.googleLogin(idToken).fold(
+                onSuccess = { response ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        currentUser = response.user
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = error.message ?: "Google sign-in failed"
+                    )
+                }
+            )
+        }
+    }
+
+    fun verifyEmail(email: String, code: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            authRepository.verifyEmail(email, code).fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(isLoading = false, message = "Email verified!")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        requiresEmailVerification = false,
+                        pendingEmail = null,
+                        verificationSucceeded = true,
+                        message = "Email verified!"
+                    )
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                }
+            )
+        }
+    }
+
+    fun resendVerification(email: String? = _uiState.value.pendingEmail) {
+        viewModelScope.launch {
+            val targetEmail = email?.trim().orEmpty()
+            if (targetEmail.isBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Enter your email address to resend the verification code"
+                )
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            authRepository.resendVerification(targetEmail).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        pendingEmail = targetEmail,
+                        message = "Verification code sent"
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = error.message ?: "Could not resend verification code"
+                    )
                 }
             )
         }
@@ -111,10 +186,10 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun resetPassword(code: String, newPassword: String, confirmPassword: String) {
+    fun resetPassword(email: String, code: String, newPassword: String, confirmPassword: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            authRepository.resetPassword(code, newPassword, confirmPassword).fold(
+            authRepository.resetPassword(email, code, newPassword, confirmPassword).fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(isLoading = false, message = "Password reset successfully")
                 },

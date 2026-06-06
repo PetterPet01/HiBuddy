@@ -2,8 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update, or_, func
 from app.models.trust_safety import Report
+from app.models.chat import RefreshToken
+from app.models.operations import AdminAuditLog
 from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
@@ -11,10 +13,21 @@ from app.schemas.admin import (
     AdminUserResponse,
     RejectStudentRequest,
     AdminReportResponse,
-    ResolveReportRequest
+    ResolveReportRequest,
+    AdminActionRequest,
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+def audit(admin: User, action: str, target_type: str, target_id: UUID, reason: str | None = None):
+    return AdminAuditLog(
+        admin_id=admin.id,
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id),
+        reason=reason,
+    )
 
 
 def require_admin(current_user: User = Depends(get_current_user)):
@@ -28,13 +41,26 @@ def require_admin(current_user: User = Depends(get_current_user)):
 
 @router.get("/student-verifications", response_model=list[AdminUserResponse])
 async def list_student_verifications(
+    search: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    stmt = select(User).where(User.verification_status == "PENDING")
+    if search:
+        term = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(User.full_name).like(term),
+                func.lower(User.student_id).like(term),
+                func.lower(User.university).like(term),
+            )
+        )
     stmt = (
-        select(User)
-        .where(User.verification_status == "PENDING")
-        .order_by(User.updated_at.desc())
+        stmt.order_by(User.updated_at.desc())
+        .offset(max(0, offset))
+        .limit(min(max(limit, 1), 100))
     )
 
     result = await db.execute(stmt)
@@ -59,9 +85,7 @@ async def approve_student_verification(
     user.verified_student = True
     user.verification_status = "APPROVED"
     user.verification_rejection_reason = None
-
-    await db.commit()
-    await db.refresh(user)
+    db.add(audit(current_user, "APPROVE_STUDENT", "USER", user.id, "Evidence reviewed"))
 
     return user
 
@@ -85,9 +109,7 @@ async def reject_student_verification(
     user.verified_student = False
     user.verification_status = "REJECTED"
     user.verification_rejection_reason = request.reason
-
-    await db.commit()
-    await db.refresh(user)
+    db.add(audit(current_user, "REJECT_STUDENT", "USER", user.id, request.reason))
 
     return user
 
@@ -95,6 +117,7 @@ async def reject_student_verification(
 @router.post("/users/{user_id}/ban", response_model=AdminUserResponse)
 async def ban_user(
     user_id: UUID,
+    request: AdminActionRequest,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -114,9 +137,14 @@ async def ban_user(
         )
 
     user.is_active = False
-
-    await db.commit()
-    await db.refresh(user)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.is_revoked.is_(False))
+        .values(is_revoked=True)
+    )
+    db.add(audit(current_user, "BAN_USER", "USER", user.id, request.reason))
+    from app.api.websocket import manager
+    await manager.disconnect_user(str(user.id))
 
     return user
 
@@ -124,6 +152,7 @@ async def ban_user(
 @router.post("/users/{user_id}/unban", response_model=AdminUserResponse)
 async def unban_user(
     user_id: UUID,
+    request: AdminActionRequest,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -137,21 +166,35 @@ async def unban_user(
         )
 
     user.is_active = True
-
-    await db.commit()
-    await db.refresh(user)
+    db.add(audit(current_user, "UNBAN_USER", "USER", user.id, request.reason))
 
     return user
 
 @router.get("/users", response_model=list[AdminUserResponse])
 async def list_users(
+    search: str | None = None,
+    active: bool | None = None,
+    offset: int = 0,
+    limit: int = 50,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
+    stmt = select(User).where(User.role != "ADMIN")
+    if search:
+        term = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(User.full_name).like(term),
+                func.lower(User.username).like(term),
+                func.lower(User.email).like(term),
+            )
+        )
+    if active is not None:
+        stmt = stmt.where(User.is_active == active)
     stmt = (
-        select(User)
-        .where(User.role != "ADMIN")
-        .order_by(User.created_at.desc())
+        stmt.order_by(User.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(max(limit, 1), 100))
     )
 
     result = await db.execute(stmt)
@@ -184,6 +227,9 @@ async def list_reports(
                 reported_id=report.reported_id,
                 reason=report.reason,
                 description=report.description,
+                evidence_url=report.evidence_url,
+                context_type=report.context_type,
+                context_id=report.context_id,
                 status=report.status,
                 created_at=report.created_at,
                 reporter_name=reporter.full_name if reporter else None,
@@ -218,6 +264,13 @@ async def resolve_report(
                     detail="Cannot ban admin"
                 )
             reported_user.is_active = False
+            await db.execute(
+                update(RefreshToken)
+                .where(RefreshToken.user_id == reported_user.id)
+                .values(is_revoked=True)
+            )
+            from app.api.websocket import manager
+            await manager.disconnect_user(str(reported_user.id))
 
         report.status = "RESOLVED_BANNED"
 
@@ -230,8 +283,15 @@ async def resolve_report(
             detail="Invalid action"
         )
 
-    await db.commit()
-    await db.refresh(report)
+    db.add(
+        audit(
+            current_user,
+            f"RESOLVE_REPORT_{request.action}",
+            "REPORT",
+            report.id,
+            request.reason,
+        )
+    )
 
     reporter = await db.get(User, report.reporter_id)
     reported = await db.get(User, report.reported_id)
@@ -242,6 +302,9 @@ async def resolve_report(
         reported_id=report.reported_id,
         reason=report.reason,
         description=report.description,
+        evidence_url=report.evidence_url,
+        context_type=report.context_type,
+        context_id=report.context_id,
         status=report.status,
         created_at=report.created_at,
         reporter_name=reporter.full_name if reporter else None,

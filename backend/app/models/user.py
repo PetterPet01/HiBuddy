@@ -17,7 +17,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     date_of_birth: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -33,6 +33,8 @@ class User(Base):
     student_card_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     verification_status: Mapped[str] = mapped_column(String(20), default="NONE")
     verification_rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    academic_year: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    verification_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     role: Mapped[str] = mapped_column(String(20), default="MEMBER")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -47,3 +49,4 @@ class User(Base):
     roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     skills = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
     interests = relationship("UserInterest", back_populates="user", cascade="all, delete-orphan")
+    auth_identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")

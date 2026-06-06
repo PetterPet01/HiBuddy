@@ -1,7 +1,8 @@
 from uuid import UUID
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -10,6 +11,7 @@ from app.models.user import User
 from app.models.profile import (
     UserProfile, UserRole, UserSkill, UserInterest, UserCompletedCourse,
 )
+from app.models.catalog import SkillCatalog, UserRoleSkill
 from app.schemas.profile import (
     ProfileCreate, ProfileUpdate, ProfileResponse, UserCardResponse,
     SkillCreate, RoleCreate, InterestCreate, SkillResponse, RoleResponse,
@@ -26,6 +28,43 @@ def _profile_embedding_options():
         selectinload(UserProfile.user).selectinload(User.skills),
         selectinload(UserProfile.user).selectinload(User.interests),
     )
+
+
+async def _role_responses(db: AsyncSession, user_id: UUID) -> list[RoleResponse]:
+    roles = (
+        await db.execute(
+            select(UserRole)
+            .where(UserRole.user_id == user_id)
+            .order_by(UserRole.ordering, UserRole.role_name)
+        )
+    ).scalars().all()
+    responses: list[RoleResponse] = []
+    for role in roles:
+        rows = (
+            await db.execute(
+                select(UserRoleSkill, SkillCatalog)
+                .join(SkillCatalog, SkillCatalog.id == UserRoleSkill.skill_id)
+                .where(UserRoleSkill.user_role_id == role.id)
+                .order_by(SkillCatalog.name)
+            )
+        ).all()
+        responses.append(
+            RoleResponse(
+                id=role.id,
+                role_name=role.role_name,
+                ordering=role.ordering,
+                skills=[
+                    SkillResponse(
+                        id=assignment.id,
+                        skill_name=skill.name,
+                        level=assignment.level,
+                        needs_improvement=assignment.needs_improvement,
+                    )
+                    for assignment, skill in rows
+                ],
+            )
+        )
+    return responses
 
 
 async def _get_profile_for_embedding(db: AsyncSession, user_id: UUID) -> UserProfile | None:
@@ -52,7 +91,6 @@ async def get_my_profile(
         db.add(profile)
         await db.flush()
 
-    roles_result = await db.execute(select(UserRole).where(UserRole.user_id == current_user.id).order_by(UserRole.ordering))
     skills_result = await db.execute(select(UserSkill).where(UserSkill.user_id == current_user.id))
     interests_result = await db.execute(select(UserInterest).where(UserInterest.user_id == current_user.id))
 
@@ -74,7 +112,7 @@ async def get_my_profile(
         email=current_user.email,
         verified_student=current_user.verified_student,
         university=current_user.university,
-        roles=[RoleResponse.model_validate(r) for r in roles_result.scalars().all()],
+        roles=await _role_responses(db, current_user.id),
         skills=[SkillResponse.model_validate(s) for s in skills_result.scalars().all()],
         interests=[InterestResponse.model_validate(i) for i in interests_result.scalars().all()],
         created_at=profile.created_at,
@@ -96,8 +134,90 @@ async def update_my_profile(
         if not profile:
             raise HTTPException(status_code=500, detail="Failed to create profile")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    scalar_fields = {
+        "display_name", "bio", "location", "portfolio_url", "github_url",
+        "facebook_url", "short_term_goal", "mode",
+    }
+    values = data.model_dump(exclude_unset=True)
+    if values.get("mode") == "PROJECT_OWNER":
+        values["mode"] = "OWNER"
+    for field, value in values.items():
+        if field not in scalar_fields:
+            continue
         setattr(profile, field, value)
+
+    if data.roles is not None:
+        if len(data.roles) > 3:
+            raise HTTPException(status_code=400, detail="Maximum 3 roles allowed")
+        role_names = [role.role_name.strip().lower() for role in data.roles]
+        if len(role_names) != len(set(role_names)):
+            raise HTTPException(status_code=400, detail="Roles must be unique")
+
+        existing_roles = (
+            await db.execute(select(UserRole).where(UserRole.user_id == current_user.id))
+        ).scalars().all()
+        for role in existing_roles:
+            await db.delete(role)
+        await db.flush()
+        await db.execute(delete(UserSkill).where(UserSkill.user_id == current_user.id))
+
+        flattened_skills: dict[str, tuple[str, bool]] = {}
+        for role_input in sorted(data.roles, key=lambda item: item.ordering):
+            role = UserRole(
+                user_id=current_user.id,
+                role_name=role_input.role_name.strip(),
+                ordering=role_input.ordering,
+            )
+            db.add(role)
+            await db.flush()
+            seen_skills: set[str] = set()
+            for skill_input in role_input.skills:
+                normalized = skill_input.skill_name.strip().lower()
+                if normalized in seen_skills:
+                    continue
+                seen_skills.add(normalized)
+                catalog = (
+                    await db.execute(
+                        select(SkillCatalog).where(func.lower(SkillCatalog.name) == normalized)
+                    )
+                ).scalar_one_or_none()
+                if not catalog:
+                    catalog = SkillCatalog(
+                        slug=re.sub(r"[^a-z0-9]+", "-", normalized).strip("-"),
+                        name=skill_input.skill_name.strip(),
+                    )
+                    db.add(catalog)
+                    await db.flush()
+                db.add(
+                    UserRoleSkill(
+                        user_role_id=role.id,
+                        skill_id=catalog.id,
+                        level=skill_input.level,
+                        needs_improvement=skill_input.needs_improvement,
+                    )
+                )
+                flattened_skills.setdefault(
+                    normalized, (skill_input.level, skill_input.needs_improvement)
+                )
+        for skill_name, (level, needs_improvement) in flattened_skills.items():
+            db.add(
+                UserSkill(
+                    user_id=current_user.id,
+                    skill_name=skill_name,
+                    level=level,
+                    needs_improvement=needs_improvement,
+                )
+            )
+
+    if data.interests is not None:
+        normalized_interests = {
+            item.strip().lower(): item.strip()
+            for item in data.interests
+            if item.strip()
+        }
+        await db.execute(delete(UserInterest).where(UserInterest.user_id == current_user.id))
+        for interest in normalized_interests.values():
+            db.add(UserInterest(user_id=current_user.id, interest_name=interest))
 
     await db.flush()
     embedding_id = None
@@ -319,7 +439,6 @@ async def get_user_profile(
         raise HTTPException(status_code=404, detail="Profile not found")
 
     target_user = await db.get(User, user_id)
-    roles_result = await db.execute(select(UserRole).where(UserRole.user_id == user_id).order_by(UserRole.ordering))
     skills_result = await db.execute(select(UserSkill).where(UserSkill.user_id == user_id))
 
     return UserCardResponse(
@@ -329,7 +448,7 @@ async def get_user_profile(
         verified_student=target_user.verified_student if target_user else False,
         university=target_user.university if target_user else None,
         bio=profile.bio,
-        roles=[RoleResponse.model_validate(r) for r in roles_result.scalars().all()],
+        roles=await _role_responses(db, user_id),
         skills=[SkillResponse.model_validate(s) for s in skills_result.scalars().all()],
         location=profile.location,
         github_url=profile.github_url,

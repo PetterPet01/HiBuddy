@@ -16,6 +16,14 @@ from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.swipe import SwipeAction, Match
 from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
 from app.models.chat import Chat, Message, Notification
+from app.models.catalog import (
+    ProjectRoleSkillRequirement,
+    RoleCatalog,
+    RoleSkillCatalog,
+    SkillCatalog,
+    UserRoleSkill,
+)
+from app.models.trust_safety import Report, UserBlock
 
 settings = get_settings()
 
@@ -35,7 +43,8 @@ def days_ago(n: int) -> datetime:
     return now() - timedelta(days=n)
 
 
-PASSWORD = get_password_hash("password123")
+DEMO_PASSWORD = "HiBuddyDemo!2026"
+PASSWORD = get_password_hash(DEMO_PASSWORD)
 
 # ── Pre-generated stable UUIDs for easy reference ──────────────────────────
 
@@ -47,12 +56,16 @@ U5  = uuid.UUID("10000000-0000-0000-0000-000000000005")
 U6  = uuid.UUID("10000000-0000-0000-0000-000000000006")
 U7  = uuid.UUID("10000000-0000-0000-0000-000000000007")
 U8  = uuid.UUID("10000000-0000-0000-0000-000000000008")
+U9  = uuid.UUID("10000000-0000-0000-0000-000000000009")
+U10 = uuid.UUID("10000000-0000-0000-0000-000000000010")
+U11 = uuid.UUID("10000000-0000-0000-0000-000000000011")
 
 P1  = uuid.UUID("20000000-0000-0000-0000-000000000001")
 P2  = uuid.UUID("20000000-0000-0000-0000-000000000002")
 P3  = uuid.UUID("20000000-0000-0000-0000-000000000003")
 P4  = uuid.UUID("20000000-0000-0000-0000-000000000004")
 P5  = uuid.UUID("20000000-0000-0000-0000-000000000005")
+P6  = uuid.UUID("20000000-0000-0000-0000-000000000006")
 
 SLOT1 = uuid.UUID("30000000-0000-0000-0000-000000000001")
 SLOT2 = uuid.UUID("30000000-0000-0000-0000-000000000002")
@@ -63,6 +76,7 @@ SLOT6 = uuid.UUID("30000000-0000-0000-0000-000000000006")
 SLOT7 = uuid.UUID("30000000-0000-0000-0000-000000000007")
 SLOT8 = uuid.UUID("30000000-0000-0000-0000-000000000008")
 SLOT9 = uuid.UUID("30000000-0000-0000-0000-000000000009")
+SLOT10 = uuid.UUID("30000000-0000-0000-0000-000000000010")
 
 MEM1  = uuid.UUID("40000000-0000-0000-0000-000000000001")
 MEM2  = uuid.UUID("40000000-0000-0000-0000-000000000002")
@@ -74,6 +88,7 @@ MEM7  = uuid.UUID("40000000-0000-0000-0000-000000000007")
 MEM8  = uuid.UUID("40000000-0000-0000-0000-000000000008")
 MEM9  = uuid.UUID("40000000-0000-0000-0000-000000000009")
 MEM10 = uuid.UUID("40000000-0000-0000-0000-000000000010")
+MEM11 = uuid.UUID("40000000-0000-0000-0000-000000000011")
 
 T1  = uuid.UUID("50000000-0000-0000-0000-000000000001")
 T2  = uuid.UUID("50000000-0000-0000-0000-000000000002")
@@ -151,6 +166,8 @@ PROF5  = uuid.UUID("d0000000-0000-0000-0000-000000000005")
 PROF6  = uuid.UUID("d0000000-0000-0000-0000-000000000006")
 PROF7  = uuid.UUID("d0000000-0000-0000-0000-000000000007")
 PROF8  = uuid.UUID("d0000000-0000-0000-0000-000000000008")
+PROF10 = uuid.UUID("d0000000-0000-0000-0000-000000000010")
+PROF11 = uuid.UUID("d0000000-0000-0000-0000-000000000011")
 
 
 async def seed(engine):
@@ -165,19 +182,21 @@ async def seed(engine):
         await _seed_matches_and_chats(db)
         await _seed_evaluations(db)
         await _seed_notifications(db)
+        await _seed_trust_safety(db)
         await db.commit()
-        print("✅ Seed completed successfully!")
+        print("Seed completed successfully.")
         print(f"   {_user_count()} users, {_project_count()} projects, {_task_count()} tasks, "
               f"{_swipe_count()} swipes, {_match_count()} matches, {_msg_count()} messages, "
               f"{_notif_count()} notifications")
+        print(f"Demo password for all seeded accounts: {DEMO_PASSWORD}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Users
 # ═══════════════════════════════════════════════════════════════════════════
 
-_user_count = lambda: 8
-_project_count = lambda: 5
+_user_count = lambda: 11
+_project_count = lambda: 6
 _task_count = lambda: 12
 _swipe_count = lambda: 18
 _match_count = lambda: 4
@@ -228,9 +247,27 @@ async def _seed_users(db: AsyncSession):
 
         User(id=U8, username="lan_tran", email="lan@example.com", full_name="Lan Tran",
              hashed_password=PASSWORD, phone="+84988991122", date_of_birth=datetime(2001, 4, 25, tzinfo=timezone.utc),
-             email_verified=True, verified_student=True, student_email="lan@ftu.edu.vn",
+             email_verified=True, verified_student=False, student_email="lan@ftu.edu.vn",
              university="Foreign Trade University", student_id="20210123",
-             verification_status="PENDING", role="MEMBER", created_at=days_ago(15), last_login=days_ago(0)),
+             academic_year="Year 4", student_card_image_url="https://placehold.co/1000x640?text=Student+Card",
+             verification_status="PENDING", verification_submitted_at=days_ago(1),
+             role="MEMBER", created_at=days_ago(15), last_login=days_ago(0)),
+
+        User(id=U9, username="admin", email="admin@hibuddy.local", full_name="HiBuddy Admin",
+             hashed_password=PASSWORD, date_of_birth=datetime(1995, 1, 1, tzinfo=timezone.utc),
+             email_verified=True, verified_student=True, verification_status="APPROVED",
+             role="ADMIN", created_at=days_ago(120), last_login=days_ago(0)),
+
+        User(id=U10, username="pending_email", email="pending@example.com", full_name="Pending Email",
+             hashed_password=PASSWORD, date_of_birth=datetime(2003, 6, 12, tzinfo=timezone.utc),
+             email_verified=False, verified_student=False, verification_status="NOT_SUBMITTED",
+             role="MEMBER", created_at=days_ago(2)),
+
+        User(id=U11, username="banned_demo", email="banned@example.com", full_name="Banned Demo",
+             hashed_password=PASSWORD, date_of_birth=datetime(2000, 2, 20, tzinfo=timezone.utc),
+             email_verified=True, verified_student=False, verification_status="REJECTED",
+             verification_rejection_reason="Seeded moderation scenario",
+             role="MEMBER", is_active=False, created_at=days_ago(45)),
     ]
     db.add_all(users)
     await db.flush()
@@ -299,6 +336,16 @@ async def _seed_users(db: AsyncSession):
                     short_term_goal="Design a growth framework for startups", mode="BOTH",
                     is_hidden=False, reputation_score=3.2, projects_completed=0,
                     created_at=days_ago(15)),
+
+        UserProfile(id=PROF10, user_id=U10, display_name="Pending Email",
+                    bio="Profile used to verify that unverified accounts cannot access protected discovery flows.",
+                    location="Hanoi, Vietnam", mode="CONTRIBUTOR", is_hidden=False,
+                    reputation_score=3.0, projects_completed=0, created_at=days_ago(2)),
+
+        UserProfile(id=PROF11, user_id=U11, display_name="Banned Demo",
+                    bio="Profile used to verify session revocation, moderation, and discovery filtering.",
+                    location="Da Nang, Vietnam", mode="CONTRIBUTOR", is_hidden=False,
+                    reputation_score=2.0, projects_completed=0, created_at=days_ago(45)),
     ]
     db.add_all(profiles)
     await db.flush()
@@ -320,30 +367,32 @@ async def _seed_users(db: AsyncSession):
         UserRole(id=uuid.uuid4(), user_id=U7, role_name="DevOps Engineer", ordering=0),
         UserRole(id=uuid.uuid4(), user_id=U8, role_name="Marketing Lead", ordering=0),
         UserRole(id=uuid.uuid4(), user_id=U8, role_name="Content Strategist", ordering=1),
+        UserRole(id=uuid.uuid4(), user_id=U10, role_name="QA Engineer", ordering=0),
+        UserRole(id=uuid.uuid4(), user_id=U11, role_name="Frontend Developer", ordering=0),
     ]
     db.add_all(roles)
     await db.flush()
 
     skills = [
-        UserSkill(id=uuid.uuid4(), user_id=U1, skill_name="Python", level="EXPERT"),
+        UserSkill(id=uuid.uuid4(), user_id=U1, skill_name="Python", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U1, skill_name="TypeScript", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U1, skill_name="React", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U1, skill_name="Docker", level="INTERMEDIATE"),
-        UserSkill(id=uuid.uuid4(), user_id=U2, skill_name="Figma", level="EXPERT"),
-        UserSkill(id=uuid.uuid4(), user_id=U2, skill_name="User Research", level="EXPERT"),
+        UserSkill(id=uuid.uuid4(), user_id=U2, skill_name="Figma", level="ADVANCED"),
+        UserSkill(id=uuid.uuid4(), user_id=U2, skill_name="User Research", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U2, skill_name="Design Systems", level="ADVANCED"),
-        UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="Go", level="EXPERT"),
-        UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="PostgreSQL", level="EXPERT"),
+        UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="Go", level="ADVANCED"),
+        UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="PostgreSQL", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="AWS", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U3, skill_name="Kubernetes", level="INTERMEDIATE"),
         UserSkill(id=uuid.uuid4(), user_id=U4, skill_name="Flutter", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U4, skill_name="React Native", level="ADVANCED"),
-        UserSkill(id=uuid.uuid4(), user_id=U4, skill_name="CSS", level="EXPERT"),
+        UserSkill(id=uuid.uuid4(), user_id=U4, skill_name="CSS", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U5, skill_name="Python", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U5, skill_name="TensorFlow", level="INTERMEDIATE"),
         UserSkill(id=uuid.uuid4(), user_id=U5, skill_name="PyTorch", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U5, skill_name="NLP", level="BEGINNER", needs_improvement=True),
-        UserSkill(id=uuid.uuid4(), user_id=U6, skill_name="Agile", level="EXPERT"),
+        UserSkill(id=uuid.uuid4(), user_id=U6, skill_name="Agile", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U6, skill_name="Jira", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U6, skill_name="SQL", level="INTERMEDIATE"),
         UserSkill(id=uuid.uuid4(), user_id=U7, skill_name="Terraform", level="ADVANCED"),
@@ -352,9 +401,12 @@ async def _seed_users(db: AsyncSession):
         UserSkill(id=uuid.uuid4(), user_id=U8, skill_name="SEO", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U8, skill_name="Content Marketing", level="ADVANCED"),
         UserSkill(id=uuid.uuid4(), user_id=U8, skill_name="Google Analytics", level="INTERMEDIATE"),
+        UserSkill(id=uuid.uuid4(), user_id=U10, skill_name="Test Automation", level="BEGINNER"),
+        UserSkill(id=uuid.uuid4(), user_id=U11, skill_name="React", level="INTERMEDIATE"),
     ]
     db.add_all(skills)
     await db.flush()
+    await _seed_role_scoped_skills(db, roles, skills)
 
     interests = [
         UserInterest(id=uuid.uuid4(), user_id=U1, interest_name="AI/ML"),
@@ -397,6 +449,81 @@ async def _seed_users(db: AsyncSession):
     await db.flush()
 
 
+def _slug(value: str) -> str:
+    return "-".join(value.lower().replace("/", " ").split())
+
+
+async def _seed_role_scoped_skills(
+    db: AsyncSession, roles: list[UserRole], skills: list[UserSkill]
+) -> None:
+    role_skill_hints = {
+        "Full-Stack Developer": {"Python", "TypeScript", "React", "Docker"},
+        "Technical Lead": {"Python", "Docker"},
+        "UI/UX Designer": {"Figma", "User Research", "Design Systems"},
+        "Product Designer": {"Figma", "User Research"},
+        "Design Lead": {"Design Systems", "User Research"},
+        "Backend Developer": {"Go", "PostgreSQL", "AWS"},
+        "Cloud Architect": {"AWS", "Kubernetes", "PostgreSQL"},
+        "Frontend Developer": {"React", "CSS"},
+        "Mobile Developer": {"Flutter", "React Native"},
+        "AI/ML Engineer": {"Python", "TensorFlow", "PyTorch", "NLP"},
+        "Data Scientist": {"Python", "TensorFlow", "NLP"},
+        "Product Manager": {"Agile", "Jira"},
+        "Business Analyst": {"SQL", "Jira"},
+        "DevOps Engineer": {"Terraform", "Kubernetes", "CI/CD"},
+        "Marketing Lead": {"SEO", "Google Analytics"},
+        "Content Strategist": {"Content Marketing", "SEO"},
+        "QA Engineer": {"Test Automation"},
+    }
+    role_names = sorted({role.role_name for role in roles})
+    skill_names = sorted({skill.skill_name for skill in skills})
+    role_catalog = {
+        name: RoleCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
+        for name in role_names
+    }
+    skill_catalog = {
+        name: SkillCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
+        for name in skill_names
+    }
+    db.add_all([*role_catalog.values(), *skill_catalog.values()])
+    await db.flush()
+
+    skills_by_user: dict[uuid.UUID, list[UserSkill]] = {}
+    for skill in skills:
+        skills_by_user.setdefault(skill.user_id, []).append(skill)
+
+    catalog_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    scoped_skills: list[UserRoleSkill] = []
+    catalog_links: list[RoleSkillCatalog] = []
+    for role in roles:
+        role.catalog_role_id = role_catalog[role.role_name].id
+        available_skills = skills_by_user.get(role.user_id, [])
+        hinted_names = role_skill_hints.get(role.role_name)
+        user_skills = (
+            [skill for skill in available_skills if skill.skill_name in hinted_names]
+            if hinted_names
+            else available_skills
+        )
+        for skill in user_skills:
+            skill_row = skill_catalog[skill.skill_name]
+            scoped_skills.append(
+                UserRoleSkill(
+                    user_role_id=role.id,
+                    skill_id=skill_row.id,
+                    level=skill.level,
+                    needs_improvement=skill.needs_improvement,
+                )
+            )
+            pair = (role.catalog_role_id, skill_row.id)
+            if pair not in catalog_pairs:
+                catalog_pairs.add(pair)
+                catalog_links.append(
+                    RoleSkillCatalog(role_id=pair[0], skill_id=pair[1])
+                )
+    db.add_all([*scoped_skills, *catalog_links])
+    await db.flush()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Projects
 # ═══════════════════════════════════════════════════════════════════════════
@@ -408,7 +535,7 @@ async def _seed_projects(db: AsyncSession):
             title="StudyMate - AI Study Planner", field="EdTech",
             description="An AI-powered study planner that creates personalized learning schedules based on student goals, available time, and learning style. Integrates with Google Calendar and university LMS systems.",
             specific_goal="Launch MVP with 1000 beta users within 3 months",
-            work_mode="ONLINE", commitment_level="SERIOUS",
+            work_mode="ONLINE", commitment_level="INTENSIVE",
             start_date=days_from_now(7), end_date=days_from_now(97),
             max_members=6, status="RECRUITING",
             additional_requirements="Experience with LLM APIs (OpenAI, Anthropic) preferred",
@@ -432,7 +559,7 @@ async def _seed_projects(db: AsyncSession):
             title="LocalBites - Restaurant Discovery", field="Mobile",
             description="A hyperlocal restaurant discovery app that uses AI to recommend dishes based on your taste profile, not just reviews. Think Spotify but for food.",
             specific_goal="Pilot in District 1, Ho Chi Minh City with 50+ restaurant partners",
-            work_mode="OFFLINE", commitment_level="SERIOUS",
+            work_mode="OFFLINE", commitment_level="INTENSIVE",
             start_date=days_from_now(14), end_date=days_from_now(104),
             max_members=5, status="RECRUITING",
             additional_requirements="Restaurant/food industry connections a plus",
@@ -456,12 +583,27 @@ async def _seed_projects(db: AsyncSession):
             title="VNLingua - Vietnamese NLP Toolkit", field="AI/ML",
             description="Open-source toolkit for Vietnamese natural language processing including tokenization, NER, sentiment analysis, and text summarization optimized for the Vietnamese language.",
             specific_goal="Release v1.0 with state-of-the-art accuracy for Vietnamese NER",
-            work_mode="ONLINE", commitment_level="FULLTIME",
+            work_mode="ONLINE", commitment_level="INTENSIVE",
             start_date=days_ago(60), end_date=days_ago(5),
             max_members=3, status="CLOSED",
             additional_requirements="Understanding of linguistics or NLP fundamentals",
             member_benefits="Research co-authorship, open source recognition",
             created_at=days_ago(65),
+        ),
+        Project(
+            id=P6, owner_id=U1,
+            title="Campus Marketplace Moderation Scenario", field="Marketplace",
+            description="A seeded project held for manual review so administrators can test moderation evidence, approve and reject actions, required reasons, and audit logging.",
+            specific_goal="Validate the complete project moderation workflow",
+            work_mode="ONLINE", commitment_level="MODERATE",
+            start_date=days_from_now(10), end_date=days_from_now(70),
+            max_members=3, status="RECRUITING", review_status="MANUAL_REVIEW",
+            moderation_categories=["marketplace_risk"],
+            moderation_reasons=["Seeded manual-review scenario"],
+            moderation_checked_at=days_ago(1),
+            additional_requirements="Administrator review required before discovery",
+            member_benefits="Moderation workflow testing",
+            created_at=days_ago(1),
         ),
     ]
     db.add_all(projects)
@@ -486,8 +628,52 @@ async def _seed_projects(db: AsyncSession):
                         skill_requirements={"requirements": "React, Next.js, Tailwind"}),
         ProjectRoleSlot(id=SLOT9, project_id=P5, role_name="Python Developer", count=2, filled=0,
                         skill_requirements={"requirements": "Python, PyTorch, HuggingFace"}),
+        ProjectRoleSlot(id=SLOT10, project_id=P6, role_name="Android Developer", count=2, filled=0,
+                        skill_requirements={"Kotlin": "INTERMEDIATE", "Jetpack Compose": "INTERMEDIATE"}),
     ]
     db.add_all(slots)
+    await db.flush()
+    await _seed_project_skill_requirements(db, slots)
+
+
+async def _seed_project_skill_requirements(
+    db: AsyncSession, slots: list[ProjectRoleSlot]
+) -> None:
+    requirements = {
+        SLOT1: [("Flutter", "INTERMEDIATE"), ("Dart", "INTERMEDIATE")],
+        SLOT2: [("Python", "INTERMEDIATE"), ("FastAPI", "BEGINNER"), ("PostgreSQL", "INTERMEDIATE")],
+        SLOT3: [("Figma", "INTERMEDIATE"), ("User Research", "INTERMEDIATE")],
+        SLOT4: [("React Native", "INTERMEDIATE"), ("TypeScript", "INTERMEDIATE")],
+        SLOT5: [("Figma", "INTERMEDIATE")],
+        SLOT6: [("Kotlin", "INTERMEDIATE"), ("Jetpack Compose", "INTERMEDIATE")],
+        SLOT7: [("Go", "INTERMEDIATE"), ("Redis", "BEGINNER")],
+        SLOT8: [("React", "INTERMEDIATE"), ("TypeScript", "INTERMEDIATE")],
+        SLOT9: [("Python", "ADVANCED"), ("PyTorch", "INTERMEDIATE")],
+        SLOT10: [("Kotlin", "INTERMEDIATE"), ("Jetpack Compose", "INTERMEDIATE")],
+    }
+    existing = {
+        row.name: row
+        for row in (await db.execute(select(SkillCatalog))).scalars().all()
+    }
+    for skill_name in sorted({name for rows in requirements.values() for name, _ in rows}):
+        if skill_name not in existing:
+            row = SkillCatalog(slug=_slug(skill_name), name=skill_name)
+            db.add(row)
+            await db.flush()
+            existing[skill_name] = row
+    for slot in slots:
+        rows = requirements.get(slot.id, [])
+        if rows:
+            slot.skill_requirements = {name: level for name, level in rows}
+        for skill_name, minimum_level in rows:
+            db.add(
+                ProjectRoleSkillRequirement(
+                    role_slot_id=slot.id,
+                    skill_id=existing[skill_name].id,
+                    minimum_level=minimum_level,
+                    is_required=True,
+                )
+            )
     await db.flush()
 
 
@@ -508,6 +694,7 @@ async def _seed_members(db: AsyncSession):
         ProjectMember(id=MEM8,  project_id=P5, user_id=U7, role="Python Developer", is_owner=False, joined_at=days_ago(55)),
         ProjectMember(id=MEM9,  project_id=P5, user_id=U8, role="Python Developer", is_owner=False, joined_at=days_ago(50)),
         ProjectMember(id=MEM10, project_id=P3, user_id=U2, role="UI/UX Designer", is_owner=False, joined_at=days_ago(18)),
+        ProjectMember(id=MEM11, project_id=P6, user_id=U1, role="Project Owner", is_owner=True, joined_at=days_ago(1)),
     ]
     db.add_all(members)
     await db.flush()
@@ -647,7 +834,8 @@ async def _seed_swipes(db: AsyncSession):
                     action="LIKE", created_at=days_ago(5), is_active=True),
         # U1 swiped RIGHT on U2 → owner liked contributor → MATCH Ma1 between U2 & P1 (owner U1)
         SwipeAction(id=SW2, swiper_id=U1, target_type="USER", target_id=str(U2),
-                    action="LIKE", created_at=days_ago(4), is_active=True),
+                    action="LIKE", context_project_id=P1, context_role_slot_id=SLOT3,
+                    context_key=str(P1), created_at=days_ago(4), is_active=True),
 
         # U4 swiped RIGHT on P1 (waiting for owner to like back)
         SwipeAction(id=SW3, swiper_id=U4, target_type="PROJECT", target_id=str(P1),
@@ -663,14 +851,16 @@ async def _seed_swipes(db: AsyncSession):
                     action="LIKE", created_at=days_ago(6), is_active=True),
         # U3 swiped RIGHT on U1 → owner liked contributor → MATCH Ma2 between U1 & P2 (owner U3)
         SwipeAction(id=SW6, swiper_id=U3, target_type="USER", target_id=str(U1),
-                    action="LIKE", created_at=days_ago(5), is_active=True),
+                    action="LIKE", context_project_id=P2, context_role_slot_id=SLOT4,
+                    context_key=str(P2), created_at=days_ago(5), is_active=True),
 
         # U7 swiped SUPER_LIKE on P2
         SwipeAction(id=SW7, swiper_id=U7, target_type="PROJECT", target_id=str(P2),
                     action="SUPER_LIKE", created_at=days_ago(1), is_active=True),
         # U3 swiped RIGHT on U7 → MATCH Ma3 between U7 & P2 (owner U3)
         SwipeAction(id=SW8, swiper_id=U3, target_type="USER", target_id=str(U7),
-                    action="LIKE", created_at=days_ago(0), is_active=True),
+                    action="LIKE", context_project_id=P2, context_role_slot_id=SLOT4,
+                    context_key=str(P2), created_at=days_ago(0), is_active=True),
 
         # ── P3 (LocalBites, owner U6) ──
         # U4 swiped RIGHT on P3
@@ -678,7 +868,8 @@ async def _seed_swipes(db: AsyncSession):
                     action="LIKE", created_at=days_ago(8), is_active=True),
         # U6 swiped RIGHT on U4 → MATCH Ma4 between U4 & P3 (owner U6)
         SwipeAction(id=SW10, swiper_id=U6, target_type="USER", target_id=str(U4),
-                    action="LIKE", created_at=days_ago(7), is_active=True),
+                    action="LIKE", context_project_id=P3, context_role_slot_id=SLOT6,
+                    context_key=str(P3), created_at=days_ago(7), is_active=True),
 
         # U8 swiped RIGHT on P3 (waiting for owner to like back)
         SwipeAction(id=SW11, swiper_id=U8, target_type="PROJECT", target_id=str(P3),
@@ -686,26 +877,32 @@ async def _seed_swipes(db: AsyncSession):
 
         # ── Owner mode swipes (U1 looking at contributors) ──
         SwipeAction(id=SW12, swiper_id=U1, target_type="USER", target_id=str(U3),
-                    action="LIKE", created_at=days_ago(10), is_active=True),
+                    action="LIKE", context_project_id=P1, context_role_slot_id=SLOT2,
+                    context_key=str(P1), created_at=days_ago(10), is_active=True),
 
         # U1 PASSED on U5 (passing a contributor)
         SwipeAction(id=SW13, swiper_id=U1, target_type="USER", target_id=str(U5),
-                    action="PASS", created_at=days_ago(9), is_active=True),
+                    action="PASS", context_project_id=P1, context_role_slot_id=SLOT2,
+                    context_key=str(P1), created_at=days_ago(9), is_active=True),
 
         # ── Owner U3 looking at contributors ──
         SwipeAction(id=SW14, swiper_id=U3, target_type="USER", target_id=str(U2),
-                    action="LIKE", created_at=days_ago(4), is_active=True),
+                    action="LIKE", context_project_id=P2, context_role_slot_id=SLOT5,
+                    context_key=str(P2), created_at=days_ago(4), is_active=True),
         # U2 swiped RIGHT on P2 → U2 liked P2 → MATCH with owner U3 (already has Ma3)
 
         # Owner U3 PASSED on U5
         SwipeAction(id=SW15, swiper_id=U3, target_type="USER", target_id=str(U5),
-                    action="PASS", created_at=days_ago(2), is_active=True),
+                    action="PASS", context_project_id=P2, context_role_slot_id=SLOT4,
+                    context_key=str(P2), created_at=days_ago(2), is_active=True),
 
         # ── Owner U6 looking at contributors ──
         SwipeAction(id=SW16, swiper_id=U6, target_type="USER", target_id=str(U1),
-                    action="SUPER_LIKE", created_at=days_ago(3), is_active=True),
+                    action="SUPER_LIKE", context_project_id=P3, context_role_slot_id=SLOT7,
+                    context_key=str(P3), created_at=days_ago(3), is_active=True),
         SwipeAction(id=SW17, swiper_id=U6, target_type="USER", target_id=str(U2),
-                    action="LIKE", created_at=days_ago(1), is_active=True),
+                    action="LIKE", context_project_id=P3, context_role_slot_id=SLOT6,
+                    context_key=str(P3), created_at=days_ago(1), is_active=True),
 
         # ── Contributor U5 swiping on projects ──
         SwipeAction(id=SW18, swiper_id=U5, target_type="PROJECT", target_id=str(P3),
@@ -832,6 +1029,32 @@ async def _seed_notifications(db: AsyncSession):
                      is_read=False, related_id=str(MA4), created_at=days_ago(7)),
     ]
     db.add_all(notifications)
+    await db.flush()
+
+
+async def _seed_trust_safety(db: AsyncSession):
+    db.add_all(
+        [
+            Report(
+                id=uuid.UUID("e0000000-0000-0000-0000-000000000001"),
+                reporter_id=U2,
+                reported_id=U7,
+                reason="Harassment",
+                description="Seeded pending report for testing evidence review and reasoned resolution.",
+                status="PENDING",
+                context_type="CHAT",
+                context_id=str(CH3),
+                created_at=days_ago(1),
+            ),
+            UserBlock(
+                id=uuid.UUID("e0000000-0000-0000-0000-000000000002"),
+                blocker_id=U4,
+                blocked_id=U11,
+                reason="Seeded block scenario",
+                created_at=days_ago(3),
+            ),
+        ]
+    )
     await db.flush()
 
 

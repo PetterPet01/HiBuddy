@@ -1,5 +1,5 @@
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
 class AdminUserResponse(BaseModel):
@@ -13,15 +13,21 @@ class AdminUserResponse(BaseModel):
     student_id: str | None = None
     verification_status: str
     verification_rejection_reason: str | None = None
+    academic_year: str | None = None
+    student_card_image_url: str | None = None
+    verification_submitted_at: datetime | None = None
     role: str
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RejectStudentRequest(BaseModel):
-    reason: str
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AdminActionRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 class AdminReportResponse(BaseModel):
     id: UUID
@@ -29,15 +35,18 @@ class AdminReportResponse(BaseModel):
     reported_id: UUID
     reason: str
     description: str | None = None
+    evidence_url: str | None = None
+    context_type: str | None = None
+    context_id: str | None = None
     status: str
     created_at: datetime
 
     reporter_name: str | None = None
     reported_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResolveReportRequest(BaseModel):
-    action: str  # "DISMISS" hoặc "BAN"
+    action: str
+    reason: str = Field(min_length=3, max_length=500)

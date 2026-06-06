@@ -30,15 +30,28 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.example.hibuddy.BuildConfig
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
+import androidx.compose.material3.OutlinedButton
 
 @Composable
 fun LoginScreen(
     onNavigateToRegister: () -> Unit,
     onNavigateToForgotPassword: () -> Unit,
     onLoginSuccess: () -> Unit,
+    onEmailVerificationRequired: (String) -> Unit,
     viewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -49,8 +62,12 @@ fun LoginScreen(
 
     val loginError = uiState.error != null
 
-    LaunchedEffect(uiState.isLoggedIn) {
-        if (uiState.isLoggedIn) onLoginSuccess()
+    LaunchedEffect(uiState.isLoggedIn, uiState.requiresEmailVerification) {
+        when {
+            uiState.isLoggedIn -> onLoginSuccess()
+            uiState.requiresEmailVerification ->
+                onEmailVerificationRequired(uiState.pendingEmail.orEmpty())
+        }
     }
 
     AuthScreenFrame(
@@ -142,6 +159,39 @@ fun LoginScreen(
             enabled = canSubmit,
             onClick = { viewModel.login(username.trim(), password, rememberMe) }
         )
+
+        if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        runCatching {
+                            val option = GetGoogleIdOption.Builder()
+                                .setFilterByAuthorizedAccounts(false)
+                                .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+                                .build()
+                            val request = GetCredentialRequest.Builder()
+                                .addCredentialOption(option)
+                                .build()
+                            CredentialManager.create(context)
+                                .getCredential(context, request)
+                                .credential
+                        }.onSuccess { credential ->
+                            if (
+                                credential is CustomCredential &&
+                                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                            ) {
+                                val googleCredential =
+                                    GoogleIdTokenCredential.createFrom(credential.data)
+                                viewModel.googleLogin(googleCredential.idToken)
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Continue with Google")
+            }
+        }
 
         AuthFooterAction(
             prompt = "New to HiBuddy?",

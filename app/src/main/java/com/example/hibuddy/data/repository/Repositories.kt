@@ -9,13 +9,16 @@ import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Locale
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class ProfileRepository(private val api: ApiService) {
-    suspend fun getMyProfile(): Result<ProfileResponse> = runCatching { api.getMyProfile() }
-    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = runCatching { api.getUserProfile(userId) }
-    suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = runCatching { api.updateMyProfile(request) }
-    suspend fun hideProfile(): Result<GenericResponse> = runCatching { api.hideProfile() }
-    suspend fun unhideProfile(): Result<GenericResponse> = runCatching { api.unhideProfile() }
+    suspend fun getMyProfile(): Result<ProfileResponse> = apiResult { api.getMyProfile() }
+    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = apiResult { api.getUserProfile(userId) }
+    suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = apiResult { api.updateMyProfile(request) }
+    suspend fun hideProfile(): Result<GenericResponse> = apiResult { api.hideProfile() }
+    suspend fun unhideProfile(): Result<GenericResponse> = apiResult { api.unhideProfile() }
     suspend fun addSkill(request: SkillRequest): Result<SkillResponse> = runCatching { api.addSkill(request) }
     suspend fun removeSkill(skillId: String): Result<GenericResponse> = runCatching { api.removeSkill(skillId) }
     suspend fun addRole(request: RoleRequest): Result<RoleResponse> = runCatching { api.addRole(request) }
@@ -23,27 +26,49 @@ class ProfileRepository(private val api: ApiService) {
     suspend fun addInterest(request: InterestRequest): Result<InterestResponse> = runCatching { api.addInterest(request) }
     suspend fun removeInterest(interestId: String): Result<GenericResponse> = runCatching { api.removeInterest(interestId) }
     suspend fun addCompletedCourse(request: CompletedCourseRequest): Result<CompletedCourseResponse> = runCatching { api.addCompletedCourse(request) }
+    suspend fun uploadAvatar(bytes: ByteArray, mimeType: String): Result<MediaUploadResponse> =
+        uploadImage(bytes, mimeType, "avatar.jpg") { api.uploadAvatar(it) }
+    suspend fun deleteAvatar(): Result<GenericResponse> = runCatching { api.deleteAvatar() }
+    suspend fun uploadStudentCard(bytes: ByteArray, mimeType: String): Result<MediaUploadResponse> =
+        uploadImage(bytes, mimeType, "student-card.jpg") { api.uploadStudentCard(it) }
+
+    private suspend fun uploadImage(
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+        request: suspend (MultipartBody.Part) -> MediaUploadResponse
+    ): Result<MediaUploadResponse> = runCatching {
+        val body = bytes.toRequestBody(mimeType.toMediaType())
+        request(MultipartBody.Part.createFormData("file", fileName, body))
+    }
 }
 
 class ProjectRepository(private val api: ApiService) {
-    suspend fun createProject(request: CreateProjectRequest): Result<ProjectResponse> = runCatching { api.createProject(request) }
-    suspend fun getMyProjects(): Result<List<ProjectResponse>> = runCatching { api.getMyProjects() }
-    suspend fun getProject(id: String): Result<ProjectResponse> = runCatching { api.getProject(id) }
-    suspend fun closeProject(id: String): Result<GenericResponse> = runCatching { api.closeProject(id) }
+    suspend fun createProject(request: CreateProjectRequest): Result<ProjectResponse> = apiResult { api.createProject(request) }
+    suspend fun getMyProjects(): Result<List<ProjectResponse>> = apiResult { api.getMyProjects() }
+    suspend fun getProject(id: String): Result<ProjectResponse> = apiResult { api.getProject(id) }
+    suspend fun closeProject(id: String): Result<GenericResponse> = apiResult { api.closeProject(id) }
     suspend fun addMember(
         projectId: String,
         userId: String,
         role: String,
         roleSlotId: String? = null,
         matchId: String? = null
-    ): Result<GenericResponse> = runCatching { api.addMember(projectId, userId, role, roleSlotId, matchId) }
+    ): Result<GenericResponse> = apiResult { api.addMember(projectId, userId, role, roleSlotId, matchId) }
 }
 
 class SwipeRepository(private val api: ApiService) {
-    suspend fun discoverCards(mode: String, limit: Int = 20): Result<DiscoverResponse> = runCatching { api.discoverCards(mode, limit) }
-    suspend fun swipeAction(request: SwipeActionRequest): Result<SwipeActionResponse> = runCatching { api.swipeAction(request) }
-    suspend fun getQueue(): Result<QueueResponse> = runCatching { api.getQueue() }
-    suspend fun addToQueue(request: QueueAddRequest): Result<QueueAddResponse> = runCatching { api.addToQueue(request) }
+    suspend fun discoverCards(
+        mode: String,
+        limit: Int = 20,
+        cursor: String? = null,
+        projectId: String? = null
+    ): Result<DiscoverResponse> = apiResult {
+        api.discoverCards(mode, limit, cursor, projectId)
+    }
+    suspend fun swipeAction(request: SwipeActionRequest): Result<SwipeActionResponse> = apiResult { api.swipeAction(request) }
+    suspend fun getQueue(): Result<QueueResponse> = apiResult { api.getQueue() }
+    suspend fun addToQueue(request: QueueAddRequest): Result<QueueAddResponse> = apiResult { api.addToQueue(request) }
     suspend fun decideQueueItem(id: String, action: String): Result<SwipeActionResponse> = runCatching {
         api.decideQueueItem(id, QueueDecisionRequest(action))
     }
@@ -64,23 +89,6 @@ class TaskRepository(private val api: ApiService) {
     suspend fun evaluateMember(projectId: String, memberId: String, request: EvaluationRequest): Result<EvaluationResponse> = runCatching {
         api.evaluateMember(projectId, memberId, request)
     }
-}
-
-private suspend fun <T> apiResult(block: suspend () -> T): Result<T> {
-    return try {
-        Result.success(block())
-    } catch (e: Throwable) {
-        Result.failure(Exception(e.readableApiMessage()))
-    }
-}
-
-private fun Throwable.readableApiMessage(): String {
-    if (this is HttpException) {
-        val raw = response()?.errorBody()?.string().orEmpty()
-        val detail = Regex("\"detail\"\\s*:\\s*\"([^\"]+)\"").find(raw)?.groupValues?.getOrNull(1)
-        return detail ?: message()
-    }
-    return message ?: "Request failed"
 }
 
 class SuggestionRepository(private val api: ApiService) {
@@ -160,7 +168,7 @@ class ChatRepository(
             content = content,
             isRead = isRead,
             createdAt = createdAt,
-            clientMessageId = null,
+            clientMessageId = clientMessageId,
             deliveryState = if (isRead) {
                 ChatLocalDataSource.DeliveryStateRead
             } else {

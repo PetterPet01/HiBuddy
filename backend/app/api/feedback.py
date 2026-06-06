@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from uuid import UUID
 
@@ -7,15 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.database import get_db, async_session
+from app.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.project import Project
 from app.models.feedback import AnonymousFeedback
-from app.models.chat import Notification
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse, MyFeedbackSummary
-from app.services.mistral_service import analyze_feedback_weaknesses
-from app.services.fcm_service import notify_user
+from app.models.operations import OutboxEvent
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["feedback"])
@@ -67,7 +64,17 @@ async def submit_feedback(
     db.add(feedback)
     await db.flush()
 
-    asyncio.create_task(_analyze_and_notify(feedback.id, project_id, target_id, project.title, data.feedback_text))
+    db.add(
+        OutboxEvent(
+            event_type="FEEDBACK_ANALYSIS",
+            payload={
+                "feedback_id": str(feedback.id),
+                "project_id": str(project_id),
+                "target_id": str(target_id),
+                "project_title": project.title,
+            },
+        )
+    )
 
     return FeedbackResponse.model_validate(feedback)
 
@@ -163,31 +170,3 @@ async def get_members_to_feedback(
             "already_feedback": m.user_id in already_ids,
         })
     return {"project_id": str(project_id), "project_title": project.title, "members": members}
-
-
-async def _analyze_and_notify(feedback_id: UUID, project_id: UUID, target_id: UUID, project_title: str, text: str):
-    try:
-        weaknesses = await analyze_feedback_weaknesses(text)
-        async with async_session() as session:
-            fb = await session.get(AnonymousFeedback, feedback_id)
-            if fb:
-                fb.analyzed_weaknesses = weaknesses
-                await session.commit()
-
-            notif = Notification(
-                user_id=target_id,
-                type="FEEDBACK_RECEIVED",
-                title="Bạn nhận được feedback ẩn danh",
-                body=f"Ai đó đã gửi feedback cho bạn về dự án {project_title}",
-                related_id=str(project_id),
-            )
-            session.add(notif)
-            await session.commit()
-
-            asyncio.create_task(notify_user(
-                session, target_id,
-                "Feedback ẩn danh",
-                f"Ai đó đã gửi feedback cho bạn về dự án {project_title}",
-            ))
-    except Exception as e:
-        logger.error(f"Background analyze failed: {e}")

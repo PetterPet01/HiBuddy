@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func, JSON
+from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func, JSON, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -8,6 +8,10 @@ from app.database import Base
 
 class Project(Base):
     __tablename__ = "projects"
+    __table_args__ = (
+        CheckConstraint("end_date > start_date", name="ck_project_date_range"),
+        CheckConstraint("max_members >= 2 AND max_members <= 50", name="ck_project_member_limit"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -27,6 +31,9 @@ class Project(Base):
 
     status: Mapped[str] = mapped_column(String(20), default="RECRUITING")
     review_status: Mapped[str] = mapped_column(String(20), default="APPROVED")
+    moderation_categories: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    moderation_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    moderation_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     additional_requirements: Mapped[str | None] = mapped_column(String(500), nullable=True)
     member_benefits: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -42,6 +49,10 @@ class Project(Base):
 
 class ProjectRoleSlot(Base):
     __tablename__ = "project_role_slots"
+    __table_args__ = (
+        CheckConstraint("count > 0", name="ck_role_slot_count"),
+        CheckConstraint("filled >= 0 AND filled <= count", name="ck_role_slot_filled"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
@@ -52,10 +63,16 @@ class ProjectRoleSlot(Base):
     skill_requirements: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     project = relationship("Project", back_populates="role_slots")
+    skill_requirements_rows = relationship(
+        "ProjectRoleSkillRequirement", cascade="all, delete-orphan"
+    )
 
 
 class ProjectMember(Base):
     __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_member"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)

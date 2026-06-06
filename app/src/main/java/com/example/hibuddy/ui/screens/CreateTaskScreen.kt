@@ -20,6 +20,7 @@ import com.example.hibuddy.data.remote.dto.*
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 import kotlinx.coroutines.launch
+import com.example.hibuddy.ui.components.DatePickerField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,10 +52,7 @@ fun SimpleCreateTaskScreen(
     val members = project?.members.orEmpty()
     val assignableMembers = members
     val canCreateTask = project?.ownerId == currentUserId
-    val availableRoles = project?.roleSlots
-        ?.filter { it.filled < it.count }
-        ?.map { it.roleName }
-        .orEmpty()
+    val availableRoles = members.map { it.role }.distinct()
 
     LaunchedEffect(success) {
         if (success) onBack()
@@ -71,7 +69,7 @@ fun SimpleCreateTaskScreen(
                     assigneeId = defaultMember?.userId.orEmpty()
                 }
                 if (roleRelated.isBlank()) {
-                    roleRelated = loadedProject.roleSlots.firstOrNull { it.filled < it.count }?.roleName.orEmpty()
+                    roleRelated = defaultMember?.role.orEmpty()
                 }
                 isProjectLoading = false
             },
@@ -186,23 +184,17 @@ fun SimpleCreateTaskScreen(
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                DatePickerField(
                     value = startDate,
                     onValueChange = { startDate = it },
-                    label = { Text("Start Date") },
-                    placeholder = { Text("DD/MM/YYYY") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = darkTextFieldColors()
+                    label = "Start Date",
+                    modifier = Modifier.weight(1f)
                 )
-                OutlinedTextField(
+                DatePickerField(
                     value = deadline,
                     onValueChange = { deadline = it },
-                    label = { Text("Deadline") },
-                    placeholder = { Text("DD/MM/YYYY") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = darkTextFieldColors()
+                    label = "Deadline",
+                    modifier = Modifier.weight(1f)
                 )
             }
 

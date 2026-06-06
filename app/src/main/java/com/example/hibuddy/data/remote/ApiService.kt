@@ -3,6 +3,7 @@ package com.example.hibuddy.data.remote
 import com.example.hibuddy.data.remote.dto.*
 import retrofit2.Response
 import retrofit2.http.*
+import okhttp3.MultipartBody
 
 interface ApiService {
 
@@ -12,14 +13,23 @@ interface ApiService {
     @POST("api/v1/auth/login")
     suspend fun login(@Body request: LoginRequest): TokenResponse
 
+    @POST("api/v1/auth/google")
+    suspend fun googleLogin(@Body request: GoogleLoginRequest): TokenResponse
+
     @POST("api/v1/auth/refresh")
     suspend fun refreshToken(@Body request: RefreshTokenRequest): TokenResponse
 
     @POST("api/v1/auth/logout")
-    suspend fun logout(): Response<Unit>
+    suspend fun logout(@Body request: RefreshTokenRequest): GenericResponse
 
     @POST("api/v1/auth/verify-email")
     suspend fun verifyEmail(@Body request: VerifyEmailRequest): GenericResponse
+
+    @POST("api/v1/auth/resend-verification")
+    suspend fun resendVerification(): GenericResponse
+
+    @POST("api/v1/auth/resend-verification-public")
+    suspend fun resendVerificationPublic(@Body request: ResendVerificationRequest): GenericResponse
 
     @POST("api/v1/auth/forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequest): GenericResponse
@@ -29,6 +39,20 @@ interface ApiService {
 
     @POST("api/v1/auth/verify-student")
     suspend fun submitStudentVerification(@Body request: StudentVerificationRequest): GenericResponse
+
+    @Multipart
+    @POST("api/v1/upload/avatar")
+    suspend fun uploadAvatar(@Part file: MultipartBody.Part): MediaUploadResponse
+
+    @DELETE("api/v1/upload/avatar")
+    suspend fun deleteAvatar(): GenericResponse
+
+    @Multipart
+    @POST("api/v1/upload/student-card")
+    suspend fun uploadStudentCard(@Part file: MultipartBody.Part): MediaUploadResponse
+
+    @POST("api/v1/fcm/register")
+    suspend fun registerFcmToken(@Body request: FcmTokenRequest): Map<String, Any>
 
     @GET("api/v1/profiles/me")
     suspend fun getMyProfile(): ProfileResponse
@@ -90,7 +114,9 @@ interface ApiService {
     @GET("api/v1/swipe/discover")
     suspend fun discoverCards(
         @Query("mode") mode: String = "CONTRIBUTOR",
-        @Query("limit") limit: Int = 20
+        @Query("limit") limit: Int = 20,
+        @Query("cursor") cursor: String? = null,
+        @Query("project_id") projectId: String? = null
     ): DiscoverResponse
 
     @POST("api/v1/swipe/action")
@@ -232,12 +258,14 @@ interface ApiService {
 
     @POST("api/v1/admin/users/{userId}/ban")
     suspend fun banUserByAdmin(
-        @Path("userId") userId: String
+        @Path("userId") userId: String,
+        @Body request: AdminActionRequest
     ): AdminUserResponse
 
     @POST("api/v1/admin/users/{userId}/unban")
     suspend fun unbanUserByAdmin(
-        @Path("userId") userId: String
+        @Path("userId") userId: String,
+        @Body request: AdminActionRequest
     ): AdminUserResponse
 
     @GET("api/v1/admin/reports")
@@ -248,6 +276,21 @@ interface ApiService {
         @Path("reportId") reportId: String,
         @Body request: ResolveReportRequest
     ): AdminReportResponse
+
+    @GET("api/v1/admin/projects/flagged")
+    suspend fun getFlaggedProjects(): List<ProjectResponse>
+
+    @POST("api/v1/admin/projects/{projectId}/approve")
+    suspend fun approveFlaggedProject(
+        @Path("projectId") projectId: String,
+        @Body request: AdminActionRequest
+    ): ProjectResponse
+
+    @POST("api/v1/admin/projects/{projectId}/reject")
+    suspend fun rejectFlaggedProject(
+        @Path("projectId") projectId: String,
+        @Body request: AdminActionRequest
+    ): ProjectResponse
 
     @POST("api/v1/projects/{projectId}/feedback/{memberId}")
     suspend fun submitFeedback(

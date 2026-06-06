@@ -1,9 +1,10 @@
 package com.example.hibuddy.ui.screens
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.Assert.*
+import org.junit.Test
 
 class DiscoverHeaderTest {
-    @org.junit.jupiter.api.Test
+    @Test
     fun discoverScreen() {
     }
 

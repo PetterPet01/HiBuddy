@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Integer, Float, ForeignKey, func
+from sqlalchemy import String, Boolean, DateTime, Integer, Float, ForeignKey, func, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -37,17 +37,28 @@ class UserProfile(Base):
 
 class UserRole(Base):
     __tablename__ = "user_roles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_name", name="uq_user_role_name"),
+        CheckConstraint("ordering >= 0", name="ck_user_role_ordering"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role_name: Mapped[str] = mapped_column(String(100), nullable=False)
     ordering: Mapped[int] = mapped_column(Integer, default=0)
+    catalog_role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("role_catalog.id", ondelete="SET NULL"), nullable=True
+    )
 
     user = relationship("User", back_populates="roles")
+    role_skills = relationship("UserRoleSkill", cascade="all, delete-orphan")
 
 
 class UserSkill(Base):
     __tablename__ = "user_skills"
+    __table_args__ = (
+        UniqueConstraint("user_id", "skill_name", name="uq_user_skill_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -60,6 +71,9 @@ class UserSkill(Base):
 
 class UserInterest(Base):
     __tablename__ = "user_interests"
+    __table_args__ = (
+        UniqueConstraint("user_id", "interest_name", name="uq_user_interest_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

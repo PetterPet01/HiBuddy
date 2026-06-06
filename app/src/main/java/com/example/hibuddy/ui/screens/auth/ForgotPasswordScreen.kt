@@ -149,6 +149,7 @@ fun ForgotPasswordScreen(
                         !passwordsMismatch,
                 onClick = {
                     viewModel.resetPassword(
+                        email.trim(),
                         resetCode.trim(),
                         newPassword,
                         confirmPassword

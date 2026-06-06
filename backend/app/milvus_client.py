@@ -1,9 +1,26 @@
 import socket
+from typing import Any
 
-from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
 from app.config import get_settings
 
 settings = get_settings()
+
+
+def _client():
+    try:
+        from pymilvus import (
+            Collection,
+            CollectionSchema,
+            DataType,
+            FieldSchema,
+            connections,
+            utility,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            "Milvus requires backend/requirements-ml.txt"
+        ) from exc
+    return Collection, CollectionSchema, DataType, FieldSchema, connections, utility
 
 
 def connect_milvus():
@@ -19,6 +36,7 @@ def connect_milvus():
     except OSError as exc:
         raise RuntimeError("Milvus is unavailable") from exc
 
+    connections = _client()[4]
     connections.connect(
         alias="default",
         host=settings.MILVUS_HOST,
@@ -28,10 +46,15 @@ def connect_milvus():
 
 
 def disconnect_milvus():
-    connections.disconnect("default")
+    try:
+        connections = _client()[4]
+        connections.disconnect("default")
+    except Exception:
+        return
 
 
 def init_milvus_collections():
+    Collection, CollectionSchema, DataType, FieldSchema, _, utility = _client()
     connect_milvus()
 
     user_fields = [
@@ -81,7 +104,8 @@ def init_milvus_collections():
     disconnect_milvus()
 
 
-def get_milvus_collection(name: str) -> Collection:
+def get_milvus_collection(name: str) -> Any:
+    Collection = _client()[0]
     connect_milvus()
     collection = Collection(name=name)
     collection.load()

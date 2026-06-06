@@ -676,7 +676,15 @@ class ChatViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isModerationActionInProgress = true) }
-                apiService.reportUser(ReportRequest(userId, reason, description))
+                apiService.reportUser(
+                    ReportRequest(
+                        reported_id = userId,
+                        reason = reason,
+                        description = description,
+                        contextType = "CHAT",
+                        contextId = _uiState.value.matchId
+                    )
+                )
                 _uiState.update {
                     it.copy(
                         isModerationActionInProgress = false,

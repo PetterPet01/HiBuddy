@@ -52,8 +52,13 @@ class AuthAuthenticator(
             return when (val result = refreshTokens(refreshToken)) {
                 is RefreshResult.Success -> {
                     val tokenResponse = result.response
-                    tokenManager.saveTokens(tokenResponse.accessToken, tokenResponse.refreshToken)
+                    tokenManager.saveEmailVerified(tokenResponse.user.emailVerified)
+                    tokenManager.savePendingEmail(
+                        tokenResponse.user.email.takeUnless { tokenResponse.user.emailVerified }
+                    )
                     tokenManager.saveUserId(tokenResponse.user.id)
+                    tokenManager.saveUserRole(tokenResponse.user.role)
+                    tokenManager.saveTokens(tokenResponse.accessToken, tokenResponse.refreshToken)
                     response.request.withBearer(tokenResponse.accessToken)
                 }
                 RefreshResult.Unauthorized -> {
@@ -99,9 +104,10 @@ class AuthAuthenticator(
         return path in setOf(
             "/api/v1/auth/register",
             "/api/v1/auth/login",
+            "/api/v1/auth/google",
             "/api/v1/auth/login-swagger",
             "/api/v1/auth/refresh",
-            "/api/v1/auth/verify-email",
+            "/api/v1/auth/resend-verification-public",
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
         )

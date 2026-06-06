@@ -1,21 +1,26 @@
 import logging
-from sentence_transformers import SentenceTransformer
-from pymilvus import Collection, connections
+from typing import Any
 from app.config import get_settings
 from app.milvus_client import connect_milvus, disconnect_milvus
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_model: SentenceTransformer | None = None
+_model: Any | None = None
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model() -> Any:
     if not settings.ENABLE_EMBEDDINGS:
         raise RuntimeError("Embeddings are disabled")
 
     global _model
     if _model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "Embeddings require backend/requirements-ml.txt"
+            ) from exc
         _model = SentenceTransformer(settings.SENTENCE_TRANSFORMER_MODEL, local_files_only=True)
     return _model
 
@@ -61,6 +66,7 @@ def upsert_user_vector(profile) -> int | None:
         return None
 
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("user_profile_vectors")
         collection.load()
@@ -97,6 +103,7 @@ def upsert_project_vector(project) -> int | None:
         return None
 
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("project_vectors")
         collection.load()
@@ -128,6 +135,7 @@ def delete_user_vector(profile) -> None:
     if not profile.embedding_id:
         return
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("user_profile_vectors")
         collection.load()
@@ -142,6 +150,7 @@ def delete_project_vector(project) -> None:
     if not project.embedding_id:
         return
     try:
+        from pymilvus import Collection
         connect_milvus()
         collection = Collection("project_vectors")
         collection.load()

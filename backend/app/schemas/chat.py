@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CourseSuggestionResponse(BaseModel):
@@ -13,8 +13,7 @@ class CourseSuggestionResponse(BaseModel):
     match_percent: float
     is_dismissed: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MentorSuggestionResponse(BaseModel):
@@ -38,9 +37,9 @@ class MessageResponse(BaseModel):
     is_read: bool
     created_at: datetime
     sender_name: str | None = None
+    client_message_id: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectInvitationCreate(BaseModel):
@@ -92,8 +91,7 @@ class ChatResponse(BaseModel):
     last_message_time: datetime | None
     is_unread: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class NotificationResponse(BaseModel):
@@ -105,5 +103,4 @@ class NotificationResponse(BaseModel):
     related_id: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

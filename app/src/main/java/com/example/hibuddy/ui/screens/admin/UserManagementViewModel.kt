@@ -45,9 +45,9 @@ class UserManagementViewModel : ViewModel() {
         }
     }
 
-    fun banUser(userId: String) {
+    fun banUser(userId: String, reason: String) {
         viewModelScope.launch {
-            adminRepository.banUser(userId).fold(
+            adminRepository.banUser(userId, reason).fold(
                 onSuccess = { updatedUser ->
                     _uiState.value = _uiState.value.copy(
                         message = "User banned successfully",
@@ -65,9 +65,9 @@ class UserManagementViewModel : ViewModel() {
         }
     }
 
-    fun unbanUser(userId: String) {
+    fun unbanUser(userId: String, reason: String = "Administrative reinstatement") {
         viewModelScope.launch {
-            adminRepository.unbanUser(userId).fold(
+            adminRepository.unbanUser(userId, reason).fold(
                 onSuccess = { updatedUser ->
                     _uiState.value = _uiState.value.copy(
                         message = "User unbanned successfully",

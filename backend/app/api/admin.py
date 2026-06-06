@@ -11,6 +11,8 @@ from app.core.dependencies import get_current_admin
 from app.models.user import User
 from app.models.project import Project, ProjectMember
 from app.models.chat import Notification
+from app.models.operations import AdminAuditLog, OutboxEvent
+from app.schemas.admin import AdminActionRequest
 from app.schemas.project import ProjectResponse, RoleSlotResponse, ProjectMemberResponse
 from app.services.embedding_service import upsert_project_vector
 from app.services.fcm_service import notify_user
@@ -59,6 +61,8 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
         max_members=project.max_members,
         status=project.status,
         review_status=project.review_status,
+        moderation_categories=project.moderation_categories,
+        moderation_reasons=project.moderation_reasons,
         additional_requirements=project.additional_requirements,
         member_benefits=project.member_benefits,
         role_slots=[RoleSlotResponse.model_validate(s) for s in slots_result.scalars().all()],
@@ -90,6 +94,7 @@ async def list_flagged_projects(
 @router.post("/projects/{project_id}/approve", response_model=ProjectResponse)
 async def approve_project(
     project_id: UUID,
+    request: AdminActionRequest,
     current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -104,10 +109,6 @@ async def approve_project(
 
     project.review_status = "APPROVED"
 
-    embedding_id = upsert_project_vector(project)
-    if embedding_id:
-        project.embedding_id = embedding_id
-
     notif = Notification(
         user_id=project.owner_id,
         type="PROJECT_APPROVED",
@@ -117,11 +118,20 @@ async def approve_project(
     )
     db.add(notif)
 
-    import asyncio
-    asyncio.create_task(notify_user(
-        db, project.owner_id,
-        "Dự án đã được phê duyệt",
-        f"Dự án '{project.title}' đã được phê duyệt và hiện đang được đăng tải.",
+    db.add(AdminAuditLog(
+        admin_id=current_admin.id,
+        action="APPROVE_PROJECT",
+        target_type="PROJECT",
+        target_id=str(project.id),
+        reason=request.reason,
+    ))
+    db.add(OutboxEvent(
+        event_type="PUSH_NOTIFICATION",
+        payload={
+            "user_id": str(project.owner_id),
+            "title": "Project approved",
+            "body": f"Your project '{project.title}' is now visible.",
+        },
     ))
 
     return await _build_project_response(db, project)
@@ -130,6 +140,7 @@ async def approve_project(
 @router.post("/projects/{project_id}/reject", response_model=ProjectResponse)
 async def reject_project(
     project_id: UUID,
+    request: AdminActionRequest,
     current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -151,11 +162,20 @@ async def reject_project(
     )
     db.add(notif)
 
-    import asyncio
-    asyncio.create_task(notify_user(
-        db, project.owner_id,
-        "Dự án không được phê duyệt",
-        f"Dự án '{project.title}' đã bị từ chối vì vi phạm tiêu chuẩn cộng đồng.",
+    db.add(AdminAuditLog(
+        admin_id=current_admin.id,
+        action="REJECT_PROJECT",
+        target_type="PROJECT",
+        target_id=str(project.id),
+        reason=request.reason,
+    ))
+    db.add(OutboxEvent(
+        event_type="PUSH_NOTIFICATION",
+        payload={
+            "user_id": str(project.owner_id),
+            "title": "Project rejected",
+            "body": request.reason,
+        },
     ))
 
     return await _build_project_response(db, project)

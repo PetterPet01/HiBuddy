@@ -12,10 +12,14 @@ import kotlinx.coroutines.launch
 
 data class DiscoverUiState(
     val isLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
     val isSwiping: Boolean = false,
     val userCards: List<UserCardResponse> = emptyList(),
     val projectCards: List<ProjectCardResponse> = emptyList(),
     val mode: String = "CONTRIBUTOR",
+    val ownerProjects: List<ProjectResponse> = emptyList(),
+    val selectedOwnerProjectId: String? = null,
+    val nextCursor: String? = null,
     val dailyLikesRemaining: Int = 50,
     val dailySuperlikesRemaining: Int = 3,
     val queuedUserCount: Int = 0,
@@ -29,6 +33,7 @@ data class DiscoverUiState(
 class DiscoverViewModel : ViewModel() {
 
     private val swipeRepository = ServiceLocator.swipeRepository
+    private val projectRepository = ServiceLocator.projectRepository
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
@@ -41,23 +46,92 @@ class DiscoverViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             val mode = _uiState.value.mode
-            swipeRepository.discoverCards(mode).fold(
+            if (mode == "OWNER" && _uiState.value.selectedOwnerProjectId == null) {
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                loadOwnerProjects()
+                return@launch
+            }
+            swipeRepository.discoverCards(
+                mode = mode,
+                projectId = _uiState.value.selectedOwnerProjectId
+            ).fold(
                 onSuccess = { response ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isLoadingMore = false,
                         userCards = response.userCards.filterNot { it.userId in swipedUserIds || it.userId in queuedUserIds },
                         projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds || it.projectId in queuedProjectIds },
                         dailyLikesRemaining = response.dailyLikesRemaining,
                         dailySuperlikesRemaining = response.dailySuperlikesRemaining,
+                        nextCursor = response.nextCursor,
                         currentCardIndex = 0
                     )
                 },
                 onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isLoadingMore = false,
+                        error = e.message
+                    )
                 }
             )
         }
         loadQueueSummary()
+    }
+
+    private fun loadMoreCards() {
+        val state = _uiState.value
+        val cursor = state.nextCursor ?: return
+        if (state.isLoading || state.isLoadingMore) return
+        val mode = state.mode
+        val projectId = state.selectedOwnerProjectId
+        _uiState.value = state.copy(isLoadingMore = true)
+        viewModelScope.launch {
+            swipeRepository.discoverCards(
+                mode = mode,
+                cursor = cursor,
+                projectId = projectId
+            ).fold(
+                onSuccess = { response ->
+                    val current = _uiState.value
+                    if (current.mode != mode || current.selectedOwnerProjectId != projectId) {
+                        return@fold
+                    }
+                    _uiState.value = current.copy(
+                        isLoadingMore = false,
+                        userCards = (
+                            current.userCards + response.userCards.filterNot {
+                                it.userId in swipedUserIds || it.userId in queuedUserIds
+                            }
+                        ).distinctBy { it.userId },
+                        projectCards = (
+                            current.projectCards + response.projectCards.filterNot {
+                                it.projectId in swipedProjectIds || it.projectId in queuedProjectIds
+                            }
+                        ).distinctBy { it.projectId },
+                        nextCursor = response.nextCursor,
+                        dailyLikesRemaining = response.dailyLikesRemaining,
+                        dailySuperlikesRemaining = response.dailySuperlikesRemaining
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingMore = false,
+                        error = error.message ?: "Could not load more profiles"
+                    )
+                }
+            )
+        }
+    }
+
+    private fun loadMoreIfNeeded() {
+        val state = _uiState.value
+        val size = if (state.mode == "CONTRIBUTOR") {
+            state.projectCards.size
+        } else {
+            state.userCards.size
+        }
+        if (state.currentCardIndex >= size - 3) loadMoreCards()
     }
 
     fun switchMode(mode: String) {
@@ -66,7 +140,52 @@ class DiscoverViewModel : ViewModel() {
             currentCardIndex = 0,
             userCards = emptyList(),
             projectCards = emptyList(),
+            isLoadingMore = false,
             error = null
+        )
+        if (mode == "OWNER") loadOwnerProjects() else loadCards()
+    }
+
+    private fun loadOwnerProjects() {
+        viewModelScope.launch {
+            projectRepository.getMyProjects().fold(
+                onSuccess = { projects ->
+                    val recruiting = projects.filter {
+                        it.ownerId == ServiceLocator.authRepository.getUserId() &&
+                            it.status == "RECRUITING" &&
+                            it.reviewStatus == "APPROVED"
+                    }
+                    val selected = _uiState.value.selectedOwnerProjectId
+                        ?.takeIf { id -> recruiting.any { it.id == id } }
+                        ?: recruiting.firstOrNull()?.id
+                    _uiState.value = _uiState.value.copy(
+                        ownerProjects = recruiting,
+                        selectedOwnerProjectId = selected,
+                        error = if (recruiting.isEmpty()) {
+                            "Create an approved recruiting project before browsing contributors"
+                        } else null
+                    )
+                    if (selected != null) loadCards()
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = error.message
+                    )
+                }
+            )
+        }
+    }
+
+    fun selectOwnerProject(projectId: String) {
+        if (projectId == _uiState.value.selectedOwnerProjectId) return
+        swipedUserIds.clear()
+        _uiState.value = _uiState.value.copy(
+            selectedOwnerProjectId = projectId,
+            userCards = emptyList(),
+            currentCardIndex = 0,
+            nextCursor = null,
+            isLoadingMore = false
         )
         loadCards()
     }
@@ -113,7 +232,23 @@ class DiscoverViewModel : ViewModel() {
         )
 
         viewModelScope.launch {
-            swipeRepository.swipeAction(SwipeActionRequest(targetType, targetId, action)).fold(
+            val roleSlotId = if (targetType == "USER") {
+                val userCard = card as UserCardResponse
+                state.ownerProjects
+                    .firstOrNull { it.id == state.selectedOwnerProjectId }
+                    ?.roleSlots
+                    ?.firstOrNull { it.roleName == userCard.matchedRole }
+                    ?.id
+            } else null
+            swipeRepository.swipeAction(
+                SwipeActionRequest(
+                    targetType,
+                    targetId,
+                    action,
+                    contextProjectId = state.selectedOwnerProjectId,
+                    contextRoleSlotId = roleSlotId
+                )
+            ).fold(
                 onSuccess = { response ->
                     if (targetType == "PROJECT") {
                         swipedProjectIds.add(targetId)
@@ -132,6 +267,7 @@ class DiscoverViewModel : ViewModel() {
                             error = response.message?.takeIf { it.contains("limit", ignoreCase = true) }
                         )
                     }
+                    loadMoreIfNeeded()
                 },
                 onFailure = { e ->
                     val currentState = _uiState.value
@@ -180,7 +316,9 @@ class DiscoverViewModel : ViewModel() {
         )
 
         viewModelScope.launch {
-            swipeRepository.addToQueue(QueueAddRequest(targetType, targetId)).fold(
+            swipeRepository.addToQueue(
+                QueueAddRequest(targetType, targetId, state.selectedOwnerProjectId)
+            ).fold(
                 onSuccess = {
                     if (targetType == "PROJECT") {
                         queuedProjectIds.add(targetId)
@@ -189,6 +327,7 @@ class DiscoverViewModel : ViewModel() {
                     }
                     _uiState.value = _uiState.value.copy(isSwiping = false)
                     loadQueueSummary()
+                    loadMoreIfNeeded()
                 },
                 onFailure = { e ->
                     val currentState = _uiState.value
