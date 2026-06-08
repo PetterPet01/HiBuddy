@@ -1,0 +1,4 @@
+-r requirements.txt
+pymilvus==2.4.4
+sentence-transformers==3.1.1
+torch==2.4.1
