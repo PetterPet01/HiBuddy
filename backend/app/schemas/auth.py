@@ -1,7 +1,8 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 import re
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserRegister(BaseModel):
@@ -17,11 +18,12 @@ class UserRegister(BaseModel):
     @field_validator("full_name")
     @classmethod
     def validate_full_name(cls, v: str) -> str:
-        if not re.match(r"^[a-zA-ZÀ-ỹ\s]+$", v):
-            raise ValueError("Full name must contain only letters")
-        if len(v.strip()) < 2:
+        v = v.strip()
+        if len(v) < 2:
             raise ValueError("Full name is too short")
-        return v.strip()
+        if any(not (char.isalpha() or char.isspace()) for char in v):
+            raise ValueError("Full name must contain only letters and spaces")
+        return v
 
     @field_validator("username")
     @classmethod
@@ -29,8 +31,10 @@ class UserRegister(BaseModel):
         v = v.strip().lower()
         if len(v) < 3:
             raise ValueError("Username must be at least 3 characters")
-        if not re.match(r"^[a-zA-Z0-9._@]+$", v):
-            raise ValueError("Username can only contain letters, numbers, '.', '_', '@'")
+        if re.search(r"\s", v):
+            raise ValueError("Username cannot contain spaces")
+        if not re.fullmatch(r"[a-zA-Z0-9._,@]+", v):
+            raise ValueError("Username can only contain letters, numbers, '.', ',', '_', '@'")
         return v
 
     @field_validator("password")
@@ -62,14 +66,26 @@ class UserRegister(BaseModel):
             dt = datetime.strptime(v, "%d/%m/%Y")
         except ValueError:
             raise ValueError("Date of birth must be in DD/MM/YYYY format")
-        if dt.year < 1900:
-            raise ValueError("Date of birth must be after 01/01/1900")
-        if dt > datetime.now():
-            raise ValueError("Date of birth must be in the past")
         today = datetime.now().date()
+        if dt <= datetime(1900, 1, 1):
+            raise ValueError("Date of birth must be later than 01/01/1900")
+        if dt.date() >= today:
+            raise ValueError("Date of birth must be before today")
         age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
         if age < 18:
             raise ValueError("You must be at least 18 years old")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"(0\d{9}|\+84\d{9})", v):
+            raise ValueError("Phone must be 10 digits starting with 0 or +84 followed by 9 digits")
         return v
 
     @field_validator("agree_terms")

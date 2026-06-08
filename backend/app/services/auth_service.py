@@ -171,15 +171,17 @@ async def register_user(
 ) -> TokenResponse:
     email = str(data.email).strip().lower()
     username = data.username.strip().lower()
-    existing = await db.execute(
-        select(User.id)
-        .where(
-            (func.lower(User.email) == email) | (func.lower(User.username) == username)
-        )
-        .limit(1)
+    existing_email = await db.execute(
+        select(User.id).where(func.lower(User.email) == email).limit(1)
     )
-    if existing.scalar() is not None:
-        raise HTTPException(status_code=409, detail="Email or username already registered")
+    if existing_email.scalar() is not None:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    existing_username = await db.execute(
+        select(User.id).where(func.lower(User.username) == username).limit(1)
+    )
+    if existing_username.scalar() is not None:
+        raise HTTPException(status_code=409, detail="Username already registered")
 
     dob = datetime.strptime(data.date_of_birth, "%d/%m/%Y").replace(tzinfo=timezone.utc)
     user = User(

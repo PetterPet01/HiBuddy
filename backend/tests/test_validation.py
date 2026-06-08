@@ -29,12 +29,35 @@ def test_registration_normalizes_username_and_accepts_exactly_18():
     assert data.username == "test.user"
 
 
+def test_registration_accepts_allowed_username_symbols():
+    data = UserRegister(**registration_payload(username="Test.User,_@1"))
+    assert data.username == "test.user,_@1"
+
+
+@pytest.mark.parametrize("phone", ["0912345678", "+84912345678", ""])
+def test_registration_accepts_valid_optional_phone(phone):
+    data = UserRegister(**registration_payload(phone=phone))
+    assert data.phone == (phone or None)
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
         {"password": "weakpass1", "confirm_password": "weakpass1"},
         {"agree_terms": False},
         {"confirm_password": "Different1"},
+        {"full_name": "Test User1"},
+        {"full_name": "Test@User"},
+        {"username": "test user"},
+        {"username": "te"},
+        {"username": "test-user"},
+        {"email": "invalid-email"},
+        {"email": "invalid@example"},
+        {"date_of_birth": "01/01/1900"},
+        {"date_of_birth": date.today().strftime("%d/%m/%Y")},
+        {"phone": "091234567"},
+        {"phone": "09123456789"},
+        {"phone": "phone-number"},
     ],
 )
 def test_registration_rejects_invalid_constraints(overrides):
