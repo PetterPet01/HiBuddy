@@ -138,9 +138,13 @@ fun HiBuddyApp() {
     }
     val startDestination = remember {
         if (ServiceLocator.authRepository.hasSession()) {
-            if (!ServiceLocator.authRepository.isEmailVerified()) {
+            if (ServiceLocator.authRepository.isAdmin()) {
+                Routes.ADMIN
+            } else if (!ServiceLocator.authRepository.isEmailVerified()) {
                 Routes.verifyEmail(ServiceLocator.authRepository.getPendingEmail().orEmpty())
-            } else if (ServiceLocator.authRepository.isAdmin()) Routes.ADMIN else Routes.DISCOVER
+            } else {
+                Routes.DISCOVER
+            }
         } else {
             Routes.LOGIN
         }

@@ -21,7 +21,6 @@ from app.schemas.profile import (
 
 router = APIRouter(prefix="/api/v1/profiles", tags=["profiles"])
 
-
 def _profile_embedding_options():
     return (
         selectinload(UserProfile.user).selectinload(User.roles),
@@ -82,6 +81,11 @@ async def get_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.role == "ADMIN":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin account does not have a user profile"
+        )
     profile_result = await db.execute(
         select(UserProfile).where(UserProfile.user_id == current_user.id)
     )
@@ -125,6 +129,11 @@ async def update_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.role == "ADMIN":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin account does not have a user profile"
+        )
     profile = await _get_profile_for_embedding(db, current_user.id)
     if not profile:
         profile = UserProfile(user_id=current_user.id, display_name=current_user.full_name)
