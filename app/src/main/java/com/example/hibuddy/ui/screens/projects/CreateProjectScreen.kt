@@ -20,6 +20,7 @@ import com.example.hibuddy.data.remote.dto.RoleSlotRequest
 import com.example.hibuddy.data.remote.dto.SkillRequirementRequest
 import com.example.hibuddy.ui.components.DatePickerField
 import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
+import com.example.hibuddy.ui.common.ProfileCatalog
 
 data class RoleSlotEntry(
     val roleName: String = "",
@@ -57,6 +58,8 @@ fun CreateProjectScreen(
     val fields = listOf("EdTech", "Climate Tech", "HealthTech", "FinTech", "AI/ML", "Mobile", "Web", "Gaming", "IoT", "Other")
     val workModes = listOf("ONLINE" to "Online", "OFFLINE" to "Offline", "HYBRID" to "Hybrid")
     val commitments = listOf("CASUAL" to "Casual", "MODERATE" to "Moderate", "INTENSIVE" to "Intensive")
+    val roleOptions = ProfileCatalog.roleOptions
+    val roleSkillMap = ProfileCatalog.roleSkillMap
 
     LaunchedEffect(uiState.createdProject) {
         uiState.createdProject?.let {
@@ -234,15 +237,18 @@ fun CreateProjectScreen(
                             }
                         }
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
+                        SearchableRoleDropdown(
                             value = slot.roleName,
-                            onValueChange = { newName ->
-                                roleSlots = roleSlots.toMutableList().also { it[index] = it[index].copy(roleName = newName) }
-                            },
-                            label = { Text("Role Name") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            colors = textFieldColors()
+                            options = roleOptions,
+                            onValueChange = { newRole ->
+                                val suggestedSkills = roleSkillMap[newRole].orEmpty()
+                                roleSlots = roleSlots.toMutableList().also {
+                                    it[index] = it[index].copy(
+                                        roleName = newRole,
+                                        skillRequirements = suggestedSkills.joinToString(", ")
+                                    )
+                                }
+                            }
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -359,3 +365,70 @@ fun CreateProjectScreen(
 
 @Composable
 private fun textFieldColors() = hiBuddyTextFieldColors()
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchableRoleDropdown(
+    value: String,
+    options: List<String>,
+    onValueChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var query by remember(value) { mutableStateOf(value) }
+
+    val filteredOptions = remember(query, options) {
+        options
+            .filter { it.contains(query, ignoreCase = true) }
+            .sorted()
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = {
+            expanded = it
+            if (it) query = ""
+        }
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = {
+                query = it
+                expanded = true
+            },
+            label = { Text("Role Name") },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            singleLine = true,
+            colors = textFieldColors()
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = {
+                expanded = false
+                query = value
+            }
+        ) {
+            if (filteredOptions.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("No matching role") },
+                    onClick = {}
+                )
+            } else {
+                filteredOptions.forEach { role ->
+                    DropdownMenuItem(
+                        text = { Text(role) },
+                        onClick = {
+                            onValueChange(role)
+                            query = role
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}

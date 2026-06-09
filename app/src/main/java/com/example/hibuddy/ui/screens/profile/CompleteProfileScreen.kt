@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.HorizontalDivider
+import com.example.hibuddy.ui.common.ProfileCatalog
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -45,60 +46,8 @@ fun CompleteProfileScreen(
         "BOTH" to "Both"
     )
 
-    val roleOptions = listOf(
-        "Project Owner",
-        "Project Manager",
-        "Team Leader",
-        "Business Analyst",
-        "Researcher",
-
-        "Frontend Developer",
-        "Backend Developer",
-        "Mobile Developer",
-        "AI Engineer",
-        "Data Analyst",
-        "UI/UX Designer",
-
-        "Graphic Designer",
-        "Content Creator",
-        "Copywriter",
-        "Video Editor",
-        "Photographer",
-
-        "Marketing Specialist",
-        "Social Media Manager",
-        "Sales Representative",
-        "Customer Support",
-        "Event Planner",
-
-        "Finance Planner",
-        "Accountant",
-        "Legal Advisor",
-        "HR / Recruiter",
-
-        "Teacher / Tutor",
-        "Translator",
-        "Community Manager",
-        "Product Tester",
-        "Volunteer Coordinator"
-    )
-    val roleSkillMap = mapOf(
-        "Frontend Developer" to listOf("HTML/CSS", "JavaScript", "React", "UI/UX Design", "GitHub"),
-        "Backend Developer" to listOf("Backend Development", "SQL", "Python", "Java", "Node.js", "API Design"),
-        "Mobile Developer" to listOf("Mobile Development", "Kotlin", "Jetpack Compose", "Firebase", "UI Design"),
-        "AI Engineer" to listOf("Python", "Machine Learning", "Data Analysis", "Research"),
-        "Data Analyst" to listOf("Data Analysis", "Excel", "SQL", "Python", "Research"),
-        "UI/UX Designer" to listOf("Figma", "UI/UX Design", "User Interview", "Graphic Design"),
-        "Marketing Specialist" to listOf("Marketing", "SEO", "Content Writing", "Branding", "Social Media Marketing"),
-        "Content Creator" to listOf("Content Writing", "Video Editing", "Photography", "Storytelling"),
-        "Project Manager" to listOf("Project Planning", "Task Management", "Leadership", "Communication"),
-        "Teacher / Tutor" to listOf("Teaching", "Presentation", "Communication", "English", "Japanese"),
-        "Translator" to listOf("Translation", "English", "Japanese", "Korean", "Chinese"),
-        "Researcher" to listOf("Research", "Writing", "Critical Thinking", "Data Analysis"),
-        "Project Owner" to listOf("Leadership", "Business Strategy", "Project Planning", "Communication"),
-        "Team Leader" to listOf("Leadership", "Teamwork", "Task Management", "Communication"),
-        "Business Analyst" to listOf("Business Strategy", "Market Research", "User Interview", "Critical Thinking"),
-    )
+    val roleOptions = ProfileCatalog.roleOptions
+    val roleSkillMap = ProfileCatalog.roleSkillMap
 
     val otherSkills = listOf(
         "Leadership", "Teamwork", "Communication", "Presentation", "Problem Solving",
