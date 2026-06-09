@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 
 object ServiceLocator {
     private lateinit var appContext: Context
-
     val tokenManager: TokenManager by lazy { TokenManager(appContext) }
     val chatLocalDataSource: ChatLocalDataSource by lazy { ChatLocalDataSource(appContext) }
     val themeManager: ThemeManager by lazy { ThemeManager(appContext) }
@@ -72,6 +71,7 @@ object ServiceLocator {
     val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository(apiService) }
     val notificationRepository: NotificationRepository by lazy { NotificationRepository(apiService) }
 
+    var discoverMode: String = "CONTRIBUTOR"
     fun init(context: Context) {
         appContext = context.applicationContext
     }

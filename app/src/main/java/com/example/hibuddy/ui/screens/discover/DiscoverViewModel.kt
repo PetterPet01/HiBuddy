@@ -35,7 +35,11 @@ class DiscoverViewModel : ViewModel() {
     private val swipeRepository = ServiceLocator.swipeRepository
     private val projectRepository = ServiceLocator.projectRepository
 
-    private val _uiState = MutableStateFlow(DiscoverUiState())
+    private val _uiState = MutableStateFlow(
+        DiscoverUiState(
+            mode = ServiceLocator.discoverMode
+        )
+    )
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
     private val swipedUserIds = mutableSetOf<String>()
     private val swipedProjectIds = mutableSetOf<String>()
@@ -135,6 +139,9 @@ class DiscoverViewModel : ViewModel() {
     }
 
     fun switchMode(mode: String) {
+
+        ServiceLocator.discoverMode = mode
+
         _uiState.value = _uiState.value.copy(
             mode = mode,
             currentCardIndex = 0,
@@ -143,7 +150,12 @@ class DiscoverViewModel : ViewModel() {
             isLoadingMore = false,
             error = null
         )
-        if (mode == "OWNER") loadOwnerProjects() else loadCards()
+
+        if (mode == "OWNER") {
+            loadOwnerProjects()
+        } else {
+            loadCards()
+        }
     }
 
     private fun loadOwnerProjects() {
