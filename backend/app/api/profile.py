@@ -11,11 +11,14 @@ from app.models.user import User
 from app.models.profile import (
     UserProfile, UserRole, UserSkill, UserInterest, UserCompletedCourse,
 )
-from app.models.catalog import SkillCatalog, UserRoleSkill
+from app.models.project import ProjectMember, Project
+from app.models.task import ProjectEvaluation
+from app.models.catalog import RoleCatalog, SkillCatalog, UserRoleSkill
 from app.schemas.profile import (
     ProfileCreate, ProfileUpdate, ProfileResponse, UserCardResponse,
     SkillCreate, RoleCreate, InterestCreate, SkillResponse, RoleResponse,
     InterestResponse, CompletedCourseCreate, CompletedCourseResponse,
+    UserDetailResponse, UserProjectHistoryResponse, UserFeedbackResponse,
 )
 #from app.services.embedding_service import upsert_user_vector
 
@@ -27,6 +30,18 @@ def _profile_embedding_options():
         selectinload(UserProfile.user).selectinload(User.skills),
         selectinload(UserProfile.user).selectinload(User.interests),
     )
+
+
+def _visible_reputation_score(profile: UserProfile | None) -> float:
+    if not profile or profile.projects_completed <= 0:
+        return 0.0
+    return float(profile.reputation_score or 0.0)
+
+
+async def _normalize_new_user_reputation(db: AsyncSession, profile: UserProfile | None) -> None:
+    if profile and profile.projects_completed <= 0 and float(profile.reputation_score or 0.0) != 0.0:
+        profile.reputation_score = 0.0
+        await db.flush()
 
 
 async def _role_responses(db: AsyncSession, user_id: UUID) -> list[RoleResponse]:
@@ -91,9 +106,15 @@ async def get_my_profile(
     )
     profile = profile_result.scalar_one_or_none()
     if not profile:
-        profile = UserProfile(user_id=current_user.id, display_name=current_user.full_name)
+        profile = UserProfile(
+            user_id=current_user.id,
+            display_name=current_user.full_name,
+            reputation_score=0.0,
+            projects_completed=0,
+        )
         db.add(profile)
         await db.flush()
+    await _normalize_new_user_reputation(db, profile)
 
     skills_result = await db.execute(select(UserSkill).where(UserSkill.user_id == current_user.id))
     interests_result = await db.execute(select(UserInterest).where(UserInterest.user_id == current_user.id))
@@ -110,7 +131,7 @@ async def get_my_profile(
         short_term_goal=profile.short_term_goal,
         mode=profile.mode,
         is_hidden=profile.is_hidden,
-        reputation_score=profile.reputation_score,
+        reputation_score=_visible_reputation_score(profile),
         projects_completed=profile.projects_completed,
         avatar_url=current_user.avatar_url,
         email=current_user.email,
@@ -136,12 +157,18 @@ async def update_my_profile(
         )
     profile = await _get_profile_for_embedding(db, current_user.id)
     if not profile:
-        profile = UserProfile(user_id=current_user.id, display_name=current_user.full_name)
+        profile = UserProfile(
+            user_id=current_user.id,
+            display_name=current_user.full_name,
+            reputation_score=0.0,
+            projects_completed=0,
+        )
         db.add(profile)
         await db.flush()
         profile = await _get_profile_for_embedding(db, current_user.id)
         if not profile:
             raise HTTPException(status_code=500, detail="Failed to create profile")
+    await _normalize_new_user_reputation(db, profile)
 
     scalar_fields = {
         "display_name", "bio", "location", "portfolio_url", "github_url",
@@ -172,10 +199,24 @@ async def update_my_profile(
 
         flattened_skills: dict[str, tuple[str, bool]] = {}
         for role_input in sorted(data.roles, key=lambda item: item.ordering):
+            normalized_role = role_input.role_name.strip().lower()
+            role_catalog = (
+                await db.execute(
+                    select(RoleCatalog).where(func.lower(RoleCatalog.name) == normalized_role)
+                )
+            ).scalar_one_or_none()
+            if not role_catalog:
+                role_catalog = RoleCatalog(
+                    slug=re.sub(r"[^a-z0-9]+", "-", normalized_role).strip("-"),
+                    name=role_input.role_name.strip(),
+                )
+                db.add(role_catalog)
+                await db.flush()
             role = UserRole(
                 user_id=current_user.id,
                 role_name=role_input.role_name.strip(),
                 ordering=role_input.ordering,
+                catalog_role_id=role_catalog.id,
             )
             db.add(role)
             await db.flush()
@@ -279,6 +320,20 @@ async def add_skill(
     if existing_skill:
         return SkillResponse.model_validate(existing_skill)
 
+    catalog = (
+        await db.execute(
+            select(SkillCatalog).where(func.lower(SkillCatalog.name) == data.skill_name.strip().lower())
+        )
+    ).scalar_one_or_none()
+    if not catalog:
+        normalized = data.skill_name.strip().lower()
+        catalog = SkillCatalog(
+            slug=re.sub(r"[^a-z0-9]+", "-", normalized).strip("-"),
+            name=data.skill_name.strip(),
+        )
+        db.add(catalog)
+        await db.flush()
+
     skill = UserSkill(
         user_id=current_user.id,
         skill_name=data.skill_name.strip(),
@@ -335,10 +390,25 @@ async def add_role(
     if count_result.scalar() >= 3:
         raise HTTPException(status_code=400, detail="Maximum 3 roles allowed")
 
+    catalog = (
+        await db.execute(
+            select(RoleCatalog).where(func.lower(RoleCatalog.name) == data.role_name.strip().lower())
+        )
+    ).scalar_one_or_none()
+    if not catalog:
+        normalized = data.role_name.strip().lower()
+        catalog = RoleCatalog(
+            slug=re.sub(r"[^a-z0-9]+", "-", normalized).strip("-"),
+            name=data.role_name.strip(),
+        )
+        db.add(catalog)
+        await db.flush()
+
     role = UserRole(
         user_id=current_user.id,
         role_name=data.role_name.strip(),
-        ordering=data.ordering
+        ordering=data.ordering,
+        catalog_role_id=catalog.id,
     )
     db.add(role)
     await db.flush()
@@ -434,7 +504,7 @@ async def add_completed_course(
     return CompletedCourseResponse.model_validate(course)
 
 
-@router.get("/{user_id}", response_model=UserCardResponse)
+@router.get("/{user_id}", response_model=UserDetailResponse)
 async def get_user_profile(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -449,8 +519,44 @@ async def get_user_profile(
 
     target_user = await db.get(User, user_id)
     skills_result = await db.execute(select(UserSkill).where(UserSkill.user_id == user_id))
+    project_members_result = await db.execute(
+        select(ProjectMember, Project)
+        .join(Project, Project.id == ProjectMember.project_id)
+        .where(ProjectMember.user_id == user_id)
+        .order_by(ProjectMember.joined_at.desc())
+    )
+    evaluations_result = await db.execute(
+        select(ProjectEvaluation, Project, User.full_name)
+        .join(Project, Project.id == ProjectEvaluation.project_id)
+        .join(User, User.id == ProjectEvaluation.evaluator_id)
+        .where(ProjectEvaluation.evaluatee_id == user_id)
+        .order_by(ProjectEvaluation.created_at.desc())
+    )
 
-    return UserCardResponse(
+    project_history = [
+        UserProjectHistoryResponse(
+            project_id=project.id,
+            project_title=project.title,
+            role=member.role,
+            joined_at=member.joined_at,
+            is_owner=member.is_owner,
+        )
+        for member, project in project_members_result.all()
+    ]
+    received_feedbacks = [
+        UserFeedbackResponse(
+            project_id=project.id,
+            project_title=project.title,
+            evaluator_name=evaluator_name,
+            overall_score=evaluation.overall_score,
+            feedback_text=evaluation.feedback_text,
+            created_at=evaluation.created_at,
+        )
+        for evaluation, project, evaluator_name in evaluations_result.all()
+    ]
+    await _normalize_new_user_reputation(db, profile)
+
+    return UserDetailResponse(
         user_id=profile.user_id,
         display_name=profile.display_name,
         avatar_url=target_user.avatar_url if target_user else None,
@@ -461,7 +567,9 @@ async def get_user_profile(
         skills=[SkillResponse.model_validate(s) for s in skills_result.scalars().all()],
         location=profile.location,
         github_url=profile.github_url,
-        reputation_score=profile.reputation_score,
+        reputation_score=_visible_reputation_score(profile),
         projects_completed=profile.projects_completed,
         match_score=0.0,
+        project_history=project_history,
+        received_feedbacks=received_feedbacks,
     )

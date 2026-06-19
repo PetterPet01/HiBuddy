@@ -23,7 +23,7 @@ class UserProfile(Base):
     mode: Mapped[str] = mapped_column(String(20), default="BOTH")
 
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
-    reputation_score: Mapped[float] = mapped_column(Float, default=3.0)
+    reputation_score: Mapped[float] = mapped_column(Float, default=0.0)
     projects_completed: Mapped[int] = mapped_column(Integer, default=0)
 
     embedding_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

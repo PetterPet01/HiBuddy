@@ -59,6 +59,7 @@ class ProjectInvitationOptionsResponse(BaseModel):
     reason: str | None = None
     project_id: UUID | None = None
     project_title: str | None = None
+    action: str | None = None
     open_role_slots: list[InvitationRoleSlotResponse] = []
 
 

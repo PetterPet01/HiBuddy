@@ -198,7 +198,7 @@ async def register_user(
         await db.flush()
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Email or username already registered") from exc
-    db.add(UserProfile(user_id=user.id, display_name=user.full_name))
+    db.add(UserProfile(user_id=user.id, display_name=user.full_name, reputation_score=0.0, projects_completed=0))
     code = await _create_account_code(db, user, EMAIL_VERIFICATION, enforce_cooldown=False)
     background_tasks.add_task(send_verification_email, user.email, code)
     return await _issue_session(db, user, remember_me=False, device_name="Registration")
@@ -294,7 +294,7 @@ async def google_login(db: AsyncSession, data: GoogleLoginRequest) -> TokenRespo
         )
         db.add(user)
         await db.flush()
-        db.add(UserProfile(user_id=user.id, display_name=user.full_name))
+        db.add(UserProfile(user_id=user.id, display_name=user.full_name, reputation_score=0.0, projects_completed=0))
     if not identity:
         db.add(
             AuthIdentity(

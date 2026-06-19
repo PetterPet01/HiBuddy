@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-medium-latest"
-    MISTRAL_BASE_URL: str = "https://api.mistral.ai/v1"
+    MISTRAL_BASE_URL: str = "https://mistral.24102006.xyz/v1"
 
     def validate_runtime(self) -> None:
         if self.ENVIRONMENT.lower() == "production":

@@ -33,6 +33,12 @@ QUEUE_LIMIT_PER_TYPE = 3
 QUEUE_TTL = timedelta(hours=24)
 
 
+def _visible_reputation_score(profile: UserProfile | None) -> float:
+    if not profile or profile.projects_completed <= 0:
+        return 0.0
+    return float(profile.reputation_score or 0.0)
+
+
 async def get_daily_likes_remaining(db: AsyncSession, user_id: UUID) -> int:
     today = datetime.now(timezone.utc).date()
     count = await db.execute(
@@ -498,7 +504,7 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
         ],
         "location": profile.location,
         "github_url": profile.github_url,
-        "reputation_score": profile.reputation_score,
+        "reputation_score": _visible_reputation_score(profile),
         "projects_completed": profile.projects_completed,
         "match_score": round(match_score, 1),
     }
@@ -1044,7 +1050,7 @@ async def _discover_users(
             ],
             "location": profile.location,
             "github_url": profile.github_url,
-            "reputation_score": profile.reputation_score,
+            "reputation_score": _visible_reputation_score(profile),
             "projects_completed": profile.projects_completed,
             "match_score": round(match_score, 1),
             "matched_role": matched_slot.role_name if matched_slot else None,
@@ -1369,7 +1375,7 @@ async def get_applicants_for_project(
                 for skill in skill_rows
             ],
             "verified_student": swiper.verified_student,
-            "reputation_score": profile.reputation_score if profile else 3.0,
+            "reputation_score": _visible_reputation_score(profile),
             "match_score": round(score, 1),
             "matched_role": matched_slot.role_name if matched_slot else None,
             "score_explanation": explanation,

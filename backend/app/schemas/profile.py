@@ -131,6 +131,32 @@ class UserCardResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserProjectHistoryResponse(BaseModel):
+    project_id: UUID
+    project_title: str
+    role: str
+    joined_at: datetime
+    is_owner: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserFeedbackResponse(BaseModel):
+    project_id: UUID
+    project_title: str
+    evaluator_name: str
+    overall_score: float
+    feedback_text: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserDetailResponse(UserCardResponse):
+    project_history: list[UserProjectHistoryResponse] = Field(default_factory=list)
+    received_feedbacks: list[UserFeedbackResponse] = Field(default_factory=list)
+
+
 class CompletedCourseCreate(BaseModel):
     course_title: str
     source: str

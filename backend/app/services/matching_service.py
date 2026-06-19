@@ -72,10 +72,14 @@ def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
     user_roles = {normalize_name(role.role_name) for role in getattr(user, "roles", [])}
     slot_role = normalize_name(slot.role_name)
     role_score = 100.0 if slot_role in user_roles else 0.0
-    user_skills = _user_role_skills(user, slot.role_name)
+    user_skills = _user_role_skills(user, slot.role_name) if role_score > 0 else {}
     requirements = _slot_requirements(slot)
 
-    if not requirements:
+    if role_score == 0.0:
+        skill_score = 0.0
+        matched_skills = []
+        missing_skills = list(requirements.keys())
+    elif not requirements:
         skill_score = 60.0
         matched_skills: list[str] = []
         missing_skills: list[str] = []
@@ -97,7 +101,7 @@ def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
         skill_score = earned / total * 100 if total else 60.0
 
     availability_score = 100.0 if slot.filled < slot.count else 0.0
-    score = role_score * 0.55 + skill_score * 0.35 + availability_score * 0.10
+    score = role_score * 0.70 + skill_score * 0.25 + availability_score * 0.05
     return score, {
         "role": slot.role_name,
         "role_fit": round(role_score, 1),
@@ -150,11 +154,11 @@ def calculate_project_score_details(
         "recency": float(recency),
     }
     score = (
-        factors["role_and_skills"] * 0.65
-        + factors["interest"] * 0.10
-        + factors["commitment"] * 0.10
-        + factors["owner_quality"] * 0.10
-        + factors["recency"] * 0.05
+        factors["role_and_skills"] * 0.82
+        + factors["interest"] * 0.05
+        + factors["commitment"] * 0.05
+        + factors["owner_quality"] * 0.05
+        + factors["recency"] * 0.03
     )
     explanation = {
         "matched_role": slot.role_name if slot else None,
