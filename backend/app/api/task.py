@@ -11,7 +11,7 @@ from app.models.project import Project, ProjectMember
 from app.models.task import Task, TaskCheckoutHistory
 from app.models.profile import UserProfile
 from app.schemas.task import (
-    TaskCreate, TaskUpdate, TaskStatusUpdate, TaskCheckoutOverride,
+    TaskAttachmentPayload, TaskCreate, TaskSubmission, TaskUpdate, TaskStatusUpdate, TaskCheckoutOverride,
     TaskResponse, DashboardResponse, MemberStatResponse, EvaluationCreate, EvaluationResponse,
 )
 from app.services.notification_service import notify_task_assigned, notify_deadline_reminder, notify_checkout
@@ -20,6 +20,50 @@ from app.config import get_settings
 
 settings = get_settings()
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
+
+
+def _normalize_attachment_payloads(
+    attachments: list[TaskAttachmentPayload] | None,
+) -> list[dict]:
+    return [
+        {
+            "url": item.url,
+            "name": item.name,
+            "content_type": item.content_type,
+        }
+        for item in (attachments or [])
+    ]
+
+
+def _task_attachment_state(task: Task) -> dict:
+    payload = task.attachment_urls if isinstance(task.attachment_urls, dict) else {}
+    legacy_attachments = task.attachment_urls if isinstance(task.attachment_urls, list) else None
+    return {
+        "task_attachments": payload.get("task_attachments") or legacy_attachments or [],
+        "submission_note": payload.get("submission_note"),
+        "submission_links": payload.get("submission_links") or [],
+        "submission_attachments": payload.get("submission_attachments") or [],
+    }
+
+
+def _save_task_attachment_state(
+    task: Task,
+    *,
+    task_attachments: list[dict] | None = None,
+    submission_note: str | None = None,
+    submission_links: list[str] | None = None,
+    submission_attachments: list[dict] | None = None,
+    replace_submission_note: bool = False,
+    replace_submission_links: bool = False,
+    replace_submission_attachments: bool = False,
+) -> None:
+    current = _task_attachment_state(task)
+    task.attachment_urls = {
+        "task_attachments": current["task_attachments"] if task_attachments is None else task_attachments,
+        "submission_note": submission_note if replace_submission_note else current["submission_note"],
+        "submission_links": submission_links if replace_submission_links else current["submission_links"],
+        "submission_attachments": submission_attachments if replace_submission_attachments else current["submission_attachments"],
+    }
 
 
 @router.post("/projects/{project_id}/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -74,6 +118,16 @@ async def create_task(
         start_date=start if start else datetime.now(timezone.utc),
         deadline=deadline,
         tag=data.tag,
+    )
+    _save_task_attachment_state(
+        task,
+        task_attachments=_normalize_attachment_payloads(data.attachment_urls),
+        submission_note=None,
+        submission_links=[],
+        submission_attachments=[],
+        replace_submission_note=True,
+        replace_submission_links=True,
+        replace_submission_attachments=True,
     )
     db.add(task)
     await db.flush()
@@ -130,10 +184,17 @@ async def update_task(
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only project owner can update tasks")
 
+    prospective_start_date = task.start_date
     prospective_deadline = task.deadline
     prospective_assignee = task.assignee_id
     for field, value in data.model_dump(exclude_unset=True).items():
         if value is not None:
+            if field == "start_date":
+                try:
+                    value = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="Start date must use DD/MM/YYYY") from exc
+                prospective_start_date = value
             if field == "deadline":
                 try:
                     value = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=timezone.utc)
@@ -146,8 +207,18 @@ async def update_task(
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail="Invalid assignee id") from exc
                 prospective_assignee = value
+            if field == "attachment_urls":
+                _save_task_attachment_state(
+                    task,
+                    task_attachments=_normalize_attachment_payloads(
+                        [TaskAttachmentPayload.model_validate(item) for item in value]
+                    ),
+                )
+                continue
             setattr(task, field, value)
-    if prospective_deadline <= task.start_date or prospective_deadline > project.end_date:
+    if prospective_start_date < project.start_date or prospective_start_date > project.end_date:
+        raise HTTPException(status_code=400, detail="Task start date must be within the project timeline")
+    if prospective_deadline <= prospective_start_date or prospective_deadline > project.end_date:
         raise HTTPException(status_code=400, detail="Deadline must be inside the project timeline")
     member = await db.scalar(
         select(ProjectMember.id).where(
@@ -211,6 +282,7 @@ async def update_task_status(
 @router.post("/tasks/{task_id}/checkout")
 async def checkout_task(
     task_id: UUID,
+    data: TaskSubmission | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -234,6 +306,15 @@ async def checkout_task(
     task.status = "DONE_REVIEW"
     task.checkout_at = now
     task.checkout_status = checkout_status
+    _save_task_attachment_state(
+        task,
+        submission_note=data.submission_note.strip() if data and data.submission_note else None,
+        submission_links=[link.strip() for link in (data.submission_links if data else []) if link.strip()],
+        submission_attachments=_normalize_attachment_payloads(data.submission_attachments if data else []),
+        replace_submission_note=True,
+        replace_submission_links=True,
+        replace_submission_attachments=True,
+    )
 
     history = TaskCheckoutHistory(
         task_id=task.id,
@@ -241,7 +322,7 @@ async def checkout_task(
         actor_id=current_user.id,
         previous_status="IN_PROGRESS",
         new_status="DONE_REVIEW",
-        notes=f"Checkout status: {checkout_status}",
+        notes=f"Checkout status: {checkout_status}. Submission received for review.",
     )
     db.add(history)
 
@@ -419,6 +500,7 @@ async def evaluate_member(
 
 async def _build_task_response(db: AsyncSession, task: Task) -> TaskResponse:
     assignee = await db.get(User, task.assignee_id)
+    attachments = _task_attachment_state(task)
     return TaskResponse(
         id=task.id,
         project_id=task.project_id,
@@ -432,6 +514,10 @@ async def _build_task_response(db: AsyncSession, task: Task) -> TaskResponse:
         start_date=task.start_date,
         deadline=task.deadline,
         tag=task.tag,
+        attachment_urls=[TaskAttachmentPayload.model_validate(item) for item in attachments["task_attachments"]],
+        submission_note=attachments["submission_note"],
+        submission_links=attachments["submission_links"],
+        submission_attachments=[TaskAttachmentPayload.model_validate(item) for item in attachments["submission_attachments"]],
         checkout_at=task.checkout_at,
         checkout_confirmed_at=task.checkout_confirmed_at,
         checkout_status=task.checkout_status,

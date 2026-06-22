@@ -28,7 +28,7 @@ class Task(Base):
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     tag: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    attachment_urls: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attachment_urls: Mapped[list[dict] | dict | None] = mapped_column(JSON, nullable=True)
 
     checkout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     checkout_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

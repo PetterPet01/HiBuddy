@@ -474,6 +474,9 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
         user_id,
         options=[
             selectinload(User.roles),
+            selectinload(User.roles)
+            .selectinload(UserRole.role_skills)
+            .selectinload(UserRoleSkill.skill),
             selectinload(User.skills),
             selectinload(User.interests),
             selectinload(User.profile),
@@ -482,8 +485,6 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
     if not profile or not target_user:
         return None
 
-    roles = await db.execute(select(UserRole).where(UserRole.user_id == user_id).order_by(UserRole.ordering).limit(3))
-    skills = await db.execute(select(UserSkill).where(UserSkill.user_id == user_id))
     owner_projects = await _get_owner_projects(db, user)
     match_score = calculate_user_score(user, target_user, profile, owner_projects)
 
@@ -495,12 +496,29 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
         "university": target_user.university,
         "bio": profile.bio[:100] if profile.bio else None,
         "roles": [
-            {"id": str(r.id), "role_name": r.role_name, "ordering": r.ordering}
-            for r in roles.scalars()
+            {
+                "id": str(r.id),
+                "role_name": r.role_name,
+                "ordering": r.ordering,
+                "skills": [
+                    {
+                        "id": str(rs.id),
+                        "skill_name": rs.skill.name if rs.skill else None,
+                        "level": rs.level,
+                    }
+                    for rs in r.role_skills
+                ],
+            }
+            for r in target_user.roles
         ],
         "skills": [
-            {"id": str(s.id), "skill_name": s.skill_name, "level": s.level, "needs_improvement": s.needs_improvement}
-            for s in skills.scalars()
+            {
+                "id": str(s.id),
+                "skill_name": s.skill_name,
+                "level": s.level,
+                "needs_improvement": s.needs_improvement,
+            }
+            for s in target_user.skills
         ],
         "location": profile.location,
         "github_url": profile.github_url,
@@ -516,14 +534,18 @@ async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UU
         .options(
             selectinload(Project.role_slots)
             .selectinload(ProjectRoleSlot.skill_requirements_rows)
-            .selectinload(ProjectRoleSkillRequirement.skill)
+            .selectinload(ProjectRoleSkillRequirement.skill),
         )
         .where(Project.id == project_id)
     )
     if not project:
         return None
 
-    owner = await db.get(User, project.owner_id, options=[selectinload(User.profile)])
+    owner = await db.get(
+        User,
+        project.owner_id,
+        options=[selectinload(User.profile)],
+    )
     total_filled = sum(s.filled for s in project.role_slots)
     total_slots = sum(s.count for s in project.role_slots)
     match_score = calculate_project_score(user, project, owner)
@@ -839,7 +861,7 @@ async def _get_owner_projects(db: AsyncSession, owner: User) -> list[Project]:
         .options(
             selectinload(Project.role_slots)
             .selectinload(ProjectRoleSlot.skill_requirements_rows)
-            .selectinload(ProjectRoleSkillRequirement.skill)
+            .selectinload(ProjectRoleSkillRequirement.skill),
         )
         .where(
             Project.owner_id == owner.id,
@@ -886,7 +908,7 @@ async def _discover_projects(
         owner = await db.get(
             User,
             project.owner_id,
-            options=[selectinload(User.profile)]
+            options=[selectinload(User.profile)],
         )
 
         total_filled = sum(s.filled for s in project.role_slots)
@@ -1016,12 +1038,6 @@ async def _discover_users(
                 selectinload(User.profile),
             ]
         )
-        roles = await db.execute(
-            select(UserRole).where(UserRole.user_id == profile.user_id).order_by(UserRole.ordering).limit(3)
-        )
-        skills = await db.execute(
-            select(UserSkill).where(UserSkill.user_id == profile.user_id)
-        )
 
         match_score, explanation, matched_slot = calculate_user_score_details(
             user, pu, project
@@ -1041,12 +1057,29 @@ async def _discover_users(
             "university": pu.university if pu else None,
             "bio": profile.bio[:100] if profile.bio else None,
             "roles": [
-                {"id": str(r.id), "role_name": r.role_name, "ordering": r.ordering}
-                for r in roles.scalars()
+                {
+                    "id": str(r.id),
+                    "role_name": r.role_name,
+                    "ordering": r.ordering,
+                    "skills": [
+                        {
+                            "id": str(rs.id),
+                            "skill_name": rs.skill.name if rs.skill else None,
+                            "level": rs.level,
+                        }
+                        for rs in r.role_skills
+                    ],
+                }
+                for r in pu.roles
             ],
             "skills": [
-                {"id": str(s.id), "skill_name": s.skill_name, "level": s.level, "needs_improvement": s.needs_improvement}
-                for s in skills.scalars()
+                {
+                    "id": str(s.id),
+                    "skill_name": s.skill_name,
+                    "level": s.level,
+                    "needs_improvement": s.needs_improvement,
+                }
+                for s in pu.skills
             ],
             "location": profile.location,
             "github_url": profile.github_url,
@@ -1300,7 +1333,15 @@ async def unmatch(db: AsyncSession, user: User, match_id: UUID) -> dict:
 async def get_applicants_for_project(
     db: AsyncSession, user: User, project_id: UUID
 ) -> list[dict]:
-    project = await db.get(Project, project_id)
+    project = await db.scalar(
+        select(Project)
+        .options(
+            selectinload(Project.role_slots)
+            .selectinload(ProjectRoleSlot.skill_requirements_rows)
+            .selectinload(ProjectRoleSkillRequirement.skill),
+        )
+        .where(Project.id == project_id)
+    )
     if not project or project.owner_id != user.id:
         raise Exception("Project not found or not authorized")
 
@@ -1336,22 +1377,10 @@ async def get_applicants_for_project(
         )
         if not swiper or not swiper.is_active or not swiper.email_verified:
             continue
-        profile_result = await db.execute(
-            select(UserProfile).where(UserProfile.user_id == swiper.id)
-        )
-        profile = profile_result.scalar_one_or_none()
-        roles_result = await db.execute(
-            select(UserRole).where(UserRole.user_id == swiper.id)
-        )
-        skills_result = await db.execute(
-            select(UserSkill).where(UserSkill.user_id == swiper.id)
-        )
+        profile = swiper.profile
         score, explanation, matched_slot = calculate_user_score_details(
             user, swiper, project
         )
-
-        role_rows = roles_result.scalars().all()
-        skill_rows = skills_result.scalars().all()
         applicants.append({
             "user_id": str(swiper.id),
             "display_name": profile.display_name if profile else swiper.full_name,
@@ -1361,9 +1390,16 @@ async def get_applicants_for_project(
                     "id": str(role.id),
                     "role_name": role.role_name,
                     "ordering": role.ordering,
-                    "skills": [],
+                    "skills": [
+                        {
+                            "id": str(rs.id),
+                            "skill_name": rs.skill.name if rs.skill else None,
+                            "level": rs.level,
+                        }
+                        for rs in role.role_skills
+                    ],
                 }
-                for role in role_rows
+                for role in swiper.roles
             ],
             "skills": [
                 {
@@ -1372,7 +1408,7 @@ async def get_applicants_for_project(
                     "level": skill.level,
                     "needs_improvement": skill.needs_improvement,
                 }
-                for skill in skill_rows
+                for skill in swiper.skills
             ],
             "verified_student": swiper.verified_student,
             "reputation_score": _visible_reputation_score(profile),

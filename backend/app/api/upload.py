@@ -1,6 +1,8 @@
 import asyncio
 import io
 import logging
+import mimetypes
+import os
 import uuid
 
 import boto3
@@ -14,6 +16,7 @@ from app.config import get_settings
 from app.core.dependencies import get_current_user
 from app.database import get_db
 from app.models.project import Project
+from app.models.task import Task
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -115,6 +118,42 @@ async def _put_image(
 
     await asyncio.to_thread(upload)
     return _public_url(request, object_name)
+
+
+async def _put_file(
+    request: Request,
+    contents: bytes,
+    prefix: str,
+    file_name: str | None,
+    content_type: str | None,
+) -> dict:
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 5MB)")
+    safe_name = file_name or "attachment"
+    extension = os.path.splitext(safe_name)[1].lower()
+    if not extension:
+        guessed_extension = mimetypes.guess_extension(content_type or "") or ""
+        extension = guessed_extension[:10]
+    object_name = f"{prefix}/{uuid.uuid4()}{extension}"
+    client = _get_s3_client()
+
+    def upload() -> None:
+        _ensure_bucket(client)
+        client.put_object(
+            Bucket=settings.MINIO_BUCKET,
+            Key=object_name,
+            Body=contents,
+            ContentType=content_type or "application/octet-stream",
+            CacheControl="public, max-age=86400",
+            Metadata={"original-filename": safe_name[:255]},
+        )
+
+    await asyncio.to_thread(upload)
+    return {
+        "file_url": _public_url(request, object_name),
+        "file_name": safe_name[:255],
+        "content_type": content_type or "application/octet-stream",
+    }
 
 
 @router.get("/media/{object_name:path}", include_in_schema=False)
@@ -228,3 +267,42 @@ async def upload_project_thumbnail(
         raise HTTPException(status_code=500, detail="Failed to upload thumbnail") from exc
     project.thumbnail_url = url
     return {"thumbnail_url": url}
+
+
+@router.post("/task-attachment/{task_id}")
+async def upload_task_attachment(
+    request: Request,
+    task_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    project = await db.get(Project, task.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    is_owner = project.owner_id == current_user.id
+    is_assignee = task.assignee_id == current_user.id
+    if not is_owner and not is_assignee:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    contents = await file.read(MAX_FILE_SIZE + 1)
+    try:
+        uploaded = await _put_file(
+            request,
+            contents,
+            f"task-attachments/{task.id}",
+            file.filename,
+            file.content_type,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Task attachment upload failed")
+        raise HTTPException(status_code=500, detail="Failed to upload task attachment") from exc
+
+    return uploaded

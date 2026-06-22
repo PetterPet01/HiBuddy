@@ -3,6 +3,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 
+class TaskAttachmentPayload(BaseModel):
+    url: str = Field(min_length=1, max_length=1000)
+    name: str | None = Field(default=None, max_length=255)
+    content_type: str | None = Field(default=None, max_length=120)
+
 
 class TaskCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
@@ -13,15 +18,25 @@ class TaskCreate(BaseModel):
     start_date: str
     deadline: str
     tag: str | None = None
+    attachment_urls: list[TaskAttachmentPayload] = Field(default_factory=list)
 
 
 class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    role_related: str | None = None
     priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] | None = None
+    start_date: str | None = None
     deadline: str | None = None
     tag: str | None = None
     assignee_id: str | None = None
+    attachment_urls: list[TaskAttachmentPayload] | None = None
+
+
+class TaskSubmission(BaseModel):
+    submission_note: str | None = Field(default=None, max_length=2000)
+    submission_links: list[str] = Field(default_factory=list)
+    submission_attachments: list[TaskAttachmentPayload] = Field(default_factory=list)
 
 
 class TaskStatusUpdate(BaseModel):
@@ -46,6 +61,10 @@ class TaskResponse(BaseModel):
     start_date: datetime
     deadline: datetime
     tag: str | None
+    attachment_urls: list[TaskAttachmentPayload] = Field(default_factory=list)
+    submission_note: str | None = None
+    submission_links: list[str] = Field(default_factory=list)
+    submission_attachments: list[TaskAttachmentPayload] = Field(default_factory=list)
     checkout_at: datetime | None
     checkout_confirmed_at: datetime | None
     checkout_status: str | None

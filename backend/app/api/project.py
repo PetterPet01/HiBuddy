@@ -196,13 +196,16 @@ async def list_my_projects(
     )
     project_ids = set(r[0] for r in owned.all()) | set(r[0] for r in member_of.all())
 
-    projects = []
-    for pid in project_ids:
-        project = await db.get(Project, pid)
-        if project:
-            projects.append(await _build_project_response(db, project))
+    if not project_ids:
+        return []
 
-    return projects
+    projects_result = await db.execute(
+        select(Project)
+        .where(Project.id.in_(project_ids))
+        .order_by(Project.created_at.desc())
+    )
+
+    return [await _build_project_response(db, project) for project in projects_result.scalars().all()]
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
