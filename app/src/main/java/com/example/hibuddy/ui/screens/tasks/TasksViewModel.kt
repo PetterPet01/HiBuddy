@@ -60,9 +60,9 @@ class TasksViewModel : ViewModel() {
         }
     }
 
-    fun updateTaskStatus(taskId: String, newStatus: String) {
+    fun updateTaskStatus(taskId: String, newStatus: String, notes: String? = null) {
         viewModelScope.launch {
-            taskRepository.updateTaskStatus(taskId, newStatus).fold(
+            taskRepository.updateTaskStatus(taskId, newStatus, notes).fold(
                 onSuccess = {
                     val pid = _uiState.value.selectedProjectId
                     if (pid != null) loadTasks(pid)

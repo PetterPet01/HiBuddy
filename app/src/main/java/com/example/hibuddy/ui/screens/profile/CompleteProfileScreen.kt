@@ -23,6 +23,7 @@ import com.example.hibuddy.ui.common.ProfileCatalog
 fun CompleteProfileScreen(
     onSkip: () -> Unit,
     onComplete: () -> Unit,
+    onOpenStudentVerification: () -> Unit,
     profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory)
 ) {
     var displayName by remember { mutableStateOf("") }
@@ -57,6 +58,7 @@ fun CompleteProfileScreen(
 
     var selectedSkillCategory by remember { mutableStateOf("Tech") }
     var skillSearchQuery by remember { mutableStateOf("") }
+    var showStudentPrompt by remember { mutableStateOf(false) }
 
     val interestOptions = listOf(
         "Technology",
@@ -449,8 +451,11 @@ fun CompleteProfileScreen(
                         skillsByRole = selectedSkillsByRole.toMap(),
                         interests = selectedInterests.toList(),
                         onSuccess = {
-                            println("DEBUG_SAVE_SUCCESS_CALL_ON_COMPLETE")
-                            onComplete()
+                            if (profileViewModel.uiState.value.profile?.verifiedStudent == true) {
+                                onComplete()
+                            } else {
+                                showStudentPrompt = true
+                            }
                         }
                     )
                 },
@@ -647,5 +652,35 @@ private fun SelectedSkillChips(
                 }
             }
         }
+    }
+
+    if (showStudentPrompt) {
+        AlertDialog(
+            onDismissRequest = { showStudentPrompt = false },
+            title = { Text("Verify Student Status?") },
+            text = {
+                Text("Are you a student? Verify your student status to increase visibility and trust, or skip for now and continue using the app.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showStudentPrompt = false
+                        onOpenStudentVerification()
+                    }
+                ) {
+                    Text("Verify Now")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showStudentPrompt = false
+                        onComplete()
+                    }
+                ) {
+                    Text("Skip")
+                }
+            }
+        )
     }
 }

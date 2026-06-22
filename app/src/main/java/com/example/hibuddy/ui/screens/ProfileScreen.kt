@@ -59,6 +59,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.data.remote.dto.CourseSuggestionResponse
 import com.example.hibuddy.data.remote.dto.MyFeedbackSummaryResponse
+import com.example.hibuddy.data.remote.dto.ProfileResponse
 import com.example.hibuddy.ui.theme.HiBuddyColors
 import com.example.hibuddy.ui.screens.auth.AuthViewModel
 import com.example.hibuddy.ui.screens.profile.EditProfileDialog
@@ -311,6 +312,7 @@ fun ProfileScreen(
 
             val uniqueInterests = currentProfile.interests
                 .distinctBy { it.interestName.trim().lowercase() }
+            val visibleRepScore = uiState.profileDetail?.reputationScore ?: currentProfile.reputationScore
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     modifier = Modifier
@@ -386,7 +388,7 @@ fun ProfileScreen(
                 ) {
                     ProfileStatColumn("${currentProfile.projectsCompleted}", "Projects")
                     ProfileStatColumn("${uniqueRoles.size}", "Roles")
-                    ProfileStatColumn(String.format("%.1f", currentProfile.reputationScore), "Rep Score")
+                    ProfileStatColumn(String.format("%.1f", visibleRepScore), "Rep Score")
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -411,17 +413,30 @@ fun ProfileScreen(
             if (!currentProfile.verifiedStudent) {
                 Spacer(modifier = Modifier.height(20.dp))
 
+                StudentVerificationStatusCard(
+                    currentProfile = currentProfile,
+                    onOpenStudentVerification = onOpenStudentVerification,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Button(
                     onClick = onOpenStudentVerification,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                 ) {
-                    Text("Student Verification")
+                    Text(
+                        when (currentProfile.verificationStatus.uppercase()) {
+                            "PENDING" -> "Review Verification Submission"
+                            "REJECTED" -> "Fix and Resubmit Verification"
+                            else -> "Student Verification"
+                        }
+                    )
                 }
             }
 
-            if (ServiceLocator.authRepository.isAdmin()) {
+            if (ServiceLocator.authRepository.isStaffReviewer()) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
@@ -430,7 +445,7 @@ fun ProfileScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                 ) {
-                    Text("Admin Dashboard")
+                    Text("Staff Dashboard")
                 }
             }
 
@@ -565,6 +580,78 @@ fun ProfileScreen(
                 }
             }
 
+            uiState.profileDetail?.projectHistory?.takeIf { it.isNotEmpty() }?.let { history ->
+                Spacer(modifier = Modifier.height(20.dp))
+                ProfileSection(title = "PROJECT HISTORY") {
+                    history.forEachIndexed { index, item ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(item.projectTitle, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                buildString {
+                                    append(item.role)
+                                    if (item.isOwner) append(" • Owner")
+                                    append(" • Joined ${item.joinedAt.take(10)}")
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            uiState.profileDetail?.receivedFeedbacks?.takeIf { it.isNotEmpty() }?.let { feedbacks ->
+                Spacer(modifier = Modifier.height(20.dp))
+                ProfileSection(title = "FEEDBACK FROM TEAMMATES") {
+                    feedbacks.forEachIndexed { index, item ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(item.projectTitle, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Text(
+                                        "From ${item.evaluatorName} • ${item.createdAt.take(10)}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        String.format("%.1f", item.overallScore),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Text(
+                                item.feedbackText?.takeIf { it.isNotBlank() } ?: "No written feedback provided.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
 // ... existing code ...
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -657,6 +744,72 @@ fun ProfileScreen(
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
+
+@Composable
+private fun StudentVerificationStatusCard(
+    currentProfile: ProfileResponse,
+    onOpenStudentVerification: () -> Unit,
+) {
+    val status = currentProfile.verificationStatus.uppercase()
+    val (title, body, containerColor, contentColor) = when (status) {
+        "PENDING" -> Quadruple(
+            "Verification pending",
+            buildString {
+                append("Your student verification is under admin review.")
+                currentProfile.verificationSubmittedAt?.let {
+                    append(" Submitted: ")
+                    append(it)
+                }
+            },
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        "REJECTED" -> Quadruple(
+            "Verification needs changes",
+            currentProfile.verificationRejectionReason?.takeIf { it.isNotBlank() }
+                ?: "Open the verification form to update your student details and resubmit.",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer,
+        )
+        else -> Quadruple(
+            "Verify your student identity",
+            "Upload your student card and school details so admins can review your account.",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, fontWeight = FontWeight.Bold, color = contentColor)
+            Text(body, fontSize = 13.sp, color = contentColor)
+            TextButton(onClick = onOpenStudentVerification, contentPadding = PaddingValues(0.dp)) {
+                Text(
+                    when (status) {
+                        "PENDING" -> "View submission"
+                        "REJECTED" -> "Resubmit details"
+                        else -> "Start verification"
+                    }
+                )
+            }
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+)
 
 @Composable
 private fun ProfileSection(

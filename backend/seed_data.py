@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Seed the HiBuddy database with comprehensive mock data for testing all features."""
 
+import argparse
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -59,6 +60,7 @@ U8  = uuid.UUID("10000000-0000-0000-0000-000000000008")
 U9  = uuid.UUID("10000000-0000-0000-0000-000000000009")
 U10 = uuid.UUID("10000000-0000-0000-0000-000000000010")
 U11 = uuid.UUID("10000000-0000-0000-0000-000000000011")
+U12 = uuid.UUID("10000000-0000-0000-0000-000000000012")
 
 P1  = uuid.UUID("20000000-0000-0000-0000-000000000001")
 P2  = uuid.UUID("20000000-0000-0000-0000-000000000002")
@@ -169,11 +171,47 @@ PROF8  = uuid.UUID("d0000000-0000-0000-0000-000000000008")
 PROF10 = uuid.UUID("d0000000-0000-0000-0000-000000000010")
 PROF11 = uuid.UUID("d0000000-0000-0000-0000-000000000011")
 
+SEEDED_USER_IDS = (U1, U2, U3, U4, U5, U6, U7, U8, U9, U10, U11, U12)
+SEEDED_PROJECT_IDS = (P1, P2, P3, P4, P5, P6)
+SEEDED_MEMBER_IDS = (MEM1, MEM2, MEM3, MEM4, MEM5, MEM6, MEM7, MEM8, MEM9, MEM10, MEM11)
+SEEDED_TASK_IDS = (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)
+SEEDED_SWIPE_IDS = (SW1, SW2, SW3, SW4, SW5, SW6, SW7, SW8, SW9, SW10, SW11, SW12, SW13, SW14, SW15, SW16, SW17, SW18)
+SEEDED_MATCH_IDS = (MA1, MA2, MA3, MA4)
+SEEDED_CHAT_IDS = (CH1, CH2, CH3, CH4)
+SEEDED_MESSAGE_IDS = (MSG1, MSG2, MSG3, MSG4, MSG5, MSG6, MSG7, MSG8, MSG9, MSG10)
+SEEDED_NOTIFICATION_IDS = (N1, N2, N3, N4, N5, N6, N7)
+SEEDED_EVALUATION_IDS = (EV1, EV2)
+SEEDED_REPORT_IDS = (uuid.UUID("e0000000-0000-0000-0000-000000000001"),)
+SEEDED_BLOCK_IDS = (uuid.UUID("e0000000-0000-0000-0000-000000000002"),)
 
-async def seed(engine):
+
+async def _existing_ids(db: AsyncSession, model, ids):
+    return set(
+        (
+            await db.execute(
+                select(model.id).where(model.id.in_(tuple(ids)))
+            )
+        ).scalars().all()
+    )
+
+
+async def _delete_seeded_users(db: AsyncSession) -> int:
+    users = (
+        await db.execute(select(User).where(User.id.in_(SEEDED_USER_IDS)))
+    ).scalars().all()
+    for user in users:
+        await db.delete(user)
+    await db.flush()
+    return len(users)
+
+
+async def seed(engine, mode: str = "fill"):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as db:
+        if mode == "replace":
+            deleted = await _delete_seeded_users(db)
+            print(f"Replace mode: removed {deleted} seeded users and their dependent data.")
         await _seed_users(db)
         await _seed_projects(db)
         await _seed_members(db)
@@ -258,6 +296,11 @@ async def _seed_users(db: AsyncSession):
              email_verified=True, verified_student=True, verification_status="APPROVED",
              role="ADMIN", created_at=days_ago(120), last_login=days_ago(0)),
 
+        User(id=U12, username="moderator", email="moderator@hibuddy.local", full_name="HiBuddy Moderator",
+             hashed_password=PASSWORD, date_of_birth=datetime(1996, 5, 10, tzinfo=timezone.utc),
+             email_verified=True, verified_student=False, verification_status="NONE",
+             role="MODERATOR", created_at=days_ago(90), last_login=days_ago(0)),
+
         User(id=U10, username="pending_email", email="pending@example.com", full_name="Pending Email",
              hashed_password=PASSWORD, date_of_birth=datetime(2003, 6, 12, tzinfo=timezone.utc),
              email_verified=False, verified_student=False, verification_status="NOT_SUBMITTED",
@@ -269,6 +312,13 @@ async def _seed_users(db: AsyncSession):
              verification_rejection_reason="Seeded moderation scenario",
              role="MEMBER", is_active=False, created_at=days_ago(45)),
     ]
+    existing_user_ids = await _existing_ids(db, User, [user.id for user in users])
+    missing_user_ids = {user.id for user in users} - existing_user_ids
+    if not missing_user_ids:
+        print("Users already seeded; skipping user section.")
+        return
+
+    users = [user for user in users if user.id in missing_user_ids]
     db.add_all(users)
     await db.flush()
 
@@ -347,6 +397,7 @@ async def _seed_users(db: AsyncSession):
                     location="Da Nang, Vietnam", mode="CONTRIBUTOR", is_hidden=False,
                     reputation_score=2.0, projects_completed=0, created_at=days_ago(45)),
     ]
+    profiles = [profile for profile in profiles if profile.user_id in missing_user_ids]
     db.add_all(profiles)
     await db.flush()
 
@@ -370,6 +421,7 @@ async def _seed_users(db: AsyncSession):
         UserRole(id=uuid.uuid4(), user_id=U10, role_name="QA Engineer", ordering=0),
         UserRole(id=uuid.uuid4(), user_id=U11, role_name="Frontend Developer", ordering=0),
     ]
+    roles = [role for role in roles if role.user_id in missing_user_ids]
     db.add_all(roles)
     await db.flush()
 
@@ -404,9 +456,11 @@ async def _seed_users(db: AsyncSession):
         UserSkill(id=uuid.uuid4(), user_id=U10, skill_name="Test Automation", level="BEGINNER"),
         UserSkill(id=uuid.uuid4(), user_id=U11, skill_name="React", level="INTERMEDIATE"),
     ]
+    skills = [skill for skill in skills if skill.user_id in missing_user_ids]
     db.add_all(skills)
     await db.flush()
-    await _seed_role_scoped_skills(db, roles, skills)
+    if roles and skills:
+        await _seed_role_scoped_skills(db, roles, skills)
 
     interests = [
         UserInterest(id=uuid.uuid4(), user_id=U1, interest_name="AI/ML"),
@@ -428,6 +482,7 @@ async def _seed_users(db: AsyncSession):
         UserInterest(id=uuid.uuid4(), user_id=U8, interest_name="Growth Hacking"),
         UserInterest(id=uuid.uuid4(), user_id=U8, interest_name="E-commerce"),
     ]
+    interests = [interest for interest in interests if interest.user_id in missing_user_ids]
     db.add_all(interests)
     await db.flush()
 
@@ -445,6 +500,7 @@ async def _seed_users(db: AsyncSession):
         UserCompletedCourse(id=uuid.uuid4(), user_id=U5, course_title="Deep Learning Specialization",
                             source="Coursera", completed_date=days_ago(180), badge_visible=True, course_id="deep-learning"),
     ]
+    courses = [course for course in courses if course.user_id in missing_user_ids]
     db.add_all(courses)
     await db.flush()
 
@@ -478,14 +534,32 @@ async def _seed_role_scoped_skills(
     role_names = sorted({role.role_name for role in roles})
     skill_names = sorted({skill.skill_name for skill in skills})
     role_catalog = {
-        name: RoleCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
-        for name in role_names
+        row.name: row
+        for row in (
+            await db.execute(select(RoleCatalog).where(RoleCatalog.name.in_(role_names)))
+        ).scalars().all()
     }
+    new_role_catalog_rows = []
+    for name in role_names:
+        if name not in role_catalog:
+            row = RoleCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
+            role_catalog[name] = row
+            new_role_catalog_rows.append(row)
+
     skill_catalog = {
-        name: SkillCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
-        for name in skill_names
+        row.name: row
+        for row in (
+            await db.execute(select(SkillCatalog).where(SkillCatalog.name.in_(skill_names)))
+        ).scalars().all()
     }
-    db.add_all([*role_catalog.values(), *skill_catalog.values()])
+    new_skill_catalog_rows = []
+    for name in skill_names:
+        if name not in skill_catalog:
+            row = SkillCatalog(id=uuid.uuid4(), slug=_slug(name), name=name)
+            skill_catalog[name] = row
+            new_skill_catalog_rows.append(row)
+
+    db.add_all([*new_role_catalog_rows, *new_skill_catalog_rows])
     await db.flush()
 
     skills_by_user: dict[uuid.UUID, list[UserSkill]] = {}
@@ -493,6 +567,16 @@ async def _seed_role_scoped_skills(
         skills_by_user.setdefault(skill.user_id, []).append(skill)
 
     catalog_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    existing_catalog_pairs = set(
+        (
+            await db.execute(
+                select(RoleSkillCatalog.role_id, RoleSkillCatalog.skill_id).where(
+                    RoleSkillCatalog.role_id.in_([row.id for row in role_catalog.values()]),
+                    RoleSkillCatalog.skill_id.in_([row.id for row in skill_catalog.values()]),
+                )
+            )
+        ).all()
+    )
     scoped_skills: list[UserRoleSkill] = []
     catalog_links: list[RoleSkillCatalog] = []
     for role in roles:
@@ -515,7 +599,7 @@ async def _seed_role_scoped_skills(
                 )
             )
             pair = (role.catalog_role_id, skill_row.id)
-            if pair not in catalog_pairs:
+            if pair not in catalog_pairs and pair not in existing_catalog_pairs:
                 catalog_pairs.add(pair)
                 catalog_links.append(
                     RoleSkillCatalog(role_id=pair[0], skill_id=pair[1])
@@ -606,6 +690,13 @@ async def _seed_projects(db: AsyncSession):
             created_at=days_ago(1),
         ),
     ]
+    existing_project_ids = await _existing_ids(db, Project, [project.id for project in projects])
+    missing_project_ids = {project.id for project in projects} - existing_project_ids
+    if not missing_project_ids:
+        print("Projects already seeded; skipping project section.")
+        return
+
+    projects = [project for project in projects if project.id in missing_project_ids]
     db.add_all(projects)
     await db.flush()
 
@@ -631,6 +722,7 @@ async def _seed_projects(db: AsyncSession):
         ProjectRoleSlot(id=SLOT10, project_id=P6, role_name="Android Developer", count=2, filled=0,
                         skill_requirements={"Kotlin": "INTERMEDIATE", "Jetpack Compose": "INTERMEDIATE"}),
     ]
+    slots = [slot for slot in slots if slot.project_id in missing_project_ids]
     db.add_all(slots)
     await db.flush()
     await _seed_project_skill_requirements(db, slots)
@@ -696,6 +788,11 @@ async def _seed_members(db: AsyncSession):
         ProjectMember(id=MEM10, project_id=P3, user_id=U2, role="UI/UX Designer", is_owner=False, joined_at=days_ago(18)),
         ProjectMember(id=MEM11, project_id=P6, user_id=U1, role="Project Owner", is_owner=True, joined_at=days_ago(1)),
     ]
+    existing_member_ids = await _existing_ids(db, ProjectMember, [member.id for member in members])
+    members = [member for member in members if member.id not in existing_member_ids]
+    if not members:
+        print("Members already seeded; skipping member section.")
+        return
     db.add_all(members)
     await db.flush()
 
@@ -790,6 +887,13 @@ async def _seed_tasks(db: AsyncSession):
              tag="Design", checkout_at=None, checkout_confirmed_at=None,
              checkout_status=None, reminder_sent=False),
     ]
+    existing_task_ids = await _existing_ids(db, Task, [task.id for task in tasks])
+    missing_task_ids = {task.id for task in tasks} - existing_task_ids
+    if not missing_task_ids:
+        print("Tasks already seeded; skipping task section.")
+        return
+
+    tasks = [task for task in tasks if task.id in missing_task_ids]
     db.add_all(tasks)
     await db.flush()
 
@@ -812,6 +916,7 @@ async def _seed_tasks(db: AsyncSession):
                             previous_status="LATE", new_status="LATE",
                             timestamp=days_ago(15), notes="Accepted with delay due to dataset complexity"),
     ]
+    histories = [history for history in histories if history.task_id in missing_task_ids]
     db.add_all(histories)
     await db.flush()
 
@@ -908,6 +1013,11 @@ async def _seed_swipes(db: AsyncSession):
         SwipeAction(id=SW18, swiper_id=U5, target_type="PROJECT", target_id=str(P3),
                     action="LIKE", created_at=days_ago(1), is_active=True),
     ]
+    existing_swipe_ids = await _existing_ids(db, SwipeAction, [swipe.id for swipe in swipes])
+    swipes = [swipe for swipe in swipes if swipe.id not in existing_swipe_ids]
+    if not swipes:
+        print("Swipes already seeded; skipping swipe section.")
+        return
     db.add_all(swipes)
     await db.flush()
 
@@ -933,6 +1043,10 @@ async def _seed_matches(db: AsyncSession):
         Match(id=MA4, user_id=U4, project_id=P3, owner_id=U6, role_matched="Frontend Developer",
               match_score=90.0, matched_at=days_ago(7), is_unmatched=False, is_member_added=False),
     ]
+    existing_match_ids = await _existing_ids(db, Match, [match.id for match in matches])
+    matches = [match for match in matches if match.id not in existing_match_ids]
+    if not matches:
+        return
     db.add_all(matches)
     await db.flush()
 
@@ -944,6 +1058,10 @@ async def _seed_chats(db: AsyncSession):
         Chat(id=CH3, match_id=MA3, created_at=days_ago(0)),
         Chat(id=CH4, match_id=MA4, created_at=days_ago(7)),
     ]
+    existing_chat_ids = await _existing_ids(db, Chat, [chat.id for chat in chats])
+    chats = [chat for chat in chats if chat.id not in existing_chat_ids]
+    if not chats:
+        return
     db.add_all(chats)
     await db.flush()
 
@@ -963,6 +1081,10 @@ async def _seed_messages(db: AsyncSession):
         Message(id=MSG9,  chat_id=CH4, sender_id=U4, content="Hi Mai! I'd love to hear more. What's the monetization model? I have some experience with food-tech apps.", is_read=False, created_at=days_ago(6)),
         Message(id=MSG10, chat_id=CH3, sender_id=U3, content="Great to match Huy! Your DevOps skills are exactly what we need for setting up our CI/CD pipeline.", is_read=False, created_at=days_ago(0)),
     ]
+    existing_message_ids = await _existing_ids(db, Message, [message.id for message in messages])
+    messages = [message for message in messages if message.id not in existing_message_ids]
+    if not messages:
+        return
     db.add_all(messages)
     await db.flush()
 
@@ -988,6 +1110,11 @@ async def _seed_evaluations(db: AsyncSession):
             created_at=days_ago(2),
         ),
     ]
+    existing_evaluation_ids = await _existing_ids(db, ProjectEvaluation, [evaluation.id for evaluation in evaluations])
+    evaluations = [evaluation for evaluation in evaluations if evaluation.id not in existing_evaluation_ids]
+    if not evaluations:
+        print("Evaluations already seeded; skipping evaluation section.")
+        return
     db.add_all(evaluations)
     await db.flush()
 
@@ -1028,33 +1155,45 @@ async def _seed_notifications(db: AsyncSession):
                      body="You matched with LocalBites! Start chatting.",
                      is_read=False, related_id=str(MA4), created_at=days_ago(7)),
     ]
+    existing_notification_ids = await _existing_ids(db, Notification, [notification.id for notification in notifications])
+    notifications = [notification for notification in notifications if notification.id not in existing_notification_ids]
+    if not notifications:
+        print("Notifications already seeded; skipping notification section.")
+        return
     db.add_all(notifications)
     await db.flush()
 
 
 async def _seed_trust_safety(db: AsyncSession):
-    db.add_all(
-        [
-            Report(
-                id=uuid.UUID("e0000000-0000-0000-0000-000000000001"),
-                reporter_id=U2,
-                reported_id=U7,
-                reason="Harassment",
-                description="Seeded pending report for testing evidence review and reasoned resolution.",
-                status="PENDING",
-                context_type="CHAT",
-                context_id=str(CH3),
-                created_at=days_ago(1),
-            ),
-            UserBlock(
-                id=uuid.UUID("e0000000-0000-0000-0000-000000000002"),
-                blocker_id=U4,
-                blocked_id=U11,
-                reason="Seeded block scenario",
-                created_at=days_ago(3),
-            ),
-        ]
+    report = Report(
+        id=SEEDED_REPORT_IDS[0],
+        reporter_id=U2,
+        reported_id=U7,
+        reason="Harassment",
+        description="Seeded pending report for testing evidence review and reasoned resolution.",
+        status="PENDING",
+        context_type="CHAT",
+        context_id=str(CH3),
+        created_at=days_ago(1),
     )
+    user_block = UserBlock(
+        id=SEEDED_BLOCK_IDS[0],
+        blocker_id=U4,
+        blocked_id=U11,
+        reason="Seeded block scenario",
+        created_at=days_ago(3),
+    )
+    existing_report_ids = await _existing_ids(db, Report, [report.id])
+    existing_block_ids = await _existing_ids(db, UserBlock, [user_block.id])
+    rows = []
+    if report.id not in existing_report_ids:
+        rows.append(report)
+    if user_block.id not in existing_block_ids:
+        rows.append(user_block)
+    if not rows:
+        print("Trust and safety data already seeded; skipping section.")
+        return
+    db.add_all(rows)
     await db.flush()
 
 
@@ -1062,13 +1201,25 @@ async def _seed_trust_safety(db: AsyncSession):
 # Main
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Seed HiBuddy demo data.")
+    parser.add_argument(
+        "--mode",
+        choices=("fill", "replace"),
+        default="fill",
+        help="`fill` inserts only missing seeded records; `replace` removes seeded users and their dependent data first.",
+    )
+    return parser.parse_args()
+
+
+async def main(mode: str = "fill"):
     engine = create_async_engine(ASYNC_ENGINE_URL, echo=False)
     try:
-        await seed(engine)
+        await seed(engine, mode=mode)
     finally:
         await engine.dispose()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(mode=args.mode))

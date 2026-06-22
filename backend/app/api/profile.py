@@ -6,7 +6,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, is_staff_reviewer_role
 from app.models.user import User
 from app.models.profile import (
     UserProfile, UserRole, UserSkill, UserInterest, UserCompletedCourse,
@@ -42,6 +42,13 @@ async def _normalize_new_user_reputation(db: AsyncSession, profile: UserProfile 
     if profile and profile.projects_completed <= 0 and float(profile.reputation_score or 0.0) != 0.0:
         profile.reputation_score = 0.0
         await db.flush()
+
+
+def _reputation_from_feedback(feedbacks: list["UserFeedbackResponse"]) -> float | None:
+    if not feedbacks:
+        return None
+    average = sum(item.overall_score for item in feedbacks) / len(feedbacks)
+    return round(max(0.0, min(5.0, average)), 1)
 
 
 async def _role_responses(db: AsyncSession, user_id: UUID) -> list[RoleResponse]:
@@ -96,10 +103,10 @@ async def get_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role == "ADMIN":
+    if is_staff_reviewer_role(current_user.role):
         raise HTTPException(
             status_code=403,
-            detail="Admin account does not have a user profile"
+            detail="Staff reviewer account does not have a user profile"
         )
     profile_result = await db.execute(
         select(UserProfile).where(UserProfile.user_id == current_user.id)
@@ -119,6 +126,21 @@ async def get_my_profile(
     skills_result = await db.execute(select(UserSkill).where(UserSkill.user_id == current_user.id))
     interests_result = await db.execute(select(UserInterest).where(UserInterest.user_id == current_user.id))
 
+    evaluations_result = await db.execute(
+        select(ProjectEvaluation).where(ProjectEvaluation.evaluatee_id == current_user.id)
+    )
+    feedback_average = _reputation_from_feedback([
+        UserFeedbackResponse(
+            project_id=evaluation.project_id,
+            project_title="",
+            evaluator_name="",
+            overall_score=evaluation.overall_score,
+            feedback_text=evaluation.feedback_text,
+            created_at=evaluation.created_at,
+        )
+        for evaluation in evaluations_result.scalars().all()
+    ])
+
     return ProfileResponse(
         id=profile.id,
         user_id=profile.user_id,
@@ -131,17 +153,33 @@ async def get_my_profile(
         short_term_goal=profile.short_term_goal,
         mode=profile.mode,
         is_hidden=profile.is_hidden,
-        reputation_score=_visible_reputation_score(profile),
+        reputation_score=feedback_average if feedback_average is not None else _visible_reputation_score(profile),
         projects_completed=profile.projects_completed,
         avatar_url=current_user.avatar_url,
         email=current_user.email,
         verified_student=current_user.verified_student,
         university=current_user.university,
+        verification_status=current_user.verification_status,
+        verification_rejection_reason=current_user.verification_rejection_reason,
+        academic_year=current_user.academic_year,
+        student_card_image_url=current_user.student_card_image_url,
+        verification_document_type=current_user.verification_document_type,
+        student_email_domain=current_user.student_email_domain,
+        verification_submitted_at=current_user.verification_submitted_at,
+        verification_reviewed_at=current_user.verification_reviewed_at,
         roles=await _role_responses(db, current_user.id),
         skills=[SkillResponse.model_validate(s) for s in skills_result.scalars().all()],
         interests=[InterestResponse.model_validate(i) for i in interests_result.scalars().all()],
         created_at=profile.created_at,
     )
+
+
+@router.get("/me/detail", response_model=UserDetailResponse)
+async def get_my_profile_detail(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_user_profile(current_user.id, db=db, current_user=current_user)
 
 
 @router.put("/me", response_model=ProfileResponse)
@@ -150,10 +188,10 @@ async def update_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role == "ADMIN":
+    if is_staff_reviewer_role(current_user.role):
         raise HTTPException(
             status_code=403,
-            detail="Admin account does not have a user profile"
+            detail="Staff reviewer account does not have a user profile"
         )
     profile = await _get_profile_for_embedding(db, current_user.id)
     if not profile:
@@ -556,6 +594,8 @@ async def get_user_profile(
     ]
     await _normalize_new_user_reputation(db, profile)
 
+    feedback_average = _reputation_from_feedback(received_feedbacks)
+
     return UserDetailResponse(
         user_id=profile.user_id,
         display_name=profile.display_name,
@@ -567,7 +607,7 @@ async def get_user_profile(
         skills=[SkillResponse.model_validate(s) for s in skills_result.scalars().all()],
         location=profile.location,
         github_url=profile.github_url,
-        reputation_score=_visible_reputation_score(profile),
+        reputation_score=feedback_average if feedback_average is not None else _visible_reputation_score(profile),
         projects_completed=profile.projects_completed,
         match_score=0.0,
         project_history=project_history,

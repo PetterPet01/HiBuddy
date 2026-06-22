@@ -56,6 +56,10 @@ class PresenceManager:
             self._last_seen_at[user_id] = datetime.now(timezone.utc)
             await self._broadcast_presence(user_id)
 
+    async def touch(self, user_id: str):
+        self._last_seen_at[user_id] = datetime.now(timezone.utc)
+        await self._broadcast_presence(user_id)
+
     async def subscribe(self, connection_id: str, user_ids: set[str]):
         if connection_id not in self._presence_sockets:
             return

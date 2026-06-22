@@ -31,7 +31,7 @@ fun NotificationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Thông báo") },
+                title = { Text("Notifications") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, "Back")
@@ -46,7 +46,7 @@ fun NotificationScreen(
             }
         } else if (uiState.notifications.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Chưa có thông báo nào", color = Color.Gray)
+                Text("No notifications yet", color = Color.Gray)
             }
         } else {
             LazyColumn(Modifier.padding(padding)) {

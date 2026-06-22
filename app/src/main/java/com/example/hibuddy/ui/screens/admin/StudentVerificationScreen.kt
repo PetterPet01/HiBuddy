@@ -223,9 +223,11 @@ private fun StudentVerificationCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     AdminInfoRow("Student email", user.studentEmail ?: "Not provided")
+                    AdminInfoRow("Email domain", user.studentEmailDomain ?: "Not provided")
                     AdminInfoRow("Student ID", user.studentId ?: "Not provided")
                     AdminInfoRow("University", user.university ?: "Not provided")
                     AdminInfoRow("Academic year", user.academicYear ?: "Not provided")
+                    AdminInfoRow("Document type", user.verificationDocumentType ?: "Not provided")
                     AdminInfoRow("Submitted", user.verificationSubmittedAt ?: "Not available")
                 }
             }

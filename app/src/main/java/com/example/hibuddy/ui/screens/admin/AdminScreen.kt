@@ -43,8 +43,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.data.remote.dto.AdminReportResponse
-import com.example.hibuddy.data.remote.dto.AdminUserResponse
 import com.example.hibuddy.data.remote.dto.ProjectResponse
+import com.example.hibuddy.data.remote.dto.StaffOverviewResponse
 import com.example.hibuddy.ui.theme.HiBuddyColors
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,13 +61,14 @@ fun AdminScreen(
     viewModel: AdminDashboardViewModel = viewModel(factory = AdminDashboardViewModel.Factory)
 ) {
     val state by viewModel.state.collectAsState()
+    val isAdmin = ServiceLocator.authRepository.isAdmin()
 
     LaunchedEffect(Unit) {
         viewModel.loadDashboard()
     }
 
     AdminScaffold(
-        title = "Admin command center",
+        title = if (isAdmin) "Admin command center" else "Moderator command center",
         subtitle = "Trust, safety, and student operations",
         onRefresh = { viewModel.loadDashboard() },
         actions = {
@@ -172,23 +173,36 @@ fun AdminScreen(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AdminActionCard(
-                            title = "Users",
-                            description = "Search accounts, verify status, and handle bans or reinstatements.",
-                            count = state.totalUsers,
-                            icon = Icons.Filled.AdminPanelSettings,
-                            onClick = onOpenUserManagement,
-                            modifier = Modifier.weight(1f)
-                        )
-                        AdminActionCard(
-                            title = "Projects",
-                            description = "Approve or reject projects flagged by moderation signals.",
-                            count = state.flaggedProjects,
-                            icon = Icons.Filled.AssignmentTurnedIn,
-                            urgent = state.flaggedProjects > 0,
-                            onClick = onOpenFlaggedProjects,
-                            modifier = Modifier.weight(1f)
-                        )
+                        if (isAdmin) {
+                            AdminActionCard(
+                                title = "Users",
+                                description = "Search accounts, verify status, and handle bans or reinstatements.",
+                                count = state.overview?.totalUsers ?: 0,
+                                icon = Icons.Filled.AdminPanelSettings,
+                                onClick = onOpenUserManagement,
+                                modifier = Modifier.weight(1f)
+                            )
+                            AdminActionCard(
+                                title = "Projects",
+                                description = "Approve or reject projects flagged by moderation signals.",
+                                count = state.flaggedProjects,
+                                icon = Icons.Filled.AssignmentTurnedIn,
+                                urgent = state.flaggedProjects > 0,
+                                onClick = onOpenFlaggedProjects,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            AdminActionCard(
+                                title = "Projects",
+                                description = "Approve or reject projects flagged by moderation signals.",
+                                count = state.flaggedProjects,
+                                icon = Icons.Filled.AssignmentTurnedIn,
+                                urgent = state.flaggedProjects > 0,
+                                onClick = onOpenFlaggedProjects,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -212,6 +226,7 @@ fun AdminScreen(
                         AdminInfoRow("Active account rate", state.activeRateLabel)
                         AdminInfoRow("Student verification rate", state.verifiedRateLabel)
                         AdminInfoRow("Admin accounts", state.adminUsers.toString())
+                        AdminInfoRow("Moderator accounts", state.moderatorUsers.toString())
                         AdminInfoRow("Banned accounts", state.bannedUsers.toString())
                         AdminInfoRow("Safety workload", state.safetyWorkloadLabel)
                     }
@@ -228,6 +243,7 @@ private fun AdminHeroCard(
     state: AdminDashboardUiState,
     onLogout: () -> Unit
 ) {
+    val isAdmin = ServiceLocator.authRepository.isAdmin()
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -244,7 +260,7 @@ private fun AdminHeroCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Welcome back, admin",
+                        text = if (isAdmin) "Welcome back, admin" else "Welcome back, moderator",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -288,20 +304,20 @@ private fun AdminHeroCard(
 
 data class AdminDashboardUiState(
     val isLoading: Boolean = false,
-    val users: List<AdminUserResponse> = emptyList(),
+    val overview: StaffOverviewResponse? = null,
     val reports: List<AdminReportResponse> = emptyList(),
     val projects: List<ProjectResponse> = emptyList(),
     val error: String? = null
 ) {
-    val totalUsers: Int = users.size
-    val activeUsers: Int = users.count { it.isActive }
-    val bannedUsers: Int = users.count { !it.isActive }
-    val verifiedStudents: Int = users.count { it.verifiedStudent }
-    val pendingVerifications: Int = users.count { it.verificationStatus.equals("PENDING", ignoreCase = true) }
-    val adminUsers: Int = users.count { it.role.equals("ADMIN", ignoreCase = true) }
-    val openReports: Int = reports.count { it.status.equals("OPEN", ignoreCase = true) || it.status.equals("PENDING", ignoreCase = true) }
-        .takeIf { it > 0 } ?: reports.size
-    val flaggedProjects: Int = projects.size
+    val totalUsers: Int = overview?.totalUsers ?: 0
+    val activeUsers: Int = overview?.activeUsers ?: 0
+    val bannedUsers: Int = overview?.bannedUsers ?: 0
+    val verifiedStudents: Int = overview?.verifiedStudents ?: 0
+    val pendingVerifications: Int = overview?.pendingVerifications ?: 0
+    val adminUsers: Int = overview?.adminUsers ?: 0
+    val moderatorUsers: Int = overview?.moderatorUsers ?: 0
+    val openReports: Int = overview?.openReports ?: reports.count { it.status.equals("OPEN", ignoreCase = true) || it.status.equals("PENDING", ignoreCase = true) }
+    val flaggedProjects: Int = overview?.flaggedProjects ?: projects.size
     val urgentWorkCount: Int = pendingVerifications + openReports + flaggedProjects
     val activeRateLabel: String = percentage(activeUsers, totalUsers)
     val verifiedRateLabel: String = percentage(verifiedStudents, totalUsers)
@@ -319,20 +335,20 @@ class AdminDashboardViewModel : ViewModel() {
     fun loadDashboard() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
-            val usersDeferred = async { adminRepository.getUsers() }
+            val overviewDeferred = async { adminRepository.getStaffOverview() }
             val reportsDeferred = async { adminRepository.getReports() }
             val projectsDeferred = async { adminRepository.getFlaggedProjects() }
 
-            val usersResult = usersDeferred.await()
+            val overviewResult = overviewDeferred.await()
             val reportsResult = reportsDeferred.await()
             val projectsResult = projectsDeferred.await()
 
-            val failures = listOf(usersResult, reportsResult, projectsResult)
+            val failures = listOf(overviewResult, reportsResult, projectsResult)
                 .mapNotNull { it.exceptionOrNull()?.message }
 
             _state.value = AdminDashboardUiState(
                 isLoading = false,
-                users = usersResult.getOrElse { _state.value.users },
+                overview = overviewResult.getOrElse { _state.value.overview },
                 reports = reportsResult.getOrElse { _state.value.reports },
                 projects = projectsResult.getOrElse { _state.value.projects },
                 error = failures.takeIf { it.isNotEmpty() }?.joinToString(" • ")

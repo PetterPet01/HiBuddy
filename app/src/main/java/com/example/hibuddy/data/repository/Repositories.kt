@@ -4,6 +4,9 @@ import com.example.hibuddy.data.local.CachedChatMessage
 import com.example.hibuddy.data.local.ChatLocalDataSource
 import com.example.hibuddy.data.remote.ApiService
 import com.example.hibuddy.data.remote.dto.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -15,7 +18,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class ProfileRepository(private val api: ApiService) {
     suspend fun getMyProfile(): Result<ProfileResponse> = apiResult { api.getMyProfile() }
-    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = apiResult { api.getUserProfile(userId) }
+    suspend fun getMyProfileDetail(): Result<UserDetailResponse> = apiResult { api.getMyProfileDetail() }
+    suspend fun getUserProfile(userId: String): Result<UserDetailResponse> = apiResult { api.getUserProfile(userId) }
     suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = apiResult { api.updateMyProfile(request) }
     suspend fun hideProfile(): Result<GenericResponse> = apiResult { api.hideProfile() }
     suspend fun unhideProfile(): Result<GenericResponse> = apiResult { api.unhideProfile() }
@@ -48,6 +52,7 @@ class ProjectRepository(private val api: ApiService) {
     suspend fun getMyProjects(): Result<List<ProjectResponse>> = apiResult { api.getMyProjects() }
     suspend fun getProject(id: String): Result<ProjectResponse> = apiResult { api.getProject(id) }
     suspend fun closeProject(id: String): Result<GenericResponse> = apiResult { api.closeProject(id) }
+    suspend fun stopRecruiting(id: String): Result<GenericResponse> = apiResult { api.stopRecruiting(id) }
     suspend fun addMember(
         projectId: String,
         userId: String,
@@ -82,7 +87,8 @@ class SwipeRepository(private val api: ApiService) {
 class TaskRepository(private val api: ApiService) {
     suspend fun createTask(projectId: String, request: CreateTaskRequest): Result<TaskResponse> = apiResult { api.createTask(projectId, request) }
     suspend fun getTasks(projectId: String, status: String? = null): Result<List<TaskResponse>> = apiResult { api.getTasks(projectId, status) }
-    suspend fun updateTaskStatus(taskId: String, status: String): Result<GenericResponse> = apiResult { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status)) }
+    suspend fun updateTaskStatus(taskId: String, status: String, notes: String? = null): Result<GenericResponse> =
+        apiResult { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status, notes)) }
     suspend fun checkoutTask(taskId: String): Result<CheckoutResponse> = apiResult { api.checkoutTask(taskId) }
     suspend fun confirmCheckout(taskId: String): Result<GenericResponse> = apiResult { api.confirmCheckout(taskId) }
     suspend fun getDashboard(projectId: String): Result<DashboardResponse> = apiResult { api.getDashboard(projectId) }
@@ -201,10 +207,27 @@ class FeedbackRepository(private val api: ApiService) {
 }
 
 class NotificationRepository(private val api: ApiService) {
+    private val _unreadCount = MutableStateFlow(0)
+    val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
+
     suspend fun getNotifications(limit: Int = 20): Result<List<NotificationResponse>> =
-        runCatching { api.getNotifications(limit) }
+        runCatching {
+            api.getNotifications(limit).also { notifications ->
+                _unreadCount.value = notifications.count { !it.isRead }
+            }
+        }
+
     suspend fun markNotificationRead(id: String): Result<GenericResponse> =
         runCatching { api.markNotificationRead(id) }
+
     suspend fun getUnreadCount(): Result<UnreadCountResponse> =
-        runCatching { api.getUnreadCount() }
+        runCatching {
+            api.getUnreadCount().also { response ->
+                _unreadCount.value = response.count
+            }
+        }
+
+    fun setUnreadCount(count: Int) {
+        _unreadCount.value = count.coerceAtLeast(0)
+    }
 }

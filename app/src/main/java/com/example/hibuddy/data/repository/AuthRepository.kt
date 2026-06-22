@@ -87,6 +87,8 @@ class AuthRepository(
     }
     fun getUserRole(): String? = tokenManager.getUserRole()
     fun isAdmin(): Boolean = tokenManager.isAdmin()
+    fun isModerator(): Boolean = tokenManager.isModerator()
+    fun isStaffReviewer(): Boolean = tokenManager.isStaffReviewer()
     fun isEmailVerified(): Boolean = tokenManager.isEmailVerified()
     fun getPendingEmail(): String? = tokenManager.getPendingEmail()
 

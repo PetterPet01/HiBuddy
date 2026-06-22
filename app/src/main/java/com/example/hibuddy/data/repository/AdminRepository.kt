@@ -5,8 +5,12 @@ import com.example.hibuddy.data.remote.dto.AdminReportResponse
 import com.example.hibuddy.data.remote.dto.AdminUserResponse
 import com.example.hibuddy.data.remote.dto.RejectStudentRequest
 import com.example.hibuddy.data.remote.dto.ResolveReportRequest
+import com.example.hibuddy.data.remote.dto.StaffOverviewResponse
 
 class AdminRepository(private val api: ApiService) {
+
+    suspend fun getStaffOverview(): Result<StaffOverviewResponse> =
+        apiResult { api.getStaffOverview() }
 
     suspend fun getStudentVerifications(): Result<List<AdminUserResponse>> =
         apiResult { api.getStudentVerifications() }

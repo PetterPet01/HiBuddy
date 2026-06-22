@@ -104,6 +104,7 @@ class ProjectResponse(BaseModel):
     end_date: datetime
     max_members: int
     status: str
+    is_recruiting: bool = True
     review_status: str = "APPROVED"
     moderation_categories: list[str] | None = None
     moderation_reasons: list[str] | None = None

@@ -95,19 +95,23 @@ fun TasksScreen(
                             Spacer(Modifier.width(8.dp))
                         }
                         if (selectedProject != null) {
-                            Column {
+                            Column(modifier = Modifier.widthIn(max = 200.dp)) {
                                 Text(
                                     text = selectedProject.title,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colorScheme.onBackground,
-                                    modifier = Modifier.clickable { onOpenProject(selectedProject.id) }
+                                    modifier = Modifier.clickable { onOpenProject(selectedProject.id) },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = "Open project workspace",
                                     fontSize = 11.sp,
                                     color = colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.clickable { onOpenProject(selectedProject.id) }
+                                    modifier = Modifier.clickable { onOpenProject(selectedProject.id) },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -121,7 +125,7 @@ fun TasksScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colorScheme.onSurface)
                     ) {
-                        Text("Open", fontSize = 12.sp)
+                        Text("Open Workspace", fontSize = 12.sp)
                     }
                     if (isOwner) {
                         IconButton(
@@ -170,8 +174,8 @@ fun TasksScreen(
             currentUserId = uiState.currentUserId,
             isOwner = isOwner,
             onDismiss = { showStatusDialog = null },
-            onAction = { newStatus ->
-                viewModel.updateTaskStatus(task.id, newStatus)
+            onAction = { newStatus, notes ->
+                viewModel.updateTaskStatus(task.id, newStatus, notes)
                 showStatusDialog = null
             },
             onCheckout = {
@@ -334,11 +338,12 @@ fun TaskActionDialog(
     currentUserId: String,
     isOwner: Boolean,
     onDismiss: () -> Unit,
-    onAction: (String) -> Unit,
+    onAction: (String, String?) -> Unit,
     onCheckout: () -> Unit,
     onConfirmCheckout: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    var reviewNotes by remember(task.id) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colorScheme.surface,
@@ -363,7 +368,7 @@ fun TaskActionDialog(
                     "TODO" -> {
                         if (task.assigneeId == currentUserId) {
                             Button(
-                                onClick = { onAction("IN_PROGRESS") },
+                                onClick = { onAction("IN_PROGRESS", null) },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = HiBuddyColors.warningContainer,
@@ -402,6 +407,15 @@ fun TaskActionDialog(
                     }
                     "DONE_REVIEW" -> {
                         if (isOwner) {
+                            OutlinedTextField(
+                                value = reviewNotes,
+                                onValueChange = { reviewNotes = it },
+                                label = { Text("Review notes for the assignee") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 4
+                            )
+                            Spacer(Modifier.height(10.dp))
                             Button(
                                 onClick = onConfirmCheckout,
                                 modifier = Modifier.fillMaxWidth(),
@@ -411,6 +425,12 @@ fun TaskActionDialog(
                                 ),
                                 shape = RoundedCornerShape(8.dp)
                             ) { Text("Approve and Close") }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { onAction("IN_PROGRESS", reviewNotes.ifBlank { "Changes requested by the project owner." }) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) { Text("Reject and Reopen") }
                         } else {
                             Text("Waiting for project owner review", fontSize = 13.sp, color = colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
                         }

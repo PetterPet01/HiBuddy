@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,6 +133,7 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
         return
 
     async with async_session() as db:
+        presence_connection_id = None
         try:
             match = await db.get(Match, UUID(match_id))
             if not match or match.is_unmatched:
@@ -167,6 +168,10 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                 await db.commit()
 
             other_user_id = str(match.user_id) if str(match.owner_id) == user_id else str(match.owner_id)
+            presence_connection_id = await presence_manager.register_session(
+                user_id,
+                f"chat:{match_id}:{uuid4()}",
+            )
 
             await manager.connect(websocket, user_id, chat_id=match_id)
 
@@ -190,6 +195,7 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                 message_type = data.get("type")
 
                 if message_type == "message":
+                    await presence_manager.touch(user_id)
                     content = (data.get("content") or "").strip()
                     if not content:
                         await websocket.send_json({"type": "error", "message": "Message cannot be empty"})
@@ -270,12 +276,14 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                         await db.commit()
 
                 elif message_type == "typing":
+                    await presence_manager.touch(user_id)
                     await manager.send_message(other_user_id, match_id, {
                         "type": "typing",
                         "user_id": user_id,
                     })
 
                 elif message_type == "read":
+                    await presence_manager.touch(user_id)
                     unread_result = await db.execute(
                         select(Message).where(
                             Message.chat_id == chat.id,
@@ -294,7 +302,11 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                     })
 
         except WebSocketDisconnect:
+            if presence_connection_id:
+                await presence_manager.unregister_session(user_id, presence_connection_id)
             manager.disconnect(user_id, match_id)
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
+            if presence_connection_id:
+                await presence_manager.unregister_session(user_id, presence_connection_id)
             manager.disconnect(user_id, match_id)

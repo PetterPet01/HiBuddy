@@ -19,6 +19,7 @@ data class ProfileUiState(
     val isSuggestionLoading: Boolean = false,
     val hasRequestedSuggestions: Boolean = false,
     val profile: ProfileResponse? = null,
+    val profileDetail: UserDetailResponse? = null,
     val courseSuggestions: List<CourseSuggestionResponse> = emptyList(),
     val mentorSuggestions: List<MentorSuggestionResponse> = emptyList(),
     val error: String? = null,
@@ -43,6 +44,16 @@ class ProfileViewModel : ViewModel() {
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                }
+            )
+            profileRepository.getMyProfileDetail().fold(
+                onSuccess = { detail ->
+                    _uiState.value = _uiState.value.copy(profileDetail = detail)
+                },
+                onFailure = { e ->
+                    if (_uiState.value.profile == null) {
+                        _uiState.value = _uiState.value.copy(error = e.message)
+                    }
                 }
             )
         }
@@ -357,7 +368,8 @@ class ProfileViewModel : ViewModel() {
         studentEmail: String,
         university: String,
         studentId: String,
-        academicYear: String
+        academicYear: String,
+        onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
@@ -375,12 +387,14 @@ class ProfileViewModel : ViewModel() {
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    message = "Đã gửi yêu cầu xác thực sinh viên"
+                    message = "Student verification submitted"
                 )
+                loadProfile()
+                onSuccess?.invoke()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Gửi xác thực thất bại"
+                    error = e.message ?: "Student verification failed"
                 )
             }
         }

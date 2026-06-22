@@ -113,6 +113,22 @@ class ProjectDetailViewModel : ViewModel() {
         }
     }
 
+    fun stopRecruiting() {
+        val projectId = _uiState.value.project?.id ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isActionLoading = true, error = null)
+            projectRepository.stopRecruiting(projectId).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(isActionLoading = false, message = "Recruiting stopped")
+                    loadAll(projectId)
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(isActionLoading = false, error = e.message)
+                }
+            )
+        }
+    }
+
     fun loadAll(projectId: String) {
         _uiState.value = _uiState.value.copy(applicants = emptyList())
         loadProject(projectId)

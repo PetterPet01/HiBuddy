@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.hibuddy.ServiceLocator
-import com.example.hibuddy.data.remote.dto.UserCardResponse
+import com.example.hibuddy.data.remote.dto.UserDetailResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 data class UserDetailUiState(
     val isLoading: Boolean = false,
-    val profile: UserCardResponse? = null,
+    val profile: UserDetailResponse? = null,
     val error: String? = null
 )
 

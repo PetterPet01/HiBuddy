@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.core.dependencies import get_current_admin
+from app.core.dependencies import get_current_staff_reviewer
 from app.models.user import User
 from app.models.project import Project, ProjectMember
 from app.models.chat import Notification
@@ -73,7 +73,7 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
 
 @router.get("/projects/flagged", response_model=list[ProjectResponse])
 async def list_flagged_projects(
-    current_admin: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_staff_reviewer),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -95,7 +95,7 @@ async def list_flagged_projects(
 async def approve_project(
     project_id: UUID,
     request: AdminActionRequest,
-    current_admin: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_staff_reviewer),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(
@@ -141,7 +141,7 @@ async def approve_project(
 async def reject_project(
     project_id: UUID,
     request: AdminActionRequest,
-    current_admin: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_staff_reviewer),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(Project, project_id)

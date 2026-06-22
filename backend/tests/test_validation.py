@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.auth import ResetPassword, UserRegister
+from app.schemas.auth import ResetPassword, StudentVerificationRequest, UserRegister
 from app.schemas.profile import ProfileUpdate
 from app.schemas.project import ProjectCreate
 
@@ -108,3 +108,36 @@ def test_profile_accepts_distinct_skills_per_role():
     )
     assert profile.roles[0].skills[0].skill_name == "PostgreSQL"
     assert profile.roles[1].skills[0].skill_name == "Figma"
+
+
+def test_student_verification_accepts_institutional_email_and_document_type():
+    data = StudentVerificationRequest(
+        full_name="Student User",
+        student_email="student@university.edu",
+        university="Example University",
+        student_id="SV12345",
+        academic_year="Year 3",
+        document_type="student_id_card",
+    )
+    assert data.document_type == "STUDENT_ID_CARD"
+
+
+def test_student_verification_rejects_public_email_domains_and_invalid_document_type():
+    with pytest.raises(ValidationError):
+        StudentVerificationRequest(
+            full_name="Student User",
+            student_email="student@gmail.com",
+            university="Example University",
+            student_id="SV12345",
+            academic_year="Year 3",
+        )
+
+    with pytest.raises(ValidationError):
+        StudentVerificationRequest(
+            full_name="Student User",
+            student_email="student@university.edu",
+            university="Example University",
+            student_id="SV12345",
+            academic_year="Year 3",
+            document_type="library-card",
+        )

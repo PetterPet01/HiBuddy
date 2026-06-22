@@ -1,8 +1,10 @@
 import io
+from pathlib import Path
 
+import pytest
 from PIL import Image
 
-from app.api.upload import _normalize_image
+from app.api.upload import _normalize_image, _put_image
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -43,3 +45,33 @@ def test_codes_and_token_hashes_are_safe_to_store():
     assert len(code) == 6
     assert code.isdigit()
     assert hash_token("secret-token") != "secret-token"
+
+
+class _RequestStub:
+    base_url = "http://testserver/"
+
+
+@pytest.mark.asyncio
+async def test_put_image_falls_back_to_local_storage_when_minio_is_unavailable(monkeypatch, tmp_path):
+    source = Image.new("RGB", (1200, 800), color=(20, 80, 120))
+    buffer = io.BytesIO()
+    source.save(buffer, format="PNG")
+
+    monkeypatch.setattr("app.api.upload.settings.ENVIRONMENT", "development")
+    monkeypatch.setattr("app.api.upload.settings.LOCAL_MEDIA_PATH", str(tmp_path))
+
+    def _raise_storage_error():
+        raise RuntimeError("minio unavailable")
+
+    monkeypatch.setattr("app.api.upload._get_s3_client", _raise_storage_error)
+
+    url = await _put_image(
+        _RequestStub(),
+        buffer.getvalue(),
+        "student-cards/test-user",
+        (1600, 1200),
+    )
+
+    assert "/api/v1/upload/media/student-cards/test-user/" in url
+    stored_files = list(Path(tmp_path).glob("student-cards/test-user/*.jpg"))
+    assert len(stored_files) == 1

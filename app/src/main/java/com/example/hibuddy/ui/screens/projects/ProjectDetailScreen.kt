@@ -61,11 +61,21 @@ fun ProjectDetailScreen(
             },
             actions = {
                 if (isOwner == true && project?.status != "CLOSED") {
-                    TextButton(
-                        onClick = { viewModel.closeProject() },
-                        enabled = !uiState.isActionLoading
-                    ) {
-                        Text("Close Project", color = HiBuddyColors.warning)
+                    Row {
+                        if (project?.isRecruiting == true) {
+                            TextButton(
+                                onClick = { viewModel.stopRecruiting() },
+                                enabled = !uiState.isActionLoading
+                            ) {
+                                Text("Stop Recruiting", color = colorScheme.primary)
+                            }
+                        }
+                        TextButton(
+                            onClick = { viewModel.closeProject() },
+                            enabled = !uiState.isActionLoading
+                        ) {
+                            Text("Close Project", color = HiBuddyColors.warning)
+                        }
                     }
                 }
             },
@@ -151,15 +161,21 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                         Text(project.field, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colorScheme.primary)
                         if (project.reviewStatus == "FLAGGED" || project.reviewStatus == "PENDING") {
                             Surface(shape = RoundedCornerShape(8.dp), color = HiBuddyColors.warning.copy(alpha = 0.2f)) {
-                                Text("CHỜ DUYỆT", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HiBuddyColors.warning)
+                                Text("IN REVIEW", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = HiBuddyColors.warning)
                             }
                         } else if (project.reviewStatus == "REJECTED") {
                             Surface(shape = RoundedCornerShape(8.dp), color = colorScheme.error.copy(alpha = 0.2f)) {
-                                Text("BỊ TỪ CHỐI", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorScheme.error)
+                                Text("REJECTED", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorScheme.error)
                             }
                         } else {
                             Surface(shape = RoundedCornerShape(8.dp), color = statusColor.copy(alpha = 0.2f)) {
-                                Text(project.status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                                Text(
+                                    project.status,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusColor
+                                )
                             }
                         }
                     }
@@ -208,7 +224,7 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Nội dung có thể vi phạm nên đang được xem xét...",
+                                        "This project is under review because its content may violate community guidelines.",
                                         fontSize = 12.sp,
                                         color = HiBuddyColors.onWarningContainer
                                     )
@@ -233,7 +249,7 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Dự án này đã bị từ chối phê duyệt do vi phạm tiêu chuẩn cộng đồng.",
+                                        "This project was rejected during moderation for violating community guidelines.",
                                         fontSize = 12.sp,
                                         color = colorScheme.onErrorContainer
                                     )
@@ -341,84 +357,6 @@ private fun MembersTab(
             }
         }
 
-        if (isOwner) {
-            item {
-                Spacer(Modifier.height(12.dp))
-                Text("Pending Applicants", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurfaceVariant)
-            }
-
-            if (applicants.isEmpty()) {
-                item {
-                    Text("No applicants yet", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
-                }
-            } else {
-                items(applicants) { applicant ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                if (!applicant.avatarUrl.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = applicant.avatarUrl,
-                                        contentDescription = "${applicant.displayName} avatar",
-                                        modifier = Modifier.size(42.dp).clip(CircleShape)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        applicant.displayName,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colorScheme.onSurface
-                                    )
-                                    Text(
-                                        "${applicant.matchScore.toInt()}% fit" +
-                                            (applicant.matchedRole?.let { " as $it" } ?: ""),
-                                        fontSize = 12.sp,
-                                        color = colorScheme.primary
-                                    )
-                                }
-                                if (applicant.isSuperLike) {
-                                    Icon(
-                                        Icons.Filled.Star,
-                                        contentDescription = "Super Like",
-                                        tint = HiBuddyColors.warning
-                                    )
-                                }
-                            }
-                            Text(
-                                applicant.roles.joinToString { it.roleName } + " · " + applicant.skills.joinToString { it.skillName },
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariant
-                            )
-                            if (openSlots.isEmpty()) {
-                                Text("No open role slots remaining", fontSize = 12.sp, color = HiBuddyColors.warning)
-                            } else {
-                                openSlots.forEach { slot ->
-                                    Button(
-                                        onClick = { onAddApplicant(applicant.userId, slot.roleName, slot.id) },
-                                        enabled = !isActionLoading,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colorScheme.primary,
-                                            contentColor = colorScheme.onPrimary
-                                        ),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Text("Add as ${slot.roleName}")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

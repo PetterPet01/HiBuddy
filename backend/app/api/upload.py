@@ -2,11 +2,12 @@ import asyncio
 import io
 import logging
 import uuid
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,21 @@ router = APIRouter(prefix="/api/v1/upload", tags=["upload"])
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_PIXELS = 25_000_000
+
+
+def _local_media_root() -> Path:
+    root = Path(settings.LOCAL_MEDIA_PATH)
+    if not root.is_absolute():
+        root = (Path(__file__).resolve().parents[2] / root).resolve()
+    return root
+
+
+def _local_media_path(object_name: str) -> Path:
+    root = _local_media_root().resolve()
+    target = (root / object_name).resolve()
+    if root != target and root not in target.parents:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return target
 
 
 def _get_s3_client():
@@ -83,6 +99,25 @@ def _object_name_from_url(url: str | None) -> str | None:
     return url.split("/media/", 1)[1]
 
 
+def _store_local_media(
+    object_name: str,
+    contents: bytes,
+    previous_url: str | None = None,
+) -> None:
+    path = _local_media_path(object_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(contents)
+
+    previous = _object_name_from_url(previous_url)
+    if not previous or previous == object_name:
+        return
+    previous_path = _local_media_path(previous)
+    try:
+        previous_path.unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Could not delete replaced local media object %s", previous)
+
+
 async def _put_image(
     request: Request,
     contents: bytes,
@@ -95,42 +130,58 @@ async def _put_image(
         _normalize_image, contents, max_size, crop_to_size
     )
     object_name = f"{prefix}/{uuid.uuid4()}.jpg"
-    client = _get_s3_client()
+    try:
+        client = _get_s3_client()
 
-    def upload() -> None:
-        _ensure_bucket(client)
-        client.put_object(
-            Bucket=settings.MINIO_BUCKET,
-            Key=object_name,
-            Body=normalized,
-            ContentType="image/jpeg",
-            CacheControl="public, max-age=86400",
+        def upload() -> None:
+            _ensure_bucket(client)
+            client.put_object(
+                Bucket=settings.MINIO_BUCKET,
+                Key=object_name,
+                Body=normalized,
+                ContentType="image/jpeg",
+                CacheControl="public, max-age=86400",
+            )
+            previous = _object_name_from_url(previous_url)
+            if previous and previous != object_name:
+                try:
+                    client.delete_object(Bucket=settings.MINIO_BUCKET, Key=previous)
+                except Exception:
+                    logger.warning("Could not delete replaced media object %s", previous)
+
+        await asyncio.to_thread(upload)
+    except Exception:
+        if settings.ENVIRONMENT.lower() == "production":
+            raise
+        logger.warning(
+            "Falling back to local media storage because MinIO is unavailable",
+            exc_info=True,
         )
-        previous = _object_name_from_url(previous_url)
-        if previous and previous != object_name:
-            try:
-                client.delete_object(Bucket=settings.MINIO_BUCKET, Key=previous)
-            except Exception:
-                logger.warning("Could not delete replaced media object %s", previous)
-
-    await asyncio.to_thread(upload)
+        await asyncio.to_thread(_store_local_media, object_name, normalized, previous_url)
     return _public_url(request, object_name)
 
 
 @router.get("/media/{object_name:path}", include_in_schema=False)
 async def get_media(object_name: str):
-    client = _get_s3_client()
     try:
+        client = _get_s3_client()
         response = await asyncio.to_thread(
             client.get_object, Bucket=settings.MINIO_BUCKET, Key=object_name
         )
+        return StreamingResponse(
+            response["Body"],
+            media_type=response.get("ContentType", "application/octet-stream"),
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
     except Exception as exc:
+        local_path = _local_media_path(object_name)
+        if local_path.is_file():
+            return FileResponse(
+                local_path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
         raise HTTPException(status_code=404, detail="Media not found") from exc
-    return StreamingResponse(
-        response["Body"],
-        media_type=response.get("ContentType", "application/octet-stream"),
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
 
 
 @router.post("/avatar")

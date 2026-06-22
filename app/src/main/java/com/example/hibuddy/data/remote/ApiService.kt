@@ -57,8 +57,11 @@ interface ApiService {
     @GET("api/v1/profiles/me")
     suspend fun getMyProfile(): ProfileResponse
 
+    @GET("api/v1/profiles/me/detail")
+    suspend fun getMyProfileDetail(): UserDetailResponse
+
     @GET("api/v1/profiles/{userId}")
-    suspend fun getUserProfile(@Path("userId") userId: String): UserCardResponse
+    suspend fun getUserProfile(@Path("userId") userId: String): UserDetailResponse
 
     @PUT("api/v1/profiles/me")
     suspend fun updateMyProfile(@Body request: ProfileUpdateRequest): ProfileResponse
@@ -101,6 +104,9 @@ interface ApiService {
 
     @POST("api/v1/projects/{id}/close")
     suspend fun closeProject(@Path("id") id: String): GenericResponse
+
+    @POST("api/v1/projects/{id}/stop-recruiting")
+    suspend fun stopRecruiting(@Path("id") id: String): GenericResponse
 
     @POST("api/v1/projects/{projectId}/members")
     suspend fun addMember(
@@ -241,6 +247,9 @@ interface ApiService {
 
     @GET("api/v1/admin/student-verifications")
     suspend fun getStudentVerifications(): List<AdminUserResponse>
+
+    @GET("api/v1/admin/overview")
+    suspend fun getStaffOverview(): StaffOverviewResponse
 
     @POST("api/v1/admin/student-verifications/{userId}/approve")
     suspend fun approveStudentVerification(

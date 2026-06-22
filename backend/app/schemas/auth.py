@@ -183,3 +183,35 @@ class StudentVerificationRequest(BaseModel):
     university: str = Field(min_length=2, max_length=200)
     student_id: str = Field(min_length=3, max_length=50)
     academic_year: str = Field(min_length=1, max_length=20)
+    document_type: str = Field(default="STUDENT_ID_CARD", min_length=3, max_length=40)
+
+    @field_validator("document_type")
+    @classmethod
+    def validate_document_type(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"STUDENT_ID_CARD", "ENROLLMENT_LETTER", "TRANSCRIPT"}:
+            raise ValueError("Document type is invalid")
+        return normalized
+
+    @field_validator("student_email")
+    @classmethod
+    def validate_student_email_domain(cls, value: EmailStr | None) -> EmailStr | None:
+        if value is None:
+            return None
+        domain = str(value).rsplit("@", 1)[-1].lower()
+        if domain in {
+            "gmail.com",
+            "googlemail.com",
+            "outlook.com",
+            "hotmail.com",
+            "live.com",
+            "msn.com",
+            "yahoo.com",
+            "icloud.com",
+            "me.com",
+            "aol.com",
+            "proton.me",
+            "protonmail.com",
+        }:
+            raise ValueError("Student email must use an institutional school domain")
+        return value

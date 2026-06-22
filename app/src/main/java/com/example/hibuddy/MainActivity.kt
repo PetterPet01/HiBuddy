@@ -107,6 +107,7 @@ object Routes {
     const val ADMIN = "main/admin"
     const val ADMIN_STUDENT_VERIFICATIONS = "main/admin/student-verifications"
     const val STUDENT_VERIFICATION = "main/profile/student-verification"
+    const val STUDENT_VERIFICATION_ONBOARDING = "main/profile/student-verification-onboarding"
     const val ADMIN_USER_MANAGEMENT = "main/admin/users"
     const val ADMIN_REPORT_MANAGEMENT = "main/admin/reports"
     const val ADMIN_FLAGGED_PROJECTS = "main/admin/projects"
@@ -138,7 +139,7 @@ fun HiBuddyApp() {
     }
     val startDestination = remember {
         if (ServiceLocator.authRepository.hasSession()) {
-            if (ServiceLocator.authRepository.isAdmin()) {
+            if (ServiceLocator.authRepository.isStaffReviewer()) {
                 Routes.ADMIN
             } else if (!ServiceLocator.authRepository.isEmailVerified()) {
                 Routes.verifyEmail(ServiceLocator.authRepository.getPendingEmail().orEmpty())
@@ -233,6 +234,9 @@ fun HiBuddyApp() {
                                 false
                             )
                         }
+                    },
+                    onOpenStudentVerification = {
+                        navController.navigate(Routes.STUDENT_VERIFICATION_ONBOARDING)
                     }
                 )
             }
@@ -250,7 +254,7 @@ fun HiBuddyApp() {
                 onLoginSuccess = {
                     ServiceLocator.presenceWebSocketManager.connect(ServiceLocator.authRepository.getAccessToken())
 
-                    val destination = if (ServiceLocator.authRepository.isAdmin()) {
+                    val destination = if (ServiceLocator.authRepository.isStaffReviewer()) {
                         Routes.ADMIN
                     } else {
                         Routes.DISCOVER
@@ -471,7 +475,8 @@ fun HiBuddyApp() {
             val userId = backStackEntry.arguments?.getString("userId") ?: ""
             UserDetailScreen(
                 userId = userId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenProject = { projectId -> navController.navigate(Routes.projectDetail(projectId)) }
             )
         }
 
@@ -537,6 +542,23 @@ fun HiBuddyApp() {
                 }
             )
         }
+        composable(Routes.STUDENT_VERIFICATION_ONBOARDING) {
+            SubmitStudentVerificationScreen(
+                onBack = {
+                    navController.navigate(Routes.DISCOVER) {
+                        popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onContinue = {
+                    navController.navigate(Routes.DISCOVER) {
+                        popUpTo(Routes.COMPLETE_PROFILE) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                allowSkip = true
+            )
+        }
         composable(Routes.ADMIN_USER_MANAGEMENT) {
             UserManagementScreen(
                 onBack = {
@@ -590,9 +612,19 @@ fun MainScaffold(
     content: @Composable () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val unreadNotificationCount by ServiceLocator.notificationRepository.unreadCount.collectAsState()
+
+    LaunchedEffect(Unit) {
+        ServiceLocator.notificationRepository.getUnreadCount()
+    }
+
     Scaffold(
         bottomBar = {
-            HiBuddyBottomNav(current = currentTab, onSelect = onTabSelect)
+            HiBuddyBottomNav(
+                current = currentTab,
+                unreadNotificationCount = unreadNotificationCount,
+                onSelect = onTabSelect
+            )
         },
         containerColor = colorScheme.background
     ) { padding ->
@@ -605,6 +637,7 @@ fun MainScaffold(
 @Composable
 fun HiBuddyBottomNav(
     current: String,
+    unreadNotificationCount: Int,
     onSelect: (String) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -626,10 +659,28 @@ fun HiBuddyBottomNav(
                 selected = selected,
                 onClick = { onSelect(key) },
                 icon = {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label
-                    )
+                    if (key == "notifications" && unreadNotificationCount > 0) {
+                        BadgedBox(
+                            badge = {
+                                Badge {
+                                    Text(
+                                        text = unreadNotificationCount.coerceAtMost(99).toString(),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label
+                        )
+                    }
                 },
                 label = {
                     Text(

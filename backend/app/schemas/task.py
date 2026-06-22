@@ -26,6 +26,7 @@ class TaskUpdate(BaseModel):
 
 class TaskStatusUpdate(BaseModel):
     status: Literal["TODO", "IN_PROGRESS", "DONE_REVIEW", "CLOSED"]
+    notes: str | None = Field(default=None, max_length=500)
 
 
 class TaskCheckoutOverride(BaseModel):

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Integer, func
+from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -28,13 +28,19 @@ class User(Base):
 
     verified_student: Mapped[bool] = mapped_column(Boolean, default=False)
     student_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    student_email_domain: Mapped[str | None] = mapped_column(String(120), nullable=True)
     university: Mapped[str | None] = mapped_column(String(200), nullable=True)
     student_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True)
     student_card_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    verification_document_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     verification_status: Mapped[str] = mapped_column(String(20), default="NONE")
     verification_rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     academic_year: Mapped[str | None] = mapped_column(String(20), nullable=True)
     verification_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     role: Mapped[str] = mapped_column(String(20), default="MEMBER")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

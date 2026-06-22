@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     MINIO_BUCKET: str = "hibuddy"
     MINIO_SECURE: bool = False
     MEDIA_PUBLIC_BASE_URL: str = ""
+    LOCAL_MEDIA_PATH: str = str(BACKEND_DIR / "media")
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""

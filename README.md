@@ -40,6 +40,7 @@ notifications are required, then run:
 All seeded accounts use password `HiBuddyDemo!2026`.
 
 - `admin@hibuddy.local`: admin dashboards, student review, reports, flagged projects
+- `moderator@hibuddy.local`: moderator dashboards for student review, reports, and flagged projects
 - `minh@example.com`: project owner with approved and manual-review projects
 - `thu@example.com`: verified contributor with design-role skills
 - `lan@example.com`: pending student verification with evidence

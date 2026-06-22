@@ -73,7 +73,8 @@ data class StudentVerificationRequest(
     @SerializedName("student_email") val studentEmail: String? = null,
     val university: String,
     @SerializedName("student_id") val studentId: String,
-    @SerializedName("academic_year") val academicYear: String
+    @SerializedName("academic_year") val academicYear: String,
+    @SerializedName("document_type") val documentType: String = "STUDENT_ID_CARD"
 )
 
 data class GenericResponse(
@@ -109,6 +110,14 @@ data class ProfileResponse(
     val email: String,
     @SerializedName("verified_student") val verifiedStudent: Boolean,
     val university: String?,
+    @SerializedName("verification_status") val verificationStatus: String,
+    @SerializedName("verification_rejection_reason") val verificationRejectionReason: String? = null,
+    @SerializedName("academic_year") val academicYear: String? = null,
+    @SerializedName("student_card_image_url") val studentCardImageUrl: String? = null,
+    @SerializedName("verification_document_type") val verificationDocumentType: String? = null,
+    @SerializedName("student_email_domain") val studentEmailDomain: String? = null,
+    @SerializedName("verification_submitted_at") val verificationSubmittedAt: String? = null,
+    @SerializedName("verification_reviewed_at") val verificationReviewedAt: String? = null,
     val roles: List<RoleResponse>,
     val skills: List<SkillResponse>,
     val interests: List<InterestResponse>,
@@ -229,6 +238,7 @@ data class ProjectResponse(
     @SerializedName("end_date") val endDate: String,
     @SerializedName("max_members") val maxMembers: Int,
     val status: String,
+    @SerializedName("is_recruiting") val isRecruiting: Boolean = true,
     @SerializedName("review_status") val reviewStatus: String = "APPROVED",
     @SerializedName("moderation_categories") val moderationCategories: List<String>? = null,
     @SerializedName("moderation_reasons") val moderationReasons: List<String>? = null,
@@ -282,6 +292,41 @@ data class UserCardResponse(
     @SerializedName("match_score") val matchScore: Double,
     @SerializedName("matched_role") val matchedRole: String? = null,
     @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null
+)
+
+data class UserProjectHistoryResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    val role: String,
+    @SerializedName("joined_at") val joinedAt: String,
+    @SerializedName("is_owner") val isOwner: Boolean
+)
+
+data class UserFeedbackItemResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    @SerializedName("evaluator_name") val evaluatorName: String,
+    @SerializedName("overall_score") val overallScore: Double,
+    @SerializedName("feedback_text") val feedbackText: String?,
+    @SerializedName("created_at") val createdAt: String
+)
+
+data class UserDetailResponse(
+    @SerializedName("user_id") val userId: String,
+    @SerializedName("display_name") val displayName: String,
+    @SerializedName("avatar_url") val avatarUrl: String?,
+    @SerializedName("verified_student") val verifiedStudent: Boolean,
+    val university: String?,
+    val bio: String?,
+    val roles: List<RoleResponse>,
+    val skills: List<SkillResponse>,
+    val location: String?,
+    @SerializedName("github_url") val githubUrl: String?,
+    @SerializedName("reputation_score") val reputationScore: Double,
+    @SerializedName("projects_completed") val projectsCompleted: Int,
+    @SerializedName("match_score") val matchScore: Double,
+    @SerializedName("project_history") val projectHistory: List<UserProjectHistoryResponse> = emptyList(),
+    @SerializedName("received_feedbacks") val receivedFeedbacks: List<UserFeedbackItemResponse> = emptyList()
 )
 
 data class ProjectCardResponse(
@@ -425,7 +470,8 @@ data class TaskResponse(
 )
 
 data class TaskStatusUpdateRequest(
-    val status: String
+    val status: String,
+    val notes: String? = null
 )
 
 data class CheckoutResponse(
@@ -585,13 +631,29 @@ data class AdminUserResponse(
     @SerializedName("student_email") val studentEmail: String?,
     val university: String?,
     @SerializedName("student_id") val studentId: String?,
+    @SerializedName("student_email_domain") val studentEmailDomain: String? = null,
     @SerializedName("verification_status") val verificationStatus: String,
     @SerializedName("verification_rejection_reason") val verificationRejectionReason: String?,
     @SerializedName("academic_year") val academicYear: String? = null,
     @SerializedName("student_card_image_url") val studentCardImageUrl: String? = null,
+    @SerializedName("verification_document_type") val verificationDocumentType: String? = null,
     @SerializedName("verification_submitted_at") val verificationSubmittedAt: String? = null,
+    @SerializedName("verification_reviewed_at") val verificationReviewedAt: String? = null,
+    @SerializedName("verification_reviewed_by") val verificationReviewedBy: String? = null,
     val role: String,
     @SerializedName("is_active") val isActive: Boolean
+)
+
+data class StaffOverviewResponse(
+    @SerializedName("total_users") val totalUsers: Int,
+    @SerializedName("active_users") val activeUsers: Int,
+    @SerializedName("banned_users") val bannedUsers: Int,
+    @SerializedName("verified_students") val verifiedStudents: Int,
+    @SerializedName("pending_verifications") val pendingVerifications: Int,
+    @SerializedName("open_reports") val openReports: Int,
+    @SerializedName("flagged_projects") val flaggedProjects: Int,
+    @SerializedName("admin_users") val adminUsers: Int,
+    @SerializedName("moderator_users") val moderatorUsers: Int
 )
 
 data class RejectStudentRequest(

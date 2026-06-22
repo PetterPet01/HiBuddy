@@ -15,9 +15,12 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun SubmitStudentVerificationScreen(
     onBack: () -> Unit,
+    onContinue: (() -> Unit)? = null,
+    allowSkip: Boolean = false,
     profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory)
 ) {
     val uiState by profileViewModel.uiState.collectAsState()
+    val currentProfile = uiState.profile
 
     var fullName by remember { mutableStateOf("") }
     var studentEmail by remember { mutableStateOf("") }
@@ -25,10 +28,26 @@ fun SubmitStudentVerificationScreen(
     var studentId by remember { mutableStateOf("") }
     var academicYear by remember { mutableStateOf("") }
     var studentCardUri by remember { mutableStateOf<Uri?>(null) }
+    var hasPrefilled by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val cardPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri -> studentCardUri = uri }
+
+    LaunchedEffect(Unit) {
+        if (currentProfile == null) {
+            profileViewModel.loadProfile()
+        }
+    }
+
+    LaunchedEffect(currentProfile) {
+        if (currentProfile != null && !hasPrefilled) {
+            fullName = currentProfile.displayName
+            university = currentProfile.university.orEmpty()
+            academicYear = currentProfile.academicYear.orEmpty()
+            hasPrefilled = true
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -46,13 +65,91 @@ fun SubmitStudentVerificationScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Upload your student card and, if possible, use an institutional school email for faster review.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             Spacer(Modifier.height(20.dp))
+
+            currentProfile?.let { profile ->
+                val status = profile.verificationStatus.uppercase()
+                if (status == "PENDING" || status == "REJECTED") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (status == "PENDING") {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.errorContainer
+                            }
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (status == "PENDING") {
+                                    "Your verification is under review."
+                                } else {
+                                    "Your verification was rejected."
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (status == "PENDING") {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                }
+                            )
+                            profile.verificationSubmittedAt?.let {
+                                Text(
+                                    text = "Submitted: $it",
+                                    color = if (status == "PENDING") {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                    }
+                                )
+                            }
+                            profile.verificationRejectionReason?.takeIf { it.isNotBlank() }?.let {
+                                Text(
+                                    text = "Reason: $it",
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                            profile.verificationReviewedAt?.let {
+                                Text(
+                                    text = "Last reviewed: $it",
+                                    color = if (status == "PENDING") {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
 
             OutlinedButton(
                 onClick = { cardPicker.launch("image/*") },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (studentCardUri == null) "Select student card" else "Student card selected")
+                val hasExistingCard = !currentProfile?.studentCardImageUrl.isNullOrBlank()
+                Text(
+                    when {
+                        studentCardUri != null -> "New student card selected"
+                        hasExistingCard -> "Student card already uploaded"
+                        else -> "Select student card"
+                    }
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -70,9 +167,12 @@ fun SubmitStudentVerificationScreen(
             OutlinedTextField(
                 value = studentEmail,
                 onValueChange = { studentEmail = it },
-                label = { Text("Student Email") },
+                label = { Text("Institutional Student Email") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                supportingText = {
+                    Text("Use your school domain email if you have one. Public email providers are rejected.")
+                }
             )
 
             Spacer(Modifier.height(12.dp))
@@ -125,7 +225,8 @@ fun SubmitStudentVerificationScreen(
                             studentEmail = studentEmail,
                             university = university,
                             studentId = studentId,
-                            academicYear = academicYear
+                            academicYear = academicYear,
+                            onSuccess = onContinue
                         )
                     }
                     studentCardUri?.let { uri ->
@@ -138,9 +239,15 @@ fun SubmitStudentVerificationScreen(
                     university.isNotBlank() &&
                     studentId.isNotBlank() &&
                     academicYear.isNotBlank() &&
-                    studentCardUri != null
+                    (studentCardUri != null || !currentProfile?.studentCardImageUrl.isNullOrBlank())
             ) {
-                Text("Submit Verification Request")
+                Text(
+                    if (currentProfile?.verificationStatus?.uppercase() == "REJECTED") {
+                        "Resubmit Verification Request"
+                    } else {
+                        "Submit Verification Request"
+                    }
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -149,7 +256,17 @@ fun SubmitStudentVerificationScreen(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Back")
+                Text(if (allowSkip) "Skip for Now" else "Back")
+            }
+
+            if (onContinue != null) {
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    onClick = onContinue,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Continue to App")
+                }
             }
         }
     }

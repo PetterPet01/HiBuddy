@@ -105,6 +105,14 @@ class ProfileResponse(BaseModel):
     email: str
     verified_student: bool
     university: str | None
+    verification_status: str
+    verification_rejection_reason: str | None
+    academic_year: str | None
+    student_card_image_url: str | None
+    verification_document_type: str | None
+    student_email_domain: str | None
+    verification_submitted_at: datetime | None
+    verification_reviewed_at: datetime | None
     roles: list[RoleResponse] = Field(default_factory=list)
     skills: list[SkillResponse] = Field(default_factory=list)
     interests: list[InterestResponse] = Field(default_factory=list)

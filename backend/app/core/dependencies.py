@@ -18,6 +18,13 @@ from sqlalchemy.orm import selectinload
 from app.models.profile import UserRole
 from app.models.catalog import UserRoleSkill
 
+STAFF_REVIEW_ROLES = {"ADMIN", "MODERATOR"}
+
+
+def is_staff_reviewer_role(role: str | None) -> bool:
+    return role in STAFF_REVIEW_ROLES
+
+
 async def get_authenticated_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: AsyncSession = Depends(get_db),
@@ -53,7 +60,7 @@ async def get_authenticated_user(
 async def get_current_user(
     user: User = Depends(get_authenticated_user),
 ) -> User:
-    if not user.email_verified and user.role != "ADMIN":
+    if not user.email_verified and not is_staff_reviewer_role(user.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email verification required",
@@ -69,11 +76,19 @@ async def get_current_user_or_none(
         return None
     try:
         user = await get_authenticated_user(token, db)
-        if not user.email_verified and user.role != "ADMIN":
+        if not user.email_verified and not is_staff_reviewer_role(user.role):
             return None
         return user
     except HTTPException:
         return None
+
+
+async def get_current_staff_reviewer(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if not is_staff_reviewer_role(current_user.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff reviewer access required")
+    return current_user
 
 
 async def get_current_admin(

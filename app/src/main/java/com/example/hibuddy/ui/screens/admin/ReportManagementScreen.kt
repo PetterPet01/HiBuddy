@@ -63,6 +63,7 @@ fun ReportManagementScreen(
     viewModel: ReportManagementViewModel = viewModel(factory = ReportManagementViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isAdmin = com.example.hibuddy.ServiceLocator.authRepository.isAdmin()
     var pendingAction by remember { mutableStateOf<Pair<AdminReportResponse, String>?>(null) }
     var resolutionReason by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(ReportFilter.All) }
@@ -135,6 +136,7 @@ fun ReportManagementScreen(
             items(filteredReports, key = { it.id }) { report ->
                 ReportCard(
                     report = report,
+                    isAdmin = isAdmin,
                     onDismiss = {
                         resolutionReason = ""
                         pendingAction = report to "DISMISS"
@@ -225,6 +227,7 @@ private fun ReportSummary(reports: List<AdminReportResponse>) {
 @Composable
 private fun ReportCard(
     report: AdminReportResponse,
+    isAdmin: Boolean,
     onDismiss: () -> Unit,
     onBan: () -> Unit
 ) {
@@ -298,16 +301,20 @@ private fun ReportCard(
                     Icon(Icons.Filled.CheckCircle, contentDescription = null)
                     Text("  Dismiss")
                 }
-                Button(
-                    onClick = onBan,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    Icon(Icons.Filled.Block, contentDescription = null)
-                    Text("  Ban")
+                if (isAdmin) {
+                    Button(
+                        onClick = onBan,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Icon(Icons.Filled.Block, contentDescription = null)
+                        Text("  Ban")
+                    }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }

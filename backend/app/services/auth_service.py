@@ -24,7 +24,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.auth import AccountToken, AuthIdentity
-from app.models.chat import RefreshToken
+from app.models.chat import Notification, RefreshToken
 from app.models.profile import UserProfile
 from app.models.user import User
 from app.schemas.auth import (
@@ -43,6 +43,7 @@ from app.schemas.auth import (
 settings = get_settings()
 EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
 PASSWORD_RESET = "PASSWORD_RESET"
+STAFF_REVIEW_ROLES = {"ADMIN", "MODERATOR"}
 
 
 async def _issue_session(
@@ -491,12 +492,32 @@ async def submit_student_verification(
     user.student_email = (
         str(data.student_email).strip().lower() if data.student_email else None
     )
+    user.student_email_domain = (
+        user.student_email.rsplit("@", 1)[-1].lower() if user.student_email else None
+    )
     user.university = data.university.strip()
     user.student_id = data.student_id.strip()
     user.academic_year = data.academic_year.strip()
+    user.verification_document_type = data.document_type
+    user.verified_student = False
     user.verification_status = "PENDING"
     user.verification_rejection_reason = None
     user.verification_submitted_at = datetime.now(timezone.utc)
+    user.verification_reviewed_at = None
+    user.verification_reviewed_by = None
+    admins = (
+        await db.execute(select(User).where(User.role.in_(STAFF_REVIEW_ROLES), User.is_active.is_(True)))
+    ).scalars().all()
+    for admin in admins:
+        db.add(
+            Notification(
+                user_id=admin.id,
+                type="STUDENT_VERIFICATION_SUBMITTED",
+                title="New student verification request",
+                body=f"{user.full_name} submitted {data.document_type.replace('_', ' ').lower()} evidence for review.",
+                related_id=str(user.id),
+            )
+        )
     return {"message": "Student verification submitted for review"}
 
 

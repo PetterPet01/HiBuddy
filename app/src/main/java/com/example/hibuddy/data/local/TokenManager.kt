@@ -70,6 +70,8 @@ class TokenManager(context: Context) {
     fun getUserRole(): String? = prefs.getString("user_role", null)
 
     fun isAdmin(): Boolean = getUserRole() == "ADMIN"
+    fun isModerator(): Boolean = getUserRole() == "MODERATOR"
+    fun isStaffReviewer(): Boolean = isAdmin() || isModerator()
 
     fun saveEmailVerified(verified: Boolean) {
         val editor = prefs.edit().putBoolean("email_verified", verified)

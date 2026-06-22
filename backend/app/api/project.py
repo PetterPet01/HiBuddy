@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.core.dependencies import get_current_user, get_current_user_or_none
+from app.core.dependencies import get_current_user, get_current_user_or_none, is_staff_reviewer_role
 from app.models.user import User
 from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.catalog import SkillCatalog, ProjectRoleSkillRequirement
@@ -147,9 +147,9 @@ async def create_project(
             project.id, moderation["reasons"],
         )
         try:
-            # Query all admins
+            # Query all staff reviewers
             admins_result = await db.execute(
-                select(User).where(User.role == "ADMIN")
+                select(User).where(User.role.in_(["ADMIN", "MODERATOR"]))
             )
             admins = admins_result.scalars().all()
 
@@ -216,7 +216,7 @@ async def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     is_owner = current_user and current_user.id == project.owner_id
-    is_admin = current_user and current_user.role == "ADMIN"
+    is_admin = current_user and is_staff_reviewer_role(current_user.role)
 
     if project.review_status != "APPROVED" and not is_owner and not is_admin:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -331,6 +331,26 @@ async def close_project(
         await _recalculate_user_score(db, assignee_id)
 
     return {"message": "Project closed"}
+
+
+@router.post("/{project_id}/stop-recruiting")
+async def stop_recruiting(
+    project_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await db.get(Project, project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found or not authorized")
+
+    if project.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Closed projects cannot change recruiting state")
+
+    if project.status != "RECRUITING":
+        return {"message": "Recruiting is already stopped"}
+
+    project.status = "ACTIVE"
+    return {"message": "Recruiting stopped"}
 
 
 @router.post("/{project_id}/members")
@@ -496,6 +516,7 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
         end_date=project.end_date,
         max_members=project.max_members,
         status=project.status,
+        is_recruiting=project.status == "RECRUITING",
         review_status=project.review_status,
         moderation_categories=project.moderation_categories,
         moderation_reasons=project.moderation_reasons,

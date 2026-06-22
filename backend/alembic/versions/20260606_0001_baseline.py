@@ -14,6 +14,15 @@ def upgrade() -> None:
     op.execute("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL")
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_year VARCHAR(20)")
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_submitted_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_email_domain VARCHAR(120)")
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_document_type VARCHAR(40)")
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_reviewed_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_reviewed_by UUID")
+    op.execute(
+        "DO $$ BEGIN ALTER TABLE users ADD CONSTRAINT fk_users_verification_reviewed_by "
+        "FOREIGN KEY (verification_reviewed_by) REFERENCES users(id) ON DELETE SET NULL; "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
 
     op.execute("ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS jti_hash VARCHAR(64)")
     op.execute("ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS token_family VARCHAR(36)")

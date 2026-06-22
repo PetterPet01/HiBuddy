@@ -173,10 +173,15 @@ async def update_task_status(
         raise HTTPException(status_code=404, detail="Task not found")
 
     if data.status == "IN_PROGRESS":
-        if task.assignee_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only assignee can start task")
-        if task.status != "TODO":
-            raise HTTPException(status_code=400, detail="Task must be in TODO status")
+        if task.status == "TODO":
+            if task.assignee_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Only assignee can start task")
+        elif task.status == "DONE_REVIEW":
+            project = await db.get(Project, task.project_id)
+            if not project or project.owner_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Only owner can reopen reviewed tasks")
+        else:
+            raise HTTPException(status_code=400, detail="Task can only move to in progress from TODO or DONE_REVIEW")
 
     elif data.status == "DONE_REVIEW":
         if task.assignee_id != current_user.id:
@@ -193,6 +198,10 @@ async def update_task_status(
 
     previous_status = task.status
     task.status = data.status
+    if data.status == "IN_PROGRESS" and previous_status == "DONE_REVIEW":
+        task.checkout_at = None
+        task.checkout_status = None
+        task.checkout_confirmed_at = None
     if previous_status != data.status:
         db.add(TaskCheckoutHistory(
             task_id=task.id,
@@ -200,7 +209,7 @@ async def update_task_status(
             actor_id=current_user.id,
             previous_status=previous_status,
             new_status=data.status,
-            notes=f"Status changed from {previous_status} to {data.status}",
+            notes=data.notes or f"Status changed from {previous_status} to {data.status}",
         ))
     if data.status == "CLOSED":
         task.checkout_confirmed_at = datetime.now(timezone.utc)
