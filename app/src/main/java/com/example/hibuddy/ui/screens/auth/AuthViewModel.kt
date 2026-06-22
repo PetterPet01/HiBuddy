@@ -82,14 +82,14 @@ class AuthViewModel : ViewModel() {
                     val errorMessage = when (e) {
                         is HttpException -> {
                             when (e.code()) {
-                                403 -> "Tài khoản đã bị khóa"
-                                423 -> "Tài khoản bị khóa tạm thời do đăng nhập sai quá nhiều lần"
-                                401 -> "Sai tài khoản hoặc mật khẩu"
-                                else -> "Đăng nhập thất bại (${e.code()})"
+                                403 -> "Account is locked"
+                                423 -> "Account temporarily locked due to too many failed login attempts"
+                                401 -> "Incorrect username or password"
+                                else -> "Login failed (${e.code()})"
                             }
                         }
 
-                        else -> e.message ?: "Đăng nhập thất bại"
+                        else -> e.message ?: "Login failed"
                     }
 
                     _uiState.value = _uiState.value.copy(

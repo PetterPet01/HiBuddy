@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.R
 import com.example.hibuddy.data.remote.dto.*
 import com.example.hibuddy.ui.theme.HiBuddyColors
 import coil.compose.AsyncImage
@@ -61,6 +63,14 @@ fun ProjectDetailScreen(
             },
             actions = {
                 if (isOwner == true && project?.status != "CLOSED") {
+                    if (project?.status == "RECRUITING") {
+                        TextButton(
+                            onClick = { viewModel.stopRecruiting() },
+                            enabled = !uiState.isActionLoading
+                        ) {
+                            Text("Stop Recruiting", color = colorScheme.primary)
+                        }
+                    }
                     TextButton(
                         onClick = { viewModel.closeProject() },
                         enabled = !uiState.isActionLoading
@@ -208,7 +218,7 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Nội dung có thể vi phạm nên đang được xem xét...",
+                                        stringResource(R.string.project_pending_review),
                                         fontSize = 12.sp,
                                         color = HiBuddyColors.onWarningContainer
                                     )
@@ -233,7 +243,7 @@ private fun ProjectInfoTab(project: ProjectResponse, isOwner: Boolean) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Dự án này đã bị từ chối phê duyệt do vi phạm tiêu chuẩn cộng đồng.",
+                                        stringResource(R.string.project_rejected),
                                         fontSize = 12.sp,
                                         color = colorScheme.onErrorContainer
                                     )
@@ -341,27 +351,22 @@ private fun MembersTab(
             }
         }
 
-        if (isOwner) {
+        if (isOwner && applicants.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(12.dp))
                 Text("Pending Applicants", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurfaceVariant)
             }
 
-            if (applicants.isEmpty()) {
-                item {
-                    Text("No applicants yet", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
-                }
-            } else {
-                items(applicants) { applicant ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
+            items(applicants) { applicant ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                                 if (!applicant.avatarUrl.isNullOrBlank()) {
                                     AsyncImage(
                                         model = applicant.avatarUrl,
@@ -420,7 +425,6 @@ private fun MembersTab(
             }
         }
     }
-}
 
 @Composable
 private fun TasksTab(tasks: List<TaskResponse>) {

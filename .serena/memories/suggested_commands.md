@@ -1,0 +1,5 @@
+- Backend setup/run: `cd backend && cp .env.example .env && docker compose up -d && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/alembic upgrade head && .venv/bin/python seed_data.py && .venv/bin/uvicorn app.main:app --reload`
+- Backend tests: `cd backend && .venv/bin/pytest`
+- Backend compile check: `cd backend && python3 -m compileall app alembic seed_data.py`
+- Android build/tests: `./gradlew testDebugUnitTest :app:assembleDebug`
+- Fast text/file search in this repo: prefer `rg` / `rg --files`.

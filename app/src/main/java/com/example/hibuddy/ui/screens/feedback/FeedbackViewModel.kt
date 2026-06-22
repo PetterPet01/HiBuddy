@@ -22,11 +22,15 @@ data class FeedbackUiState(
     val receivedFeedbacks: MyFeedbackSummaryResponse? = null,
     val showReceived: Boolean = false,
     val error: String? = null,
-    val success: String? = null
+    val success: String? = null,
+    val courseSuggestions: List<CourseSuggestionResponse> = emptyList(),
+    val isSuggestionLoading: Boolean = false
 )
 
 class FeedbackViewModel : ViewModel() {
     private val repo = ServiceLocator.feedbackRepository
+    private val suggestionRepo = ServiceLocator.suggestionRepository
+    private val profileRepo = ServiceLocator.profileRepository
     private val _uiState = MutableStateFlow(FeedbackUiState())
     val uiState: StateFlow<FeedbackUiState> = _uiState.asStateFlow()
 
@@ -44,6 +48,45 @@ class FeedbackViewModel : ViewModel() {
             repo.getMyFeedback(projectId).fold(
                 onSuccess = { summary -> _uiState.update { it.copy(receivedFeedbacks = summary) } },
                 onFailure = { }
+            )
+            loadSuggestions()
+        }
+    }
+
+    private fun loadSuggestions() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSuggestionLoading = true) }
+            suggestionRepo.getCourseSuggestions().fold(
+                onSuccess = { suggestions ->
+                    _uiState.update { it.copy(isSuggestionLoading = false, courseSuggestions = suggestions) }
+                },
+                onFailure = { e ->
+                    _uiState.update { it.copy(isSuggestionLoading = false, error = e.message) }
+                }
+            )
+        }
+    }
+
+    fun dismissCourse(courseId: String) {
+        viewModelScope.launch {
+            suggestionRepo.dismissCourse(courseId).fold(
+                onSuccess = {
+                    _uiState.update {
+                        it.copy(courseSuggestions = it.courseSuggestions.filter { c -> c.id != courseId })
+                    }
+                },
+                onFailure = { e -> _uiState.update { it.copy(error = e.message) } }
+            )
+        }
+    }
+
+    fun addCompletedCourse(title: String, source: String, courseId: String?) {
+        viewModelScope.launch {
+            profileRepo.addCompletedCourse(CompletedCourseRequest(title, source, courseId)).fold(
+                onSuccess = {
+                    _uiState.update { it.copy(success = "Course badge added to your profile!") }
+                },
+                onFailure = { e -> _uiState.update { it.copy(error = e.message) } }
             )
         }
     }

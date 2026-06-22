@@ -33,6 +33,29 @@ QUEUE_LIMIT_PER_TYPE = 3
 QUEUE_TTL = timedelta(hours=24)
 
 
+def _slot_skill_requirements(slot: ProjectRoleSlot) -> dict[str, str]:
+    """Skill -> minimum level map for a role slot.
+
+    Prefers the structured ``skill_requirements_rows`` (with catalog skill names
+    and levels) and falls back to the legacy JSON map so older slots still
+    surface requirements on the swipe card.
+    """
+    rows = getattr(slot, "skill_requirements_rows", None) or []
+    structured = {}
+    for row in rows:
+        skill = getattr(row, "skill", None)
+        if skill is not None:
+            structured[skill.name] = row.minimum_level
+    if structured:
+        return structured
+    legacy = slot.skill_requirements or {}
+    return {
+        str(name): str(level or "BEGINNER")
+        for name, level in legacy.items()
+        if str(name).lower() != "requirements"
+    }
+
+
 def _visible_reputation_score(profile: UserProfile | None) -> float:
     if not profile or profile.projects_completed <= 0:
         return 0.0
@@ -564,7 +587,7 @@ async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UU
                 "role_name": s.role_name,
                 "count": s.count,
                 "filled": s.filled,
-                "skill_requirements": s.skill_requirements,
+                "skill_requirements": _slot_skill_requirements(s),
             }
             for s in project.role_slots
         ],
@@ -938,7 +961,7 @@ async def _discover_projects(
                     "role_name": s.role_name,
                     "count": s.count,
                     "filled": s.filled,
-                    "skill_requirements": s.skill_requirements,
+                    "skill_requirements": _slot_skill_requirements(s),
                 }
                 for s in project.role_slots
             ],

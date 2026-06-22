@@ -11,9 +11,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.R
 import com.example.hibuddy.data.remote.dto.NotificationResponse
 import com.example.hibuddy.ui.screens.notifications.NotificationViewModel
 
@@ -31,10 +33,10 @@ fun NotificationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Thông báo") },
+                title = { Text(stringResource(R.string.notifications_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -46,7 +48,7 @@ fun NotificationScreen(
             }
         } else if (uiState.notifications.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Chưa có thông báo nào", color = Color.Gray)
+                Text(stringResource(R.string.notifications_empty), color = Color.Gray)
             }
         } else {
             LazyColumn(Modifier.padding(padding)) {

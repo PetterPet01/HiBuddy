@@ -54,8 +54,8 @@ class Settings(BaseSettings):
 
     SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DIM: int = 384
-    ENABLE_EMBEDDINGS: bool = False
-    ENABLE_MILVUS: bool = False
+    ENABLE_EMBEDDINGS: bool = True
+    ENABLE_MILVUS: bool = True
     MILVUS_CONNECT_TIMEOUT_SECONDS: float = 0.5
 
     SWIPE_DAILY_LIKE_LIMIT: int = 50

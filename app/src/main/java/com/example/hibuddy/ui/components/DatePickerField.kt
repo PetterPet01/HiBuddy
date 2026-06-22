@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.example.hibuddy.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,17 +34,21 @@ fun DatePickerField(
 ) {
     var open by remember { mutableStateOf(false) }
     val state = rememberDatePickerState()
+    val datePlaceholder = stringResource(R.string.create_project_date_placeholder)
+    val selectLabel = stringResource(R.string.action_select)
+    val cancelLabel = stringResource(R.string.action_cancel)
+    val chooseDescription = stringResource(R.string.action_choose) + " " + label
     OutlinedTextField(
         value = value,
         onValueChange = {},
         readOnly = true,
         label = { Text(label) },
-        placeholder = { Text("DD/MM/YYYY") },
+        placeholder = { Text(datePlaceholder) },
         modifier = modifier,
         singleLine = true,
         trailingIcon = {
             IconButton(onClick = { open = true }) {
-                Icon(Icons.Filled.DateRange, contentDescription = "Choose $label")
+                Icon(Icons.Filled.DateRange, contentDescription = chooseDescription)
             }
         }
     )
@@ -60,10 +66,10 @@ fun DatePickerField(
                         }
                         open = false
                     }
-                ) { Text("Select") }
+                ) { Text(selectLabel) }
             },
             dismissButton = {
-                TextButton(onClick = { open = false }) { Text("Cancel") }
+                TextButton(onClick = { open = false }) { Text(cancelLabel) }
             }
         ) {
             DatePicker(state = state)

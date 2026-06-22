@@ -1,0 +1,6 @@
+- Monorepo with Android client in `app/` and FastAPI backend in `backend/`.
+- Backend entrypoint: `backend/app/main.py`; routers cover auth, profiles, projects, swipe/match, chat, uploads, trust/safety, feedback, and admin.
+- Admin APIs are split across `backend/app/api/endpoints/admin.py` (user/admin ops, student verification) and `backend/app/api/admin.py` (flagged project review).
+- User/student verification state lives on `backend/app/models/user.py`; media uploads use MinIO-backed endpoints in `backend/app/api/upload.py`.
+- Android navigation root is `app/src/main/java/com/example/hibuddy/MainActivity.kt`; service wiring is in `ServiceLocator.kt`.
+- Read `mem:tech_stack` for runtime/build details, `mem:suggested_commands` for local workflows, and `mem:task_completion` for validation commands.

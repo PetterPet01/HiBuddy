@@ -375,12 +375,12 @@ class ProfileViewModel : ViewModel() {
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    message = "Đã gửi yêu cầu xác thực sinh viên"
+                    message = "Student verification request submitted"
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Gửi xác thực thất bại"
+                    error = e.message ?: "Failed to submit verification"
                 )
             }
         }

@@ -15,7 +15,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class ProfileRepository(private val api: ApiService) {
     suspend fun getMyProfile(): Result<ProfileResponse> = apiResult { api.getMyProfile() }
-    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = apiResult { api.getUserProfile(userId) }
+    suspend fun getUserProfile(userId: String): Result<UserDetailResponse> = apiResult { api.getUserProfile(userId) }
     suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = apiResult { api.updateMyProfile(request) }
     suspend fun hideProfile(): Result<GenericResponse> = apiResult { api.hideProfile() }
     suspend fun unhideProfile(): Result<GenericResponse> = apiResult { api.unhideProfile() }
@@ -48,6 +48,7 @@ class ProjectRepository(private val api: ApiService) {
     suspend fun getMyProjects(): Result<List<ProjectResponse>> = apiResult { api.getMyProjects() }
     suspend fun getProject(id: String): Result<ProjectResponse> = apiResult { api.getProject(id) }
     suspend fun closeProject(id: String): Result<GenericResponse> = apiResult { api.closeProject(id) }
+    suspend fun stopRecruiting(id: String): Result<GenericResponse> = apiResult { api.stopRecruiting(id) }
     suspend fun addMember(
         projectId: String,
         userId: String,
@@ -55,6 +56,12 @@ class ProjectRepository(private val api: ApiService) {
         roleSlotId: String? = null,
         matchId: String? = null
     ): Result<GenericResponse> = apiResult { api.addMember(projectId, userId, role, roleSlotId, matchId) }
+}
+
+class CatalogRepository(private val api: ApiService) {
+    suspend fun getRoles(query: String? = null): Result<List<CatalogItemResponse>> = apiResult { api.getCatalogRoles(query) }
+    suspend fun getSkills(query: String? = null): Result<List<CatalogItemResponse>> = apiResult { api.getCatalogSkills(query) }
+    suspend fun getRoleSkills(roleId: String): Result<List<CatalogItemResponse>> = apiResult { api.getCatalogRoleSkills(roleId) }
 }
 
 class SwipeRepository(private val api: ApiService) {
@@ -85,6 +92,7 @@ class TaskRepository(private val api: ApiService) {
     suspend fun updateTaskStatus(taskId: String, status: String): Result<GenericResponse> = apiResult { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status)) }
     suspend fun checkoutTask(taskId: String): Result<CheckoutResponse> = apiResult { api.checkoutTask(taskId) }
     suspend fun confirmCheckout(taskId: String): Result<GenericResponse> = apiResult { api.confirmCheckout(taskId) }
+    suspend fun rejectTask(taskId: String, notes: String? = null): Result<GenericResponse> = apiResult { api.rejectTask(taskId, TaskRejectRequest(notes)) }
     suspend fun getDashboard(projectId: String): Result<DashboardResponse> = apiResult { api.getDashboard(projectId) }
     suspend fun evaluateMember(projectId: String, memberId: String, request: EvaluationRequest): Result<EvaluationResponse> = runCatching {
         api.evaluateMember(projectId, memberId, request)

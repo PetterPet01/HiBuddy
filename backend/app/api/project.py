@@ -17,7 +17,7 @@ from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectCardResponse,
     RoleSlotCreate, RoleSlotResponse, ProjectMemberResponse,
 )
-#from app.services.embedding_service import upsert_project_vector, delete_project_vector
+from app.services.embedding_service import upsert_project_vector, delete_project_vector
 from app.services.notification_service import notify_member_added
 from app.services.mistral_service import moderate_project_content
 from app.config import get_settings
@@ -175,8 +175,7 @@ async def create_project(
             logger.error(f"Failed to notify admins for flagged project: {e}")
     else:
         project.review_status = "APPROVED"
-        embedding_id = None
-        #embedding_id = upsert_project_vector(project_for_embedding or project)
+        embedding_id = upsert_project_vector(project_for_embedding or project)
         if embedding_id:
             project.embedding_id = embedding_id
 
@@ -248,8 +247,7 @@ async def update_project(
         setattr(project, field_name, value)
 
     project_for_embedding = await _get_project_for_embedding(db, project.id)
-    #upsert_project_vector(project_for_embedding or project)
-    pass
+    upsert_project_vector(project_for_embedding or project)
 
     return await _build_project_response(db, project)
 
@@ -274,7 +272,7 @@ async def close_project(
 
     now = datetime.now(timezone.utc)
     project.status = "CLOSED"
-    #delete_project_vector(project)
+    delete_project_vector(project)
 
     tasks_result = await db.execute(
         select(Task).where(
@@ -289,7 +287,7 @@ async def close_project(
         if previous_status != "DONE_REVIEW":
             task.checkout_status = "NOT_COMPLETED"
         task.checkout_confirmed_at = now
-        affected_assignees.add(task.assignee_id)
+        affected_assignees.update(a.assignee_id for a in task.assignments)
         db.add(TaskCheckoutHistory(
             task_id=task.id,
             action="PROJECT_CLOSE",
@@ -334,6 +332,27 @@ async def close_project(
         await _recalculate_user_score(db, assignee_id)
 
     return {"message": "Project closed"}
+
+
+@router.post("/{project_id}/stop-recruiting")
+async def stop_recruiting(
+    project_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await db.get(Project, project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found or not authorized")
+
+    if project.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Project is already closed")
+
+    if project.status != "RECRUITING":
+        return {"message": "Project is not recruiting", "status": project.status}
+
+    project.status = "ACTIVE"
+    delete_project_vector(project)
+    return {"message": "Project is now active and no longer recruiting", "status": project.status}
 
 
 @router.post("/{project_id}/members")
@@ -422,7 +441,7 @@ async def add_member(
     all_slots_filled = bool(slots) and all(s.filled >= s.count for s in slots)
     if member_count + 1 >= project.max_members or all_slots_filled:
         project.status = "ACTIVE"
-        #delete_project_vector(project)
+        delete_project_vector(project)
 
     return {"message": "Member added successfully"}
 

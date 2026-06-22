@@ -37,25 +37,27 @@ async def create_notification(
 
 
 async def notify_task_assigned(db: AsyncSession, task: Task):
-    await create_notification(
-        db,
-        task.assignee_id,
-        "TASK_ASSIGNED",
-        "New task assigned",
-        f"'{task.title}' has been assigned to you",
-        str(task.id),
-    )
+    for assignment in task.assignments:
+        await create_notification(
+            db,
+            assignment.assignee_id,
+            "TASK_ASSIGNED",
+            "New task assigned",
+            f"'{task.title}' has been assigned to you",
+            str(task.id),
+        )
 
 
 async def notify_deadline_reminder(db: AsyncSession, task: Task):
-    await create_notification(
-        db,
-        task.assignee_id,
-        "DEADLINE_REMINDER",
-        "Task deadline approaching",
-        f"'{task.title}' is due in 2 days",
-        str(task.id),
-    )
+    for assignment in task.assignments:
+        await create_notification(
+            db,
+            assignment.assignee_id,
+            "DEADLINE_REMINDER",
+            "Task deadline approaching",
+            f"'{task.title}' is due in 2 days",
+            str(task.id),
+        )
     await create_notification(
         db,
         task.creator_id,
@@ -75,6 +77,19 @@ async def notify_checkout(db: AsyncSession, task: Task, checkout_status: str, as
         f"Status: {checkout_status}. Review within {settings.CHECKOUT_REVIEW_HOURS} hours.",
         str(task.id),
     )
+
+
+async def notify_task_rejected(db: AsyncSession, task: Task, notes: str | None = None):
+    detail = f" Note: {notes}" if notes else ""
+    for assignment in task.assignments:
+        await create_notification(
+            db,
+            assignment.assignee_id,
+            "TASK_REJECTED",
+            "Task sent back for revision",
+            f"'{task.title}' was returned by the owner. Please revise and resubmit.{detail}",
+            str(task.id),
+        )
 
 
 async def notify_member_added(db: AsyncSession, user_id: UUID, project_id: UUID):

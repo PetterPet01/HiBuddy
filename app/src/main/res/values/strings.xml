@@ -1,3 +1,131 @@
 <resources>
+    <!-- App name and global -->
     <string name="app_name">HiBuddy</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_discover">Discover</string>
+    <string name="nav_matches">Matches</string>
+    <string name="nav_tasks">Tasks</string>
+    <string name="nav_profile">Profile</string>
+    <string name="nav_notifications">Notify</string>
+    <string name="cd_notifications_badge">Notifications badge</string>
+
+    <!-- Notification screen -->
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_empty">No notifications yet</string>
+
+    <!-- Feedback screen -->
+    <string name="feedback_title">Feedback</string>
+    <string name="feedback_submit">Submit feedback</string>
+    <string name="feedback_overall_score">Overall score</string>
+    <string name="feedback_comment_hint">Add a comment (optional)</string>
+    <string name="feedback_course_suggestions">Recommended courses</string>
+    <string name="feedback_course_empty">No course recommendations right now.</string>
+    <string name="feedback_screen_title">Feedback - %1$s</string>
+    <string name="feedback_toggle">Toggle</string>
+    <string name="feedback_select_member">Choose a member to give feedback:</string>
+    <string name="feedback_sent">Sent</string>
+    <string name="feedback_give_to">Give feedback to %1$s</string>
+    <string name="feedback_anonymous_notice">Your feedback is anonymous. The recipient won\'t know who sent it.</string>
+    <string name="feedback_comment_label">Your comment</string>
+    <string name="feedback_submit_anonymous">Submit anonymous feedback</string>
+    <string name="feedback_empty">No feedback yet</string>
+    <string name="feedback_total">Total: %1$d feedback</string>
+    <string name="feedback_areas_to_improve">Areas to improve:</string>
+    <string name="feedback_weaknesses">Weaknesses: %1$s</string>
+
+    <!-- Create Project screen -->
+    <string name="create_project_title">Create Project</string>
+    <string name="create_project_field">Field</string>
+    <string name="create_project_description">Description</string>
+    <string name="create_project_specific_goal">Specific Goal (optional)</string>
+    <string name="create_project_start_date">Start Date</string>
+    <string name="create_project_end_date">End Date</string>
+    <string name="create_project_max_members">Max Members</string>
+    <string name="create_project_work_mode">Work Mode</string>
+    <string name="create_project_commitment">Commitment</string>
+    <string name="create_project_add_role_slot">Add Role Slot</string>
+    <string name="create_project_additional_requirements">Additional Requirements (optional)</string>
+    <string name="create_project_member_benefits">Member Benefits (optional)</string>
+    <string name="create_project_button">Create Project</string>
+    <string name="create_project_role_name">Role Name</string>
+    <string name="create_project_count">Count</string>
+    <string name="create_project_skill_requirements">Skill Requirements (comma-separated, optional)</string>
+    <string name="create_project_date_placeholder">DD/MM/YYYY</string>
+
+    <!-- Project Detail -->
+    <string name="project_close">Close Project</string>
+    <string name="project_tab_info">Info</string>
+    <string name="project_tab_members">Members</string>
+    <string name="project_tab_tasks">Tasks</string>
+    <string name="project_tab_dashboard">Dashboard</string>
+    <string name="project_role_slots">Role Slots</string>
+    <string name="project_pending_review">Content under review</string>
+    <string name="project_rejected">This project was rejected for community guideline violations.</string>
+    <string name="project_no_tasks">No tasks yet</string>
+    <string name="project_no_applicants">No applicants yet</string>
+    <string name="project_member_owner">Owner</string>
+
+    <!-- Tasks screen / kanban -->
+    <string name="tasks_title">Project Tasks</string>
+    <string name="tasks_no_projects">No projects yet</string>
+    <string name="tasks_viewing">Viewing:</string>
+    <string name="tasks_open_workspace">Open project workspace</string>
+    <string name="tasks_open_button">Open</string>
+    <string name="tasks_add_task">Add Task</string>
+    <string name="tasks_column_todo">To Do</string>
+    <string name="tasks_column_in_progress">In Progress</string>
+    <string name="tasks_column_review">Review</string>
+    <string name="tasks_column_closed">Closed</string>
+
+    <!-- Discover screen -->
+    <string name="discover_create_project">Create Project</string>
+    <string name="discover_owner_mode">Owner Mode</string>
+    <string name="discover_contributor_mode">Contributor Mode</string>
+    <string name="discover_empty_people">You\'ve seen everyone!</string>
+    <string name="discover_empty_projects">No new projects to show.</string>
+    <string name="discover_empty_subtitle">Check back later or update your profile to expand your pool.</string>
+    <string name="discover_create_new_project">Create a New Project</string>
+    <string name="discover_select_recruiting_project">Select recruiting project</string>
+    <string name="discover_looking_for">LOOKING FOR</string>
+    <string name="discover_verified">Verified</string>
+    <string name="discover_stat_projects">Projects</string>
+    <string name="discover_stat_rep_score">Rep Score</string>
+    <string name="discover_stat_location">Location</string>
+
+    <!-- Chat screen -->
+    <string name="chat_back">Back</string>
+    <string name="chat_refresh">Refresh</string>
+    <string name="chat_more_options">More options</string>
+    <string name="chat_invite_to_project">Invite to Project</string>
+    <string name="chat_report_user">Report user</string>
+    <string name="chat_block_user">Block user</string>
+    <string name="chat_conversation_default">Conversation</string>
+    <string name="chat_online">Online</string>
+    <string name="chat_offline">Offline</string>
+    <string name="chat_typing">Typing…</string>
+    <string name="chat_last_seen_just_now">Last seen just now</string>
+    <string name="chat_last_seen_minutes">Last seen %1$d minutes ago</string>
+    <string name="chat_last_seen_hours">Last seen %1$d hours ago</string>
+    <string name="chat_last_seen_yesterday">Last seen yesterday</string>
+    <string name="chat_start_conversation">Start the conversation</string>
+    <string name="chat_sync_hint">Messages sync in real time and stay available on this device.</string>
+    <string name="chat_load_earlier">Load earlier messages</string>
+    <string name="chat_tap_to_retry">Tap to retry</string>
+    <string name="chat_block_title">Block this user?</string>
+    <string name="chat_block_message">They won\'t be able to message you or see your profile.</string>
+    <string name="chat_block_reason_hint">Reason (optional)</string>
+    <string name="chat_report_title">Report user</string>
+    <string name="chat_report_message">Help us understand what happened.</string>
+    <string name="chat_report_reason_hint">Describe the issue</string>
+
+    <!-- Common actions -->
+    <string name="action_select">Select</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_submit">Submit</string>
+    <string name="action_close">Close</string>
+    <string name="action_back">Back</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_choose">Choose</string>
 </resources>

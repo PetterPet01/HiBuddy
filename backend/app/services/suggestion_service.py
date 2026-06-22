@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.task import Task
+from app.models.task import Task, TaskAssignment
 from app.models.chat import CourseSuggestion
 from app.models.profile import UserSkill, UserProfile, UserRole
 from app.models.feedback import AnonymousFeedback
@@ -191,7 +191,9 @@ async def generate_course_suggestions(db: AsyncSession, user_id: UUID) -> list[d
 
     weak_task_result = await db.execute(
         select(Task).where(
-            Task.assignee_id == user_id,
+            Task.id.in_(
+                select(TaskAssignment.task_id).where(TaskAssignment.assignee_id == user_id)
+            ),
             Task.checkout_status.in_(["LATE", "LATE_CHECKOUT", "NOT_COMPLETED"]),
         )
     )

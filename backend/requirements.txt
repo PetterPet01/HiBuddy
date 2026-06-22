@@ -25,3 +25,4 @@ firebase-admin==6.5.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
 asgi-lifespan==2.1.0
+rapidfuzz==3.10.1

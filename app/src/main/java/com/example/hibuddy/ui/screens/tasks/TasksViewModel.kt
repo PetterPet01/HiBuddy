@@ -101,6 +101,22 @@ class TasksViewModel : ViewModel() {
         }
     }
 
+    fun rejectTask(taskId: String, notes: String?) {
+        viewModelScope.launch {
+            taskRepository.rejectTask(taskId, notes).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(message = "Task sent back for revision")
+                    val pid = _uiState.value.selectedProjectId
+                    if (pid != null) {
+                        loadTasks(pid)
+                        loadDashboard(pid)
+                    }
+                },
+                onFailure = { e -> _uiState.value = _uiState.value.copy(error = e.message) }
+            )
+        }
+    }
+
     fun loadDashboard(projectId: String) {
         viewModelScope.launch {
             taskRepository.getDashboard(projectId).fold(

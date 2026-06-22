@@ -42,8 +42,13 @@ import kotlinx.coroutines.launch
 import com.example.hibuddy.ui.screens.profile.CompleteProfileScreen
 import com.example.hibuddy.ui.screens.profile.UserDetailScreen
 import androidx.compose.runtime.saveable.rememberSaveable
-import com.example.hibuddy.ui.screens.admin.AdminScreen
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.R
+import com.example.hibuddy.ui.components.NotificationBadgeDot
+import com.example.hibuddy.ui.components.NotificationBadgeViewModel
 import com.example.hibuddy.ui.screens.admin.StudentVerificationScreen
+import com.example.hibuddy.ui.screens.admin.AdminScreen
 import com.example.hibuddy.ui.screens.profile.SubmitStudentVerificationScreen
 import com.example.hibuddy.ui.screens.admin.UserManagementScreen
 import com.example.hibuddy.ui.screens.admin.ReportManagementScreen
@@ -219,6 +224,10 @@ fun HiBuddyApp() {
                         } else {
                             navController.popBackStack()
                         }
+                    },
+
+                    onOpenStudentVerification = {
+                        navController.navigate(Routes.STUDENT_VERIFICATION)
                     },
 
                     onComplete = {
@@ -471,7 +480,8 @@ fun HiBuddyApp() {
             val userId = backStackEntry.arguments?.getString("userId") ?: ""
             UserDetailScreen(
                 userId = userId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenProject = { projectId -> navController.navigate(Routes.projectDetail(projectId)) }
             )
         }
 
@@ -605,16 +615,25 @@ fun MainScaffold(
 @Composable
 fun HiBuddyBottomNav(
     current: String,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    badgeViewModel: NotificationBadgeViewModel = viewModel(
+        factory = NotificationBadgeViewModel.Factory
+    )
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val labelDiscover = stringResource(R.string.nav_discover)
+    val labelMatches = stringResource(R.string.nav_matches)
+    val labelTasks = stringResource(R.string.nav_tasks)
+    val labelProfile = stringResource(R.string.nav_profile)
+    val labelNotifications = stringResource(R.string.nav_notifications)
     val items = listOf(
-        Triple("discover", Icons.Filled.Explore, "Discover"),
-        Triple("matches", Icons.Filled.Favorite, "Matches"),
-        Triple("tasks", Icons.AutoMirrored.Filled.Assignment, "Tasks"),
-        Triple("profile", Icons.Filled.Person, "Profile"),
-        Triple("notifications", Icons.Filled.Notifications, "Notify"),
+        Triple("discover", Icons.Filled.Explore, labelDiscover),
+        Triple("matches", Icons.Filled.Favorite, labelMatches),
+        Triple("tasks", Icons.AutoMirrored.Filled.Assignment, labelTasks),
+        Triple("profile", Icons.Filled.Person, labelProfile),
+        Triple("notifications", Icons.Filled.Notifications, labelNotifications),
     )
+    val unreadCount by badgeViewModel.unreadCount.collectAsState()
 
     NavigationBar(
         containerColor = colorScheme.surface,
@@ -622,14 +641,31 @@ fun HiBuddyBottomNav(
     ) {
         items.forEach { (key, icon, label) ->
             val selected = current == key
+            val isNotifications = key == "notifications"
             NavigationBarItem(
                 selected = selected,
                 onClick = { onSelect(key) },
                 icon = {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label
-                    )
+                    if (isNotifications) {
+                        Box {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label
+                            )
+                            NotificationBadgeDot(
+                                unreadCount = unreadCount,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 2.dp)
+                                    .size(8.dp)
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label
+                        )
+                    }
                 },
                 label = {
                     Text(

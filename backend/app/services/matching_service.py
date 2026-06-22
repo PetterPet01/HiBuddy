@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.models.project import Project, ProjectRoleSlot
 from app.models.user import User
+from app.services.fuzzy_match import normalize_skill, fuzzy_score
 
 
 ROLE_ALIASES = {
@@ -68,6 +69,24 @@ def _slot_requirements(slot: ProjectRoleSlot) -> dict[str, tuple[str, bool]]:
     }
 
 
+SKILL_FUZZY_THRESHOLD = 85.0
+
+
+def _user_skill_level(user_skills: dict[str, str], required_skill: str) -> int:
+    """Highest level the user holds for a required skill, using fuzzy/alias match.
+
+    Exact (alias-normalized) match wins; otherwise we accept the best level
+    among user skills whose fuzzy similarity clears the threshold.
+    """
+    if required_skill in user_skills:
+        return LEVEL_VALUE.get(user_skills[required_skill], 0)
+    best = 0
+    for owned_skill, level in user_skills.items():
+        if fuzzy_score(required_skill, owned_skill) >= SKILL_FUZZY_THRESHOLD:
+            best = max(best, LEVEL_VALUE.get(level, 0))
+    return best
+
+
 def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
     user_roles = {normalize_name(role.role_name) for role in getattr(user, "roles", [])}
     slot_role = normalize_name(slot.role_name)
@@ -91,7 +110,7 @@ def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
         for skill_name, (minimum_level, required) in requirements.items():
             weight = 2.0 if required else 1.0
             total += weight
-            actual = LEVEL_VALUE.get(user_skills.get(skill_name, ""), 0)
+            actual = _user_skill_level(user_skills, skill_name)
             required_level = LEVEL_VALUE.get(minimum_level.upper(), 1)
             if actual >= required_level:
                 earned += weight

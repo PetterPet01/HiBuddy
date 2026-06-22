@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.data.remote.dto.*
 import com.example.hibuddy.ui.screens.tasks.TasksViewModel
 import com.example.hibuddy.ui.theme.HiBuddyColors
+import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 
 @Composable
 fun TasksScreen(
@@ -75,7 +76,7 @@ fun TasksScreen(
                     Text("No projects yet", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
                 } else if (projects.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Viewing:  ", fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
+                        Text("Viewing:  ", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
                         projects.forEach { project ->
                             val isSelected = project.id == selectedProjectId
                             val projectColor = remember(project.id) {
@@ -98,15 +99,19 @@ fun TasksScreen(
                             Column {
                                 Text(
                                     text = selectedProject.title,
-                                    fontSize = 13.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colorScheme.onBackground,
+                                    lineHeight = 21.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.clickable { onOpenProject(selectedProject.id) }
                                 )
                                 Text(
                                     text = "Open project workspace",
-                                    fontSize = 11.sp,
+                                    fontSize = 13.sp,
                                     color = colorScheme.onSurfaceVariant,
+                                    lineHeight = 18.sp,
                                     modifier = Modifier.clickable { onOpenProject(selectedProject.id) }
                                 )
                             }
@@ -121,7 +126,7 @@ fun TasksScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colorScheme.onSurface)
                     ) {
-                        Text("Open", fontSize = 12.sp)
+                        Text("Open Workspace", fontSize = 12.sp)
                     }
                     if (isOwner) {
                         IconButton(
@@ -180,6 +185,10 @@ fun TasksScreen(
             },
             onConfirmCheckout = {
                 viewModel.confirmCheckout(task.id)
+                showStatusDialog = null
+            },
+            onReject = { notes ->
+                viewModel.rejectTask(task.id, notes)
                 showStatusDialog = null
             }
         )
@@ -269,7 +278,7 @@ fun TaskCardItem(task: TaskResponse, onClick: () -> Unit) {
                         Text(
                             text = task.tag,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = colorScheme.onSurfaceVariant
                         )
                     }
@@ -286,7 +295,7 @@ fun TaskCardItem(task: TaskResponse, onClick: () -> Unit) {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(modifier = Modifier.size(6.dp).background(priorityColor, CircleShape))
-                    Text(text = task.priority.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 10.sp, color = priorityColor)
+                    Text(text = task.priority.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 11.sp, color = priorityColor)
                 }
             }
 
@@ -309,19 +318,36 @@ fun TaskCardItem(task: TaskResponse, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(20.dp).background(colorScheme.primary, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = (task.assigneeName ?: "?").first().toString(), fontSize = 10.sp, color = colorScheme.onPrimary)
+                    val names = if (task.assignees.isNotEmpty()) {
+                        task.assignees.map { it.displayName ?: "?" }
+                    } else {
+                        listOf(task.assigneeName ?: "?")
+                    }
+                    val shown = names.take(3)
+                    shown.forEachIndexed { index, name ->
+                        Box(
+                            modifier = Modifier
+                                .offset(x = if (index == 0) 0.dp else (-6 * index).dp)
+                                .size(20.dp)
+                                .background(colorScheme.primary, CircleShape)
+                                .border(1.dp, colorScheme.surfaceVariant, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = name.first().toString(), fontSize = 11.sp, color = colorScheme.onPrimary)
+                        }
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = task.assigneeName ?: "Unknown", fontSize = 11.sp, color = colorScheme.onSurfaceVariant)
+                    val label = when {
+                        names.size == 1 -> names.first()
+                        names.size <= 3 -> "${names.size} assignees"
+                        else -> "${shown.joinToString(", ")} +${names.size - 3}"
+                    }
+                    Text(text = label, fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
                 }
 
                 val deadlineText = task.deadline.take(10)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = deadlineText, fontSize = 11.sp, color = colorScheme.onSurfaceVariant)
+                    Text(text = deadlineText, fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -336,9 +362,17 @@ fun TaskActionDialog(
     onDismiss: () -> Unit,
     onAction: (String) -> Unit,
     onCheckout: () -> Unit,
-    onConfirmCheckout: () -> Unit
+    onConfirmCheckout: () -> Unit,
+    onReject: (String?) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val isAssignee = currentUserId in task.assigneeIds
+    var showRejectField by remember { mutableStateOf(false) }
+    var rejectNotes by remember { mutableStateOf("") }
+    val assigneeLabel = when {
+        task.assignees.isNotEmpty() -> task.assignees.joinToString(", ") { it.displayName ?: "Unknown" }
+        else -> task.assigneeName ?: "Unknown"
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colorScheme.surface,
@@ -350,7 +384,11 @@ fun TaskActionDialog(
             Column {
                 Text("Status: ${task.status}", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
                 Text("Priority: ${task.priority}", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
-                Text("Assignee: ${task.assigneeName ?: "Unknown"}", fontSize = 14.sp, color = colorScheme.onSurfaceVariant)
+                Text(
+                    if (task.assigneeIds.size > 1) "Assignees: $assigneeLabel" else "Assignee: $assigneeLabel",
+                    fontSize = 14.sp,
+                    color = colorScheme.onSurfaceVariant
+                )
                 if (task.description != null) {
                     Spacer(Modifier.height(8.dp))
                     Text(task.description, fontSize = 13.sp, color = colorScheme.onSurface)
@@ -361,7 +399,7 @@ fun TaskActionDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 when (task.status) {
                     "TODO" -> {
-                        if (task.assigneeId == currentUserId) {
+                        if (isAssignee) {
                             Button(
                                 onClick = { onAction("IN_PROGRESS") },
                                 modifier = Modifier.fillMaxWidth(),
@@ -373,7 +411,7 @@ fun TaskActionDialog(
                             ) { Text("Start Task") }
                         } else {
                             Text(
-                                "Only ${task.assigneeName ?: "the assignee"} can start this task",
+                                "Only an assignee can start this task",
                                 fontSize = 13.sp,
                                 color = colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 8.dp)
@@ -381,7 +419,7 @@ fun TaskActionDialog(
                         }
                     }
                     "IN_PROGRESS" -> {
-                        if (task.assigneeId == currentUserId) {
+                        if (isAssignee) {
                             Button(
                                 onClick = onCheckout,
                                 modifier = Modifier.fillMaxWidth(),
@@ -393,7 +431,7 @@ fun TaskActionDialog(
                             ) { Text("Checkout (Done)") }
                         } else {
                             Text(
-                                "Waiting for ${task.assigneeName ?: "the assignee"} to finish this task",
+                                "Waiting for an assignee to finish this task",
                                 fontSize = 13.sp,
                                 color = colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 8.dp)
@@ -402,15 +440,58 @@ fun TaskActionDialog(
                     }
                     "DONE_REVIEW" -> {
                         if (isOwner) {
-                            Button(
-                                onClick = onConfirmCheckout,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = HiBuddyColors.successContainer,
-                                    contentColor = HiBuddyColors.onSuccessContainer
-                                ),
-                                shape = RoundedCornerShape(8.dp)
-                            ) { Text("Approve and Close") }
+                            if (showRejectField) {
+                                OutlinedTextField(
+                                    value = rejectNotes,
+                                    onValueChange = { rejectNotes = it },
+                                    label = { Text("Reason for changes (optional)") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    maxLines = 4,
+                                    colors = hiBuddyTextFieldColors()
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showRejectField = false },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) { Text("Cancel") }
+                                    Button(
+                                        onClick = { onReject(rejectNotes.ifBlank { null }) },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colorScheme.error,
+                                            contentColor = colorScheme.onError
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) { Text("Send Back") }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showRejectField = true },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colorScheme.error),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) { Text("Reject") }
+                                    Button(
+                                        onClick = onConfirmCheckout,
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = HiBuddyColors.successContainer,
+                                            contentColor = HiBuddyColors.onSuccessContainer
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) { Text("Approve") }
+                                }
+                            }
                         } else {
                             Text("Waiting for project owner review", fontSize = 13.sp, color = colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
                         }

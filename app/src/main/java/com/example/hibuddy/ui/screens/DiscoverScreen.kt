@@ -95,6 +95,7 @@ fun DiscoverScreen(
     val uiState by viewModel.uiState.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
     val snackbarHostState = remember { SnackbarHostState() }
+    var showSuperSwipeEffect by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadCards()
@@ -219,7 +220,10 @@ fun DiscoverScreen(
                             onBlockedSwipe = ::reportBlockedSwipe,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
-                            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+                            onSuperLike = {
+                                showSuperSwipeEffect = true
+                                viewModel.swipe("SUPER_LIKE")
+                            },
                             onQueueDrop = { viewModel.queueCurrentCard() }
                         )
                     } else {
@@ -241,7 +245,10 @@ fun DiscoverScreen(
                             onBlockedSwipe = ::reportBlockedSwipe,
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
-                            onSuperLike = { viewModel.swipe("SUPER_LIKE") },
+                            onSuperLike = {
+                                showSuperSwipeEffect = true
+                                viewModel.swipe("SUPER_LIKE")
+                            },
                             onQueueDrop = { viewModel.queueCurrentCard() }
                         )
                     }
@@ -255,6 +262,19 @@ fun DiscoverScreen(
                 superLikesLeft = uiState.dailySuperlikesRemaining,
                 likesLeft = uiState.dailyLikesRemaining,
                 enabled = topCards.isNotEmpty() && !interactionBlocked
+            )
+
+            Text(
+                text = if (uiState.dailySuperlikesRemaining > 0) {
+                    "Super Swipes: ${uiState.dailySuperlikesRemaining}/3 remaining"
+                } else {
+                    "Super swipe limit reached. Unlock more tomorrow!"
+                },
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (uiState.dailySuperlikesRemaining > 0) colorScheme.onSurfaceVariant.copy(alpha = 0.7f) else colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
             )
 
             Spacer(Modifier.height(4.dp))
@@ -274,6 +294,10 @@ fun DiscoverScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 84.dp)
         )
+
+        if (showSuperSwipeEffect) {
+            SuperSwipeVisualEffect(onAnimationEnd = { showSuperSwipeEffect = false })
+        }
     }
 
     if (uiState.matchedProjectId != null) {
@@ -805,20 +829,31 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
         colors[kotlin.math.abs(card.userId.hashCode()) % colors.size]
     }
     val avatarTextColor = if (avatarColor.luminance() > 0.5f) Color(0xFF15161F) else Color.White
-    Box(
+    Column(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .background(colorScheme.surface)
     ) {
+        // Avatar / hero header — fixed height, own box so it never collides with text.
         Box(
-            modifier = Modifier.fillMaxWidth().height(260.dp).background(
-                Brush.radialGradient(colors = listOf(avatarColor.copy(alpha = 0.45f), colorScheme.surface), radius = 400f)
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(avatarColor.copy(alpha = 0.45f), colorScheme.surface),
+                        radius = 400f
+                    )
+                ),
             contentAlignment = Alignment.Center
         ) {
             Box(
-                modifier = Modifier.size(100.dp).clip(CircleShape).background(avatarColor).border(2.dp, colorScheme.surface, CircleShape),
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(CircleShape)
+                    .background(avatarColor)
+                    .border(2.dp, colorScheme.surface, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (!card.avatarUrl.isNullOrBlank()) {
@@ -829,44 +864,99 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    Text(text = card.displayName.firstOrNull()?.uppercase() ?: "?", fontSize = 48.sp, color = avatarTextColor)
+                    Text(
+                        text = card.displayName.firstOrNull()?.uppercase() ?: "?",
+                        fontSize = 48.sp,
+                        color = avatarTextColor
+                    )
                 }
             }
-            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), shape = RoundedCornerShape(20.dp), color = colorScheme.surface.copy(alpha = 0.88f)) {
-                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = colorScheme.surface.copy(alpha = 0.88f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("🎯", fontSize = 12.sp)
-                    Text("${card.matchScore.toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = when {
-                        card.matchScore >= 90 -> HiBuddyColors.success
-                        card.matchScore >= 75 -> colorScheme.primary
-                        else -> HiBuddyColors.warning
-                    })
+                    Text(
+                        "${card.matchScore.toInt()}%",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            card.matchScore >= 90 -> HiBuddyColors.success
+                            card.matchScore >= 75 -> colorScheme.primary
+                            else -> HiBuddyColors.warning
+                        }
+                    )
                 }
             }
             if (card.verifiedStudent) {
-                Surface(modifier = Modifier.align(Alignment.TopStart).padding(16.dp), shape = RoundedCornerShape(20.dp), color = colorScheme.primary) {
-                    Text("🎓 Verified", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorScheme.onPrimary)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = colorScheme.primary
+                ) {
+                    Text(
+                        "🎓 Verified",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colorScheme.onPrimary
+                    )
                 }
             }
         }
 
-        Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(card.displayName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface)
+        // Text content lives below the avatar so it can never overlap.
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    card.displayName,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorScheme.onSurface
+                )
             }
             Text(
                 "${card.university ?: ""}  ·  ${card.location ?: ""}",
-                fontSize = 12.sp, color = colorScheme.onSurfaceVariant
+                fontSize = 12.sp,
+                color = colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 card.bio ?: "",
-                fontSize = 13.sp, color = colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 19.sp
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 card.roles.take(3).forEach { role ->
-                    Surface(shape = RoundedCornerShape(8.dp), color = colorScheme.primaryContainer, border = BorderStroke(1.dp, colorScheme.primary.copy(alpha = 0.4f))) {
-                        Text(role.roleName, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), fontSize = 11.sp, color = colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colorScheme.primaryContainer,
+                        border = BorderStroke(1.dp, colorScheme.primary.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            role.roleName,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            fontSize = 11.sp,
+                            color = colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -880,7 +970,11 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
                         else -> colorScheme.primary
                     }
                     Surface(shape = RoundedCornerShape(6.dp), color = skillColor.copy(alpha = 0.15f)) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(modifier = Modifier.size(6.dp).background(skillColor, CircleShape))
                             Text(skill.skillName, fontSize = 11.sp, color = skillColor)
                         }
@@ -891,7 +985,11 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatChip(icon = "✅", value = "${card.projectsCompleted}", label = "Projects")
                 StatChip(icon = "⭐", value = "${card.reputationScore}", label = "Rep Score")
-                StatChip(icon = "📍", value = card.location?.split(" ")?.firstOrNull() ?: "—", label = "Location")
+                StatChip(
+                    icon = "📍",
+                    value = card.location?.split(" ")?.firstOrNull() ?: "—",
+                    label = "Location"
+                )
             }
         }
     }
@@ -947,6 +1045,7 @@ private fun SwipeableProjectCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modifier) {
     val colorScheme = MaterialTheme.colorScheme
@@ -955,37 +1054,88 @@ fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modif
         colors[card.projectId.hashCode().let { kotlin.math.abs(it) % colors.size }]
     }
     val avatarTextColor = if (accentColor.luminance() > 0.5f) Color(0xFF15161F) else Color.White
-    Box(
+    Column(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .background(colorScheme.surface)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(8.dp).background(Brush.horizontalGradient(listOf(accentColor, accentColor.copy(alpha = 0.3f)))))
         Box(
-            modifier = Modifier.fillMaxWidth().height(220.dp).padding(top = 8.dp).background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.2f), Color.Transparent))),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(Brush.horizontalGradient(listOf(accentColor, accentColor.copy(alpha = 0.3f))))
+        )
+        // Hero header — fixed height, sits above the description so they never overlap.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .padding(top = 8.dp)
+                .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.2f), Color.Transparent))),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(card.field, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor, letterSpacing = 2.sp)
+                Text(
+                    card.field,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor,
+                    letterSpacing = 2.sp
+                )
                 Spacer(Modifier.height(8.dp))
-                Text(card.title, fontSize = 24.sp, fontWeight = FontWeight.Black, color = colorScheme.onSurface)
+                Text(
+                    card.title,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = colorScheme.onSurface
+                )
             }
-            Surface(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), shape = RoundedCornerShape(20.dp), color = colorScheme.surface.copy(alpha = 0.88f)) {
-                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = colorScheme.surface.copy(alpha = 0.88f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("🎯", fontSize = 12.sp)
-                    Text("${card.matchScore.toInt()}% fit", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = when {
-                        card.matchScore >= 90 -> HiBuddyColors.success
-                        card.matchScore >= 75 -> colorScheme.primary
-                        else -> HiBuddyColors.warning
-                    })
+                    Text(
+                        "${card.matchScore.toInt()}% fit",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            card.matchScore >= 90 -> HiBuddyColors.success
+                            card.matchScore >= 75 -> colorScheme.primary
+                            else -> HiBuddyColors.warning
+                        }
+                    )
                 }
             }
         }
 
-        Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.size(30.dp).clip(CircleShape).background(accentColor).border(1.dp, colorScheme.surface, CircleShape), contentAlignment = Alignment.Center) {
+        // Text content lives below the hero so the description cannot bleed into it.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                        .border(1.dp, colorScheme.surface, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
                     if (!card.ownerAvatar.isNullOrBlank()) {
                         AsyncImage(
                             model = card.ownerAvatar,
@@ -994,27 +1144,81 @@ fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modif
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, color = avatarTextColor)
+                        Text(
+                            card.ownerName.firstOrNull()?.uppercase() ?: "?",
+                            fontSize = 14.sp,
+                            color = avatarTextColor
+                        )
                     }
                 }
                 Text("by ${card.ownerName}", fontSize = 13.sp, color = colorScheme.onSurfaceVariant)
                 Spacer(Modifier.weight(1f))
                 val slotsLeft = card.totalSlots - card.filledSlots
-                Text("$slotsLeft slots left", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (slotsLeft <= 1) HiBuddyColors.warning else HiBuddyColors.success)
+                Text(
+                    "$slotsLeft slots left",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (slotsLeft <= 1) HiBuddyColors.warning else HiBuddyColors.success
+                )
             }
             Spacer(Modifier.height(10.dp))
-            Text(card.description, fontSize = 13.sp, color = colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
+            Text(
+                card.description,
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 19.sp
+            )
             Spacer(Modifier.height(12.dp))
-            Text("LOOKING FOR", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurfaceVariant, letterSpacing = 1.5.sp)
+            Text(
+                "LOOKING FOR",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurfaceVariant,
+                letterSpacing = 1.5.sp
+            )
             Spacer(Modifier.height(6.dp))
             card.roleSlots.take(4).forEach { slot ->
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(6.dp).background(accentColor, CircleShape))
-                        Text(slot.roleName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colorScheme.onSurface)
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.size(6.dp).background(accentColor, CircleShape))
+                            Text(
+                                slot.roleName,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colorScheme.onSurface
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                "${slot.filled}/${slot.count}",
+                                fontSize = 10.sp,
+                                color = colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${slot.filled}/${slot.count}", fontSize = 10.sp, color = colorScheme.onSurfaceVariant)
+                    val requirements = slot.skillRequirements.orEmpty()
+                    if (requirements.isNotEmpty()) {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            requirements.entries.take(6).forEach { (skillName, level) ->
+                                SkillRequirementChip(skillName = skillName, level = level, accentColor = accentColor)
+                            }
+                        }
                     }
                 }
             }
@@ -1035,6 +1239,34 @@ fun MetaTag(icon: String, label: String) {
         Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(icon, fontSize = 11.sp)
             Text(label, fontSize = 11.sp, color = colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+fun SkillRequirementChip(skillName: String, level: String, accentColor: Color) {
+    val colorScheme = MaterialTheme.colorScheme
+    val levelColor = when (level.uppercase()) {
+        "ADVANCED" -> HiBuddyColors.success
+        "INTERMEDIATE" -> colorScheme.primary
+        else -> colorScheme.onSurfaceVariant
+    }
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = accentColor.copy(alpha = 0.12f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(skillName, fontSize = 10.sp, color = colorScheme.onSurface)
+            Text(
+                level.lowercase().replaceFirstChar { it.uppercase() },
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = levelColor
+            )
         }
     }
 }
@@ -1151,4 +1383,67 @@ fun MatchDialog(onDismiss: () -> Unit) {
             ) { Text("Got it!", fontWeight = FontWeight.Bold) }
         },
     )
+}
+
+@Composable
+fun SuperSwipeVisualEffect(
+    onAnimationEnd: () -> Unit
+) {
+    var isStarted by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isStarted) 1.5f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (isStarted) 0f else 1f,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "alpha"
+    )
+    val rotation by animateFloatAsState(
+        targetValue = if (isStarted) 360f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+        label = "rotation"
+    )
+
+    LaunchedEffect(Unit) {
+        isStarted = true
+        kotlinx.coroutines.delay(800)
+        onAnimationEnd()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = alpha * 0.3f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    rotationZ = rotation
+                    this.alpha = alpha
+                }
+        ) {
+            Text("⭐", fontSize = 100.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                color = HiBuddyColors.warningContainer,
+                shape = RoundedCornerShape(20.dp),
+                border = androidx.compose.foundation.BorderStroke(2.dp, HiBuddyColors.warning)
+            ) {
+                Text(
+                    text = "SUPER SWIPE!",
+                    color = HiBuddyColors.onWarningContainer,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                )
+            }
+        }
+    }
 }

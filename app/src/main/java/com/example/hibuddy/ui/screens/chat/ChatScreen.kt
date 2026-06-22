@@ -94,6 +94,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1053,7 +1054,13 @@ private fun dateKey(isoTime: String): String {
 
 private fun parseIsoDate(isoTime: String): Date? {
     return try {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(isoTime.take(19))
+        // Backend emits UTC timestamps (e.g. "2026-06-22T10:30:00+00:00").
+        // We drop the offset with take(19) and must therefore parse the
+        // wall-clock portion as UTC, otherwise it is misread as device-local
+        // time and "Last seen" drifts by the local UTC offset.
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.parse(isoTime.take(19))
     } catch (_: Exception) {
         null
     }

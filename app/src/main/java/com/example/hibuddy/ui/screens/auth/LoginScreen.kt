@@ -123,7 +123,7 @@ fun LoginScreen(
             supportingText = if (loginError) {
                 {
                     Text(
-                        text = uiState.error ?: "Đăng nhập thất bại",
+                        text = uiState.error ?: "Login failed",
                         color = MaterialTheme.colorScheme.error
                     )
                 }

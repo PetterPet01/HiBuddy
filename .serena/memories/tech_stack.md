@@ -1,0 +1,5 @@
+- Backend: Python 3.10-3.12, FastAPI, SQLAlchemy async ORM, Alembic, PostgreSQL, Redis, MinIO/S3, APScheduler.
+- Backend deps are pinned in `backend/requirements.txt`; optional ML extras in `backend/requirements-ml.txt`.
+- Android client: Kotlin + Jetpack Compose, Retrofit, Coil, Firebase Cloud Messaging.
+- Gradle multi-module build with root `build.gradle.kts`, Android module `app/build.gradle.kts`, versions in `gradle/libs.versions.toml`.
+- Auth/session data on Android is stored via encrypted shared preferences in `TokenManager.kt`.

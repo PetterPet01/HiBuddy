@@ -33,10 +33,21 @@ class PresenceManager:
         connection_id = connection_id or f"session:{uuid.uuid4()}"
         was_offline = not self.is_online(user_id)
         self._sessions_by_user[user_id].add(connection_id)
+        self._last_seen_at[user_id] = datetime.now(timezone.utc)
         if was_offline:
-            self._last_seen_at[user_id] = datetime.now(timezone.utc)
             await self._broadcast_presence(user_id)
         return connection_id
+
+    async def touch_activity(self, user_id: str) -> None:
+        """Refresh the user's last-seen timestamp without changing online state.
+
+        Called whenever the user performs an action (e.g. sends a chat message)
+        so that ``last_seen_at`` advances in real time even while they remain
+        connected.
+        """
+        if not user_id:
+            return
+        self._last_seen_at[user_id] = datetime.now(timezone.utc)
 
     async def disconnect(self, connection_id: str):
         user_id = self._socket_users.pop(connection_id, None)

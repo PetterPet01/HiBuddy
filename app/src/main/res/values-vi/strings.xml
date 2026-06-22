@@ -1,0 +1,131 @@
+<resources>
+    <!-- App name and global -->
+    <string name="app_name">HiBuddy</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_discover">Khám phá</string>
+    <string name="nav_matches">Kết nối</string>
+    <string name="nav_tasks">Công việc</string>
+    <string name="nav_profile">Cá nhân</string>
+    <string name="nav_notifications">Thông báo</string>
+    <string name="cd_notifications_badge">Huy hiệu thông báo</string>
+
+    <!-- Notification screen -->
+    <string name="notifications_title">Thông báo</string>
+    <string name="notifications_empty">Chưa có thông báo nào</string>
+
+    <!-- Feedback screen -->
+    <string name="feedback_title">Phản hồi</string>
+    <string name="feedback_submit">Gửi phản hồi</string>
+    <string name="feedback_overall_score">Điểm đánh giá chung</string>
+    <string name="feedback_comment_hint">Thêm nhận xét (không bắt buộc)</string>
+    <string name="feedback_course_suggestions">Khóa học được đề xuất</string>
+    <string name="feedback_course_empty">Hiện chưa có đề xuất khóa học nào.</string>
+    <string name="feedback_screen_title">Đánh giá đóng góp - %1$s</string>
+    <string name="feedback_toggle">Chuyển đổi</string>
+    <string name="feedback_select_member">Chọn thành viên để đánh giá:</string>
+    <string name="feedback_sent">Đã gửi</string>
+    <string name="feedback_give_to">Đánh giá cho %1$s</string>
+    <string name="feedback_anonymous_notice">Phản hồi của bạn là ẩn danh. Người nhận sẽ không biết ai đã gửi.</string>
+    <string name="feedback_comment_label">Nhận xét của bạn</string>
+    <string name="feedback_submit_anonymous">Gửi phản hồi ẩn danh</string>
+    <string name="feedback_empty">Chưa có phản hồi nào</string>
+    <string name="feedback_total">Tổng số: %1$d phản hồi</string>
+    <string name="feedback_areas_to_improve">Điểm cần cải thiện:</string>
+    <string name="feedback_weaknesses">Điểm yếu: %1$s</string>
+
+    <!-- Create Project screen -->
+    <string name="create_project_title">Tạo dự án</string>
+    <string name="create_project_field">Lĩnh vực</string>
+    <string name="create_project_description">Mô tả</string>
+    <string name="create_project_specific_goal">Mục tiêu cụ thể (không bắt buộc)</string>
+    <string name="create_project_start_date">Ngày bắt đầu</string>
+    <string name="create_project_end_date">Ngày kết thúc</string>
+    <string name="create_project_max_members">Số thành viên tối đa</string>
+    <string name="create_project_work_mode">Hình thức làm việc</string>
+    <string name="create_project_commitment">Mức độ cam kết</string>
+    <string name="create_project_add_role_slot">Thêm vị trí</string>
+    <string name="create_project_additional_requirements">Yêu cầu bổ sung (không bắt buộc)</string>
+    <string name="create_project_member_benefits">Quyền lợi thành viên (không bắt buộc)</string>
+    <string name="create_project_button">Tạo dự án</string>
+    <string name="create_project_role_name">Tên vị trí</string>
+    <string name="create_project_count">Số lượng</string>
+    <string name="create_project_skill_requirements">Yêu cầu kỹ năng (cách nhau bằng dấu phẩy, không bắt buộc)</string>
+    <string name="create_project_date_placeholder">Ngày/Tháng/Năm</string>
+
+    <!-- Project Detail -->
+    <string name="project_close">Đóng dự án</string>
+    <string name="project_tab_info">Thông tin</string>
+    <string name="project_tab_members">Thành viên</string>
+    <string name="project_tab_tasks">Công việc</string>
+    <string name="project_tab_dashboard">Thống kê</string>
+    <string name="project_role_slots">Vị trí tuyển dụng</string>
+    <string name="project_pending_review">Nội dung đang được duyệt</string>
+    <string name="project_rejected">Dự án này đã bị từ chối do vi phạm quy chuẩn cộng đồng.</string>
+    <string name="project_no_tasks">Chưa có công việc nào</string>
+    <string name="project_no_applicants">Chưa có ứng viên nào</string>
+    <string name="project_member_owner">Trưởng nhóm</string>
+
+    <!-- Tasks screen / kanban -->
+    <string name="tasks_title">Công việc dự án</string>
+    <string name="tasks_no_projects">Chưa có dự án nào</string>
+    <string name="tasks_viewing">Đang xem:</string>
+    <string name="tasks_open_workspace">Mở không gian làm việc</string>
+    <string name="tasks_open_button">Mở</string>
+    <string name="tasks_add_task">Thêm công việc</string>
+    <string name="tasks_column_todo">Cần làm</string>
+    <string name="tasks_column_in_progress">Đang làm</string>
+    <string name="tasks_column_review">Xét duyệt</string>
+    <string name="tasks_column_closed">Đã đóng</string>
+
+    <!-- Discover screen -->
+    <string name="discover_create_project">Tạo dự án</string>
+    <string name="discover_owner_mode">Chế độ tuyển dụng</string>
+    <string name="discover_contributor_mode">Chế độ tìm việc</string>
+    <string name="discover_empty_people">Bạn đã xem hết mọi người!</string>
+    <string name="discover_empty_projects">Không có dự án mới nào.</string>
+    <string name="discover_empty_subtitle">Hãy quay lại sau hoặc cập nhật hồ sơ để mở rộng tìm kiếm.</string>
+    <string name="discover_create_new_project">Tạo một dự án mới</string>
+    <string name="discover_select_recruiting_project">Chọn dự án đang tuyển</string>
+    <string name="discover_looking_for">YÊU CẦU</string>
+    <string name="discover_verified">Đã xác minh</string>
+    <string name="discover_stat_projects">Dự án</string>
+    <string name="discover_stat_rep_score">Điểm uy tín</string>
+    <string name="discover_stat_location">Vị trí</string>
+
+    <!-- Chat screen -->
+    <string name="chat_back">Quay lại</string>
+    <string name="chat_refresh">Tải lại</string>
+    <string name="chat_more_options">Tùy chọn khác</string>
+    <string name="chat_invite_to_project">Mời vào dự án</string>
+    <string name="chat_report_user">Báo cáo người dùng</string>
+    <string name="chat_block_user">Chặn người dùng</string>
+    <string name="chat_conversation_default">Trò chuyện</string>
+    <string name="chat_online">Trực tuyến</string>
+    <string name="chat_offline">Ngoại tuyến</string>
+    <string name="chat_typing">Đang nhập…</string>
+    <string name="chat_last_seen_just_now">Hoạt động vừa xong</string>
+    <string name="chat_last_seen_minutes">Hoạt động %1$d phút trước</string>
+    <string name="chat_last_seen_hours">Hoạt động %1$d giờ trước</string>
+    <string name="chat_last_seen_yesterday">Hoạt động hôm qua</string>
+    <string name="chat_start_conversation">Bắt đầu cuộc trò chuyện</string>
+    <string name="chat_sync_hint">Tin nhắn được đồng bộ hóa theo thời gian thực và lưu trên thiết bị này.</string>
+    <string name="chat_load_earlier">Tải tin nhắn cũ hơn</string>
+    <string name="chat_tap_to_retry">Nhấn để thử lại</string>
+    <string name="chat_block_title">Chặn người dùng này?</string>
+    <string name="chat_block_message">Họ sẽ không thể gửi tin nhắn hoặc xem hồ sơ của bạn.</string>
+    <string name="chat_block_reason_hint">Lý do (không bắt buộc)</string>
+    <string name="chat_report_title">Báo cáo người dùng</string>
+    <string name="chat_report_message">Giúp chúng tôi hiểu rõ hơn vấn đề đã xảy ra.</string>
+    <string name="chat_report_reason_hint">Mô tả vấn đề</string>
+
+    <!-- Common actions -->
+    <string name="action_select">Chọn</string>
+    <string name="action_cancel">Hủy</string>
+    <string name="action_save">Lưu</string>
+    <string name="action_submit">Gửi</string>
+    <string name="action_close">Đóng</string>
+    <string name="action_back">Quay lại</string>
+    <string name="action_remove">Xóa</string>
+    <string name="action_choose">Chọn</string>
+</resources>

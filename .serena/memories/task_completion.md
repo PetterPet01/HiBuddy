@@ -1,0 +1,5 @@
+- For backend changes: run `cd backend && .venv/bin/pytest` and `cd backend && python3 -m compileall app alembic seed_data.py`.
+- For Android/client changes: run `./gradlew testDebugUnitTest :app:assembleDebug`.
+- If touches auth, admin, uploads, or verification flows, validate both backend API contract and Android DTO/screen wiring.
+- After larger structural changes, sanity-check seeded demo flows from `README.md`.
+- Memory hygiene check: `serena memories check` from project root.

@@ -58,7 +58,7 @@ interface ApiService {
     suspend fun getMyProfile(): ProfileResponse
 
     @GET("api/v1/profiles/{userId}")
-    suspend fun getUserProfile(@Path("userId") userId: String): UserCardResponse
+    suspend fun getUserProfile(@Path("userId") userId: String): UserDetailResponse
 
     @PUT("api/v1/profiles/me")
     suspend fun updateMyProfile(@Body request: ProfileUpdateRequest): ProfileResponse
@@ -90,6 +90,15 @@ interface ApiService {
     @POST("api/v1/profiles/me/completed-courses")
     suspend fun addCompletedCourse(@Body request: CompletedCourseRequest): CompletedCourseResponse
 
+    @GET("api/v1/catalogs/roles")
+    suspend fun getCatalogRoles(@Query("q") query: String? = null): List<CatalogItemResponse>
+
+    @GET("api/v1/catalogs/skills")
+    suspend fun getCatalogSkills(@Query("q") query: String? = null): List<CatalogItemResponse>
+
+    @GET("api/v1/catalogs/roles/{roleId}/skills")
+    suspend fun getCatalogRoleSkills(@Path("roleId") roleId: String): List<CatalogItemResponse>
+
     @POST("api/v1/projects")
     suspend fun createProject(@Body request: CreateProjectRequest): ProjectResponse
 
@@ -101,6 +110,9 @@ interface ApiService {
 
     @POST("api/v1/projects/{id}/close")
     suspend fun closeProject(@Path("id") id: String): GenericResponse
+
+    @POST("api/v1/projects/{id}/stop-recruiting")
+    suspend fun stopRecruiting(@Path("id") id: String): GenericResponse
 
     @POST("api/v1/projects/{projectId}/members")
     suspend fun addMember(
@@ -173,6 +185,12 @@ interface ApiService {
 
     @POST("api/v1/tasks/{taskId}/confirm-checkout")
     suspend fun confirmCheckout(@Path("taskId") taskId: String): GenericResponse
+
+    @POST("api/v1/tasks/{taskId}/reject")
+    suspend fun rejectTask(
+        @Path("taskId") taskId: String,
+        @Body request: TaskRejectRequest
+    ): GenericResponse
 
     @GET("api/v1/projects/{projectId}/dashboard")
     suspend fun getDashboard(@Path("projectId") projectId: String): DashboardResponse

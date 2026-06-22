@@ -23,6 +23,7 @@ import com.example.hibuddy.ui.common.ProfileCatalog
 fun CompleteProfileScreen(
     onSkip: () -> Unit,
     onComplete: () -> Unit,
+    onOpenStudentVerification: () -> Unit = {},
     profileViewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory)
 ) {
     var displayName by remember { mutableStateOf("") }
@@ -46,7 +47,7 @@ fun CompleteProfileScreen(
         "BOTH" to "Both"
     )
 
-    val roleOptions = ProfileCatalog.roleOptions
+    val roleOptions by ProfileCatalog.rememberRoleOptions()
     val roleSkillMap = ProfileCatalog.roleSkillMap
 
     val otherSkills = listOf(
@@ -104,6 +105,9 @@ fun CompleteProfileScreen(
     val uiState by profileViewModel.uiState.collectAsState()
     val currentProfile = uiState.profile
     var hasLoadedProfile by remember { mutableStateOf(false) }
+    var isStudent by remember { mutableStateOf(false) }
+    var showVerificationPrompt by remember { mutableStateOf(false) }
+    val alreadyVerified = currentProfile?.verifiedStudent == true
 
     LaunchedEffect(Unit) {
         profileViewModel.loadProfile()
@@ -435,6 +439,54 @@ fun CompleteProfileScreen(
 
             Spacer(Modifier.height(28.dp))
 
+            if (alreadyVerified) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Text(
+                        "🎓 Verified student",
+                        modifier = Modifier.padding(14.dp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = isStudent,
+                                onCheckedChange = { checked ->
+                                    isStudent = checked
+                                    if (checked) showVerificationPrompt = true
+                                }
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "I am a student",
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            "Verify your student status to boost your prestige and unlock benefits.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             Button(
                 onClick = {
                     profileViewModel.saveCompleteProfile(
@@ -494,6 +546,29 @@ fun CompleteProfileScreen(
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showVerificationPrompt) {
+        AlertDialog(
+            onDismissRequest = { showVerificationPrompt = false },
+            title = { Text("Student verification") },
+            text = {
+                Text("Verify your student status to increase your prestige and unlock student benefits. You'll need a student email or student card.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showVerificationPrompt = false
+                    onOpenStudentVerification()
+                }) {
+                    Text("Verify now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVerificationPrompt = false }) {
+                    Text("Maybe later")
+                }
+            }
+        )
     }
 }
 

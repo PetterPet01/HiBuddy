@@ -12,7 +12,7 @@ class TaskAttachmentPayload(BaseModel):
 class TaskCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=2000)
-    assignee_id: str
+    assignee_ids: list[str] = Field(min_length=1)
     role_related: str | None = None
     priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] = "MEDIUM"
     start_date: str
@@ -29,7 +29,7 @@ class TaskUpdate(BaseModel):
     start_date: str | None = None
     deadline: str | None = None
     tag: str | None = None
-    assignee_id: str | None = None
+    assignee_ids: list[str] | None = None
     attachment_urls: list[TaskAttachmentPayload] | None = None
 
 
@@ -43,15 +43,26 @@ class TaskStatusUpdate(BaseModel):
     status: Literal["TODO", "IN_PROGRESS", "DONE_REVIEW", "CLOSED"]
 
 
+class TaskReject(BaseModel):
+    notes: str | None = Field(default=None, max_length=500)
+
+
 class TaskCheckoutOverride(BaseModel):
     checkout_status: Literal["EARLY", "ON_TIME", "LATE", "LATE_CHECKOUT", "NOT_COMPLETED"]
     notes: str | None = None
 
 
+class TaskAssigneeSummary(BaseModel):
+    user_id: UUID
+    display_name: str | None = None
+    avatar_url: str | None = None
+
+
 class TaskResponse(BaseModel):
     id: UUID
     project_id: UUID
-    assignee_id: UUID
+    assignee_ids: list[UUID] = Field(default_factory=list)
+    assignees: list[TaskAssigneeSummary] = Field(default_factory=list)
     creator_id: UUID
     title: str
     description: str | None

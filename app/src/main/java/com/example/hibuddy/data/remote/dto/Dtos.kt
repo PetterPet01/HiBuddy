@@ -165,6 +165,12 @@ data class RoleResponse(
     val skills: List<SkillResponse> = emptyList()
 )
 
+data class CatalogItemResponse(
+    val id: String,
+    val name: String,
+    val slug: String? = null
+)
+
 data class InterestRequest(
     @SerializedName("interest_name") val interestName: String
 )
@@ -284,6 +290,57 @@ data class UserCardResponse(
     @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null
 )
 
+data class UserProjectHistoryResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    val role: String,
+    @SerializedName("joined_at") val joinedAt: String,
+    @SerializedName("is_owner") val isOwner: Boolean = false
+)
+
+data class UserFeedbackDetailResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    @SerializedName("evaluator_name") val evaluatorName: String,
+    @SerializedName("overall_score") val overallScore: Double,
+    @SerializedName("feedback_text") val feedbackText: String? = null,
+    @SerializedName("created_at") val createdAt: String
+)
+
+data class UserDetailResponse(
+    @SerializedName("user_id") val userId: String,
+    @SerializedName("display_name") val displayName: String,
+    @SerializedName("avatar_url") val avatarUrl: String?,
+    @SerializedName("verified_student") val verifiedStudent: Boolean,
+    val university: String?,
+    val bio: String?,
+    val roles: List<RoleResponse>,
+    val skills: List<SkillResponse>,
+    val location: String?,
+    @SerializedName("github_url") val githubUrl: String?,
+    @SerializedName("reputation_score") val reputationScore: Double,
+    @SerializedName("projects_completed") val projectsCompleted: Int,
+    @SerializedName("match_score") val matchScore: Double = 0.0,
+    @SerializedName("project_history") val projectHistory: List<UserProjectHistoryResponse> = emptyList(),
+    @SerializedName("received_feedbacks") val receivedFeedbacks: List<UserFeedbackDetailResponse> = emptyList()
+) {
+    fun toUserCard(): UserCardResponse = UserCardResponse(
+        userId = userId,
+        displayName = displayName,
+        avatarUrl = avatarUrl,
+        verifiedStudent = verifiedStudent,
+        university = university,
+        bio = bio,
+        roles = roles,
+        skills = skills,
+        location = location,
+        githubUrl = githubUrl,
+        reputationScore = reputationScore,
+        projectsCompleted = projectsCompleted,
+        matchScore = matchScore
+    )
+}
+
 data class ProjectCardResponse(
     @SerializedName("project_id") val projectId: String,
     val title: String,
@@ -395,7 +452,7 @@ data class SwipeStatsResponse(
 data class CreateTaskRequest(
     val title: String,
     val description: String? = null,
-    @SerializedName("assignee_id") val assigneeId: String,
+    @SerializedName("assignee_ids") val assigneeIds: List<String>,
     @SerializedName("role_related") val roleRelated: String? = null,
     val priority: String = "MEDIUM",
     @SerializedName("start_date") val startDate: String,
@@ -403,10 +460,17 @@ data class CreateTaskRequest(
     val tag: String? = null
 )
 
+data class TaskAssigneeSummary(
+    @SerializedName("user_id") val userId: String,
+    @SerializedName("display_name") val displayName: String?,
+    @SerializedName("avatar_url") val avatarUrl: String?
+)
+
 data class TaskResponse(
     val id: String,
     @SerializedName("project_id") val projectId: String,
-    @SerializedName("assignee_id") val assigneeId: String,
+    @SerializedName("assignee_ids") val assigneeIds: List<String> = emptyList(),
+    val assignees: List<TaskAssigneeSummary> = emptyList(),
     @SerializedName("creator_id") val creatorId: String,
     val title: String,
     val description: String?,
@@ -426,6 +490,10 @@ data class TaskResponse(
 
 data class TaskStatusUpdateRequest(
     val status: String
+)
+
+data class TaskRejectRequest(
+    val notes: String? = null
 )
 
 data class CheckoutResponse(

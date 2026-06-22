@@ -1,5 +1,12 @@
 package com.example.hibuddy.ui.common
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import com.example.hibuddy.ServiceLocator
+
 object ProfileCatalog {
     val roleOptions = listOf(
         "Project Owner",
@@ -43,4 +50,39 @@ object ProfileCatalog {
         "UI/UX Designer" to listOf("Figma", "UI/UX Design", "User Interview", "Graphic Design"),
         "Project Manager" to listOf("Project Planning", "Task Management", "Leadership", "Communication")
     )
+
+    /**
+     * Role options merged from the global server catalog and the local fallback.
+     * Falls back to the static list when the catalog request fails or is empty,
+     * so the dropdowns always have content even offline.
+     */
+    @Composable
+    fun rememberRoleOptions(): State<List<String>> {
+        val state = remember { mutableStateOf(roleOptions) }
+        LaunchedEffect(Unit) {
+            ServiceLocator.catalogRepository.getRoles().onSuccess { remote ->
+                if (remote.isNotEmpty()) {
+                    val merged = (roleOptions + remote.map { it.name }).distinct().sorted()
+                    state.value = merged
+                }
+            }
+        }
+        return state
+    }
+
+    /** Global skill names merged with the local fallback (flattened role->skills). */
+    @Composable
+    fun rememberSkillOptions(): State<List<String>> {
+        val localSkills = roleSkillMap.values.flatten().distinct()
+        val state = remember { mutableStateOf(localSkills) }
+        LaunchedEffect(Unit) {
+            ServiceLocator.catalogRepository.getSkills().onSuccess { remote ->
+                if (remote.isNotEmpty()) {
+                    val merged = (localSkills + remote.map { it.name }).distinct().sorted()
+                    state.value = merged
+                }
+            }
+        }
+        return state
+    }
 }

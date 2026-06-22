@@ -58,7 +58,7 @@ fun CreateProjectScreen(
     val fields = listOf("EdTech", "Climate Tech", "HealthTech", "FinTech", "AI/ML", "Mobile", "Web", "Gaming", "IoT", "Other")
     val workModes = listOf("ONLINE" to "Online", "OFFLINE" to "Offline", "HYBRID" to "Hybrid")
     val commitments = listOf("CASUAL" to "Casual", "MODERATE" to "Moderate", "INTENSIVE" to "Intensive")
-    val roleOptions = ProfileCatalog.roleOptions
+    val roleOptions by ProfileCatalog.rememberRoleOptions()
     val roleSkillMap = ProfileCatalog.roleSkillMap
 
     LaunchedEffect(uiState.createdProject) {

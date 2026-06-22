@@ -65,6 +65,7 @@ object ServiceLocator {
     val projectRepository: ProjectRepository by lazy { ProjectRepository(apiService) }
     val swipeRepository: SwipeRepository by lazy { SwipeRepository(apiService) }
     val taskRepository: TaskRepository by lazy { TaskRepository(apiService) }
+    val catalogRepository: CatalogRepository by lazy { CatalogRepository(apiService) }
     val suggestionRepository: SuggestionRepository by lazy { SuggestionRepository(apiService) }
     val chatRepository: ChatRepository by lazy { ChatRepository(apiService, chatLocalDataSource) }
     val adminRepository: AdminRepository by lazy { AdminRepository(apiService) }

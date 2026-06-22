@@ -235,6 +235,11 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                     await db.commit()
                     await db.refresh(message)
 
+                    # Refresh sender's last_seen_at so it advances while they
+                    # remain online. Without this, last_seen is only stamped
+                    # at connect/disconnect boundaries.
+                    await presence_manager.touch_activity(user_id)
+
                     msg_data = {
                         "type": "new_message",
                         "data": {
@@ -270,12 +275,14 @@ async def handle_websocket(websocket: WebSocket, match_id: str, token: str = Que
                         await db.commit()
 
                 elif message_type == "typing":
+                    await presence_manager.touch_activity(user_id)
                     await manager.send_message(other_user_id, match_id, {
                         "type": "typing",
                         "user_id": user_id,
                     })
 
                 elif message_type == "read":
+                    await presence_manager.touch_activity(user_id)
                     unread_result = await db.execute(
                         select(Message).where(
                             Message.chat_id == chat.id,

@@ -286,7 +286,7 @@ async def upload_task_attachment(
         raise HTTPException(status_code=404, detail="Project not found")
 
     is_owner = project.owner_id == current_user.id
-    is_assignee = task.assignee_id == current_user.id
+    is_assignee = any(a.assignee_id == current_user.id for a in task.assignments)
     if not is_owner and not is_assignee:
         raise HTTPException(status_code=403, detail="Not authorized")
 

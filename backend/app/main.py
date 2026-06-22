@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-#from app.milvus_client import init_milvus_collections
+from app.milvus_client import init_milvus_collections
 from app.redis_client import get_redis, close_redis
 from app.api.auth import router as auth_router
 from app.api.profile import router as profile_router
@@ -18,6 +18,7 @@ from app.api.endpoints.fcm import router as fcm_router
 from app.api.websocket import handle_presence_websocket, handle_websocket
 from app.api.upload import router as upload_router
 from app.api.search import router as search_router
+from app.api.catalog import router as catalog_router
 from app.api.feedback import router as feedback_router
 from app.api.admin import router as project_review_admin_router
 from app.api.endpoints.admin import router as user_admin_router
@@ -46,8 +47,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(expire_all_queued_items, "interval", minutes=10, id="queue-expiry", replace_existing=True)
     scheduler.start()
     try:
-        pass
-        #init_milvus_collections()
+        if settings.ENABLE_MILVUS:
+            init_milvus_collections()
     except Exception:
         pass
     try:
@@ -83,6 +84,7 @@ app.include_router(suggestion_router)
 app.include_router(chat_router)
 app.include_router(upload_router)
 app.include_router(search_router)
+app.include_router(catalog_router)
 app.include_router(trust_router)
 app.include_router(fcm_router)
 app.include_router(feedback_router)

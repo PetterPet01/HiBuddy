@@ -33,7 +33,7 @@ fun SimpleCreateTaskScreen(
     var project by remember { mutableStateOf<ProjectResponse?>(null) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var assigneeId by remember { mutableStateOf("") }
+    var assigneeIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var priority by remember { mutableStateOf("MEDIUM") }
     var startDate by remember { mutableStateOf("") }
     var deadline by remember { mutableStateOf("") }
@@ -65,8 +65,8 @@ fun SimpleCreateTaskScreen(
                 project = loadedProject
                 val defaultMember = loadedProject.members.firstOrNull { it.userId == currentUserId }
                     ?: loadedProject.members.firstOrNull()
-                if (assigneeId.isBlank()) {
-                    assigneeId = defaultMember?.userId.orEmpty()
+                if (assigneeIds.isEmpty()) {
+                    defaultMember?.userId?.let { assigneeIds = setOf(it) }
                 }
                 if (roleRelated.isBlank()) {
                     roleRelated = defaultMember?.role.orEmpty()
@@ -161,22 +161,36 @@ fun SimpleCreateTaskScreen(
                 expanded = assigneeExpanded,
                 onExpandedChange = { assigneeExpanded = it }
             ) {
+                val selectedNames = assignableMembers
+                    .filter { it.userId in assigneeIds }
+                    .joinToString(", ") { it.displayName }
                 OutlinedTextField(
-                    value = assignableMembers.find { it.userId == assigneeId }?.displayName ?: "",
+                    value = selectedNames,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Assignee") },
+                    label = { Text(if (assigneeIds.size > 1) "Assignees (${assigneeIds.size})" else "Assignee") },
+                    placeholder = { Text("Select one or more members") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = assigneeExpanded) },
                     modifier = Modifier.fillMaxWidth().menuAnchor(),
                     colors = darkTextFieldColors()
                 )
                 ExposedDropdownMenu(expanded = assigneeExpanded, onDismissRequest = { assigneeExpanded = false }) {
                     assignableMembers.forEach { member ->
+                        val checked = member.userId in assigneeIds
                         DropdownMenuItem(
                             text = { Text("${member.displayName} - ${member.role}${if (member.isOwner) " (Owner)" else ""}") },
+                            leadingIcon = {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = null
+                                )
+                            },
                             onClick = {
-                                assigneeId = member.userId
-                                assigneeExpanded = false
+                                assigneeIds = if (checked) {
+                                    assigneeIds - member.userId
+                                } else {
+                                    assigneeIds + member.userId
+                                }
                             }
                         )
                     }
@@ -275,7 +289,7 @@ fun SimpleCreateTaskScreen(
                             CreateTaskRequest(
                                 title = title,
                                 description = description.ifBlank { null },
-                                assigneeId = assigneeId,
+                                assigneeIds = assigneeIds.toList(),
                                 roleRelated = roleRelated.ifBlank { null },
                                 priority = priority,
                                 startDate = startDate,
@@ -295,7 +309,7 @@ fun SimpleCreateTaskScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = canCreateTask && !isLoading && title.isNotBlank() && assigneeId.isNotBlank() && startDate.isNotBlank() && deadline.isNotBlank(),
+                enabled = canCreateTask && !isLoading && title.isNotBlank() && assigneeIds.isNotEmpty() && startDate.isNotBlank() && deadline.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colorScheme.primary,
                     contentColor = colorScheme.onPrimary

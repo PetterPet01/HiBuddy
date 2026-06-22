@@ -20,7 +20,7 @@ from app.schemas.profile import (
     InterestResponse, CompletedCourseCreate, CompletedCourseResponse,
     UserDetailResponse, UserProjectHistoryResponse, UserFeedbackResponse,
 )
-#from app.services.embedding_service import upsert_user_vector
+from app.services.embedding_service import upsert_user_vector
 
 router = APIRouter(prefix="/api/v1/profiles", tags=["profiles"])
 
@@ -270,8 +270,7 @@ async def update_my_profile(
             db.add(UserInterest(user_id=current_user.id, interest_name=interest))
 
     await db.flush()
-    embedding_id = None
-    #embedding_id = upsert_user_vector(profile)
+    embedding_id = upsert_user_vector(profile)
     if embedding_id:
         profile.embedding_id = embedding_id
 
@@ -286,7 +285,7 @@ async def hide_profile(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = True
-        #upsert_user_vector(profile)
+        upsert_user_vector(profile)
         pass
     return {"message": "Profile hidden from swipe pool"}
 
@@ -299,7 +298,7 @@ async def unhide_profile(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         profile.is_hidden = False
-        #upsert_user_vector(profile)
+        upsert_user_vector(profile)
         pass
     return {"message": "Profile visible in swipe pool"}
 
@@ -346,7 +345,7 @@ async def add_skill(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         pass
-        #upsert_user_vector(profile)
+        upsert_user_vector(profile)
 
     return SkillResponse.model_validate(skill)
 
@@ -364,7 +363,7 @@ async def remove_skill(
         profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
             pass
-            #upsert_user_vector(profile)
+            upsert_user_vector(profile)
 
     return {"message": "Skill removed"}
 
@@ -416,7 +415,7 @@ async def add_role(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         pass
-        #upsert_user_vector(profile)
+        upsert_user_vector(profile)
 
     return RoleResponse.model_validate(role)
 
@@ -435,7 +434,7 @@ async def remove_role(
         profile = await _get_profile_for_embedding(db, current_user.id)
         if profile:
             pass
-            #upsert_user_vector(profile)
+            upsert_user_vector(profile)
 
     return {"message": "Role removed"}
 
@@ -468,7 +467,7 @@ async def add_interest(
     profile = await _get_profile_for_embedding(db, current_user.id)
     if profile:
         pass
-        #upsert_user_vector(profile)
+        upsert_user_vector(profile)
 
     return InterestResponse.model_validate(interest)
 

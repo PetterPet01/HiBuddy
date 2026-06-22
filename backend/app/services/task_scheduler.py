@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.database import async_session
-from app.models.task import Task, TaskCheckoutHistory
+from app.models.task import Task, TaskAssignment, TaskCheckoutHistory
 from app.models.project import Project
 from app.models.user import User
 from app.models.profile import UserProfile
@@ -54,33 +54,35 @@ async def expire_unchecked_tasks():
                 task.checkout_status = "LATE_CHECKOUT"
                 task.status = "CLOSED"
 
+                assignee_ids = [a.assignee_id for a in task.assignments]
+                actor_id = assignee_ids[0] if assignee_ids else task.creator_id
+
                 history = TaskCheckoutHistory(
                     task_id=task.id,
                     action="EXPIRE",
-                    actor_id=task.assignee_id,
+                    actor_id=actor_id,
                     previous_status=previous_status,
                     new_status="CLOSED",
                     notes="Auto-expired: deadline passed without checkout",
                 )
                 db.add(history)
 
-                assignee = await db.get(User, task.assignee_id)
-                assignee_name = assignee.full_name if assignee else "Member"
-
-                await create_notification(
-                    db, task.assignee_id, "TASK_EXPIRED",
-                    "Task marked as late",
-                    f"'{task.title}' was auto-marked as late because the deadline passed.",
-                    str(task.id),
-                )
+                for assignee_id in assignee_ids:
+                    await create_notification(
+                        db, assignee_id, "TASK_EXPIRED",
+                        "Task marked as late",
+                        f"'{task.title}' was auto-marked as late because the deadline passed.",
+                        str(task.id),
+                    )
                 await create_notification(
                     db, task.creator_id, "TASK_EXPIRED_OWNER",
-                    f"Task for {assignee_name} expired",
+                    "Task expired",
                     f"'{task.title}' was auto-marked as late.",
                     str(task.id),
                 )
 
-                await _recalculate_user_score(db, task.assignee_id)
+                for assignee_id in assignee_ids:
+                    await _recalculate_user_score(db, assignee_id)
 
             await db.commit()
         except Exception as e:
@@ -114,7 +116,8 @@ async def auto_confirm_checkouts():
                 )
                 db.add(history)
 
-                await _recalculate_user_score(db, task.assignee_id)
+                for assignment in task.assignments:
+                    await _recalculate_user_score(db, assignment.assignee_id)
 
             await db.commit()
         except Exception as e:
@@ -131,7 +134,9 @@ async def _recalculate_user_score(db: AsyncSession, user_id):
     """
     tasks_result = await db.execute(
         select(Task).where(
-            Task.assignee_id == user_id,
+            Task.id.in_(
+                select(TaskAssignment.task_id).where(TaskAssignment.assignee_id == user_id)
+            ),
             Task.checkout_status != None,
             Task.status == "CLOSED",
         )

@@ -1,0 +1,5 @@
+- Backend schemas use snake_case JSON aligned with Pydantic models; Android DTOs map them with `@SerializedName`.
+- Backend request-scoped DB sessions commit in `get_db()` after the endpoint returns; handlers usually mutate ORM objects directly without explicit `commit()`.
+- Role-based gating is string-based (`ADMIN`, `MEMBER`) rather than enum-backed.
+- Android state is typically held in `ViewModel` + `StateFlow`; repositories wrap Retrofit calls with `apiResult`/`runCatching`.
+- Admin/user-visible strings are mixed English/Vietnamese in the current codebase.
