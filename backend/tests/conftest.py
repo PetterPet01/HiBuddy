@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import NullPool
 from typing import AsyncGenerator
 from app.database import Base
 from app.config import get_settings
@@ -16,7 +17,7 @@ def anyio_backend():
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    pool_pre_ping=True
+    poolclass=NullPool,
 )
 
 TestSession = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

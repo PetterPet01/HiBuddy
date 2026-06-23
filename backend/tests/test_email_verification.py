@@ -4,7 +4,6 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import delete, select
 
 from app.core.security import get_password_hash
-from app.database import async_session
 from app.models.chat import RefreshToken
 from app.models.user import User
 from app.models.auth import AccountToken
@@ -20,73 +19,72 @@ from app.services.auth_service import (
 
 
 @pytest.mark.asyncio
-async def test_email_verification_flow():
+async def test_email_verification_flow(db):
     suffix = str(uuid4())[:8]
-    async with async_session() as db:
-        # 1. Create a test user
-        user = User(
-            id=uuid4(),
-            username=f"verify_user_{suffix}",
-            email=f"verify_{suffix}@example.com",
-            full_name="Verify User",
-            hashed_password=get_password_hash("SecurePass1"),
-            email_verified=False,
-        )
-        db.add(user)
-        await db.flush()
+    # 1. Create a test user
+    user = User(
+        id=uuid4(),
+        username=f"verify_user_{suffix}",
+        email=f"verify_{suffix}@example.com",
+        full_name="Verify User",
+        hashed_password=get_password_hash("SecurePass1"),
+        email_verified=False,
+    )
+    db.add(user)
+    await db.flush()
 
-        # 2. Create verification code
-        code = await _create_account_code(db, user, EMAIL_VERIFICATION, enforce_cooldown=False)
-        assert len(code) == 6
-        assert code.isdigit()
+    # 2. Create verification code
+    code = await _create_account_code(db, user, EMAIL_VERIFICATION, enforce_cooldown=False)
+    assert len(code) == 6
+    assert code.isdigit()
 
-        # 3. Verify that the code is stored in the database
-        res = await db.execute(
-            select(AccountToken)
-            .where(AccountToken.user_id == user.id, AccountToken.purpose == EMAIL_VERIFICATION)
-        )
-        token = res.scalar_one_or_none()
-        assert token is not None
-        assert token.consumed_at is None
+    # 3. Verify that the code is stored in the database
+    res = await db.execute(
+        select(AccountToken)
+        .where(AccountToken.user_id == user.id, AccountToken.purpose == EMAIL_VERIFICATION)
+    )
+    token = res.scalar_one_or_none()
+    assert token is not None
+    assert token.consumed_at is None
 
-        # 4. Valid credentials only create a limited verification session.
-        login_response = await login_user(
-            db,
-            UserLogin(
-                username=user.email,
-                password="SecurePass1",
-                remember_me=False,
-            ),
-        )
-        assert login_response.requires_email_verification is True
-        assert login_response.user.email_verified is False
+    # 4. Valid credentials only create a limited verification session.
+    login_response = await login_user(
+        db,
+        UserLogin(
+            username=user.email,
+            password="SecurePass1",
+            remember_me=False,
+        ),
+    )
+    assert login_response.requires_email_verification is True
+    assert login_response.user.email_verified is False
 
-        # 5. The verification request cannot be redirected to another email.
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_email(
-                db,
-                user,
-                EmailVerifyRequest(email=f"other_{suffix}@example.com", code=code),
-            )
-        assert exc_info.value.status_code == 403
-        assert user.email_verified is False
-        assert token.consumed_at is None
-
-        # 6. Verify the signed-in account with its code.
-        result = await verify_email(
+    # 5. The verification request cannot be redirected to another email.
+    with pytest.raises(HTTPException) as exc_info:
+        await verify_email(
             db,
             user,
-            EmailVerifyRequest(email=user.email, code=code),
+            EmailVerifyRequest(email=f"other_{suffix}@example.com", code=code),
         )
-        assert result["message"] == "Email verified successfully"
-        assert user.email_verified is True
-        assert token.consumed_at is not None
+    assert exc_info.value.status_code == 403
+    assert user.email_verified is False
+    assert token.consumed_at is None
 
-        # 7. Clean up
-        await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
-        await db.delete(token)
-        await db.delete(user)
-        await db.commit()
+    # 6. Verify the signed-in account with its code.
+    result = await verify_email(
+        db,
+        user,
+        EmailVerifyRequest(email=user.email, code=code),
+    )
+    assert result["message"] == "Email verified successfully"
+    assert user.email_verified is True
+    assert token.consumed_at is not None
+
+    # 7. Clean up
+    await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+    await db.delete(token)
+    await db.delete(user)
+    await db.commit()
 
 
 
