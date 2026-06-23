@@ -119,7 +119,7 @@ async def test_register_duplicate_email_or_username_returns_conflict():
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == "Email or username already registered"
+    assert exc_info.value.detail == "Email already registered"
 
 
 @pytest.mark.asyncio

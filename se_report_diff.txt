@@ -1,0 +1,176 @@
+--- /home/pet/AndroidStudioProjects/HiBuddy/SE_Report_old.md	2026-06-23 07:00:31.562918989 +0700
++++ /home/pet/AndroidStudioProjects/HiBuddy/SE_Report.md	2026-06-23 08:47:43.748002052 +0700
+@@ -69,11 +69,12 @@
+   \+ Đóng hoặc mở tuyển thành viên.  
+   \+ Quản lý danh sách thành viên tham gia.
+ 
+-\- Swipe và Matching  
++\- Swipe và Matching
++  + Tích hợp thuật toán AI Matching nâng cao (PyTorch & Milvus).  
+   \+ Hiển thị danh sách người dùng và dự án phù hợp.  
+   \+ Vuốt thích (Like), bỏ qua (Pass) hoặc Super Like.  
+   \+ Tạo Match khi hai bên cùng quan tâm.  
+-  \+ Tự động tạo kênh trò chuyện sau khi Match.
++  \+ Tự động tạo kênh trò chuyện sau khi Match (Real-time chat via WebSockets & Redis).
+ 
+ \- Quản lý công việc  
+   \+ Tạo nhiệm vụ trong dự án.  
+@@ -88,10 +89,11 @@
+ 
+ \- Gợi ý phát triển cá nhân  
+   \+ Gợi ý khóa học hoặc kỹ năng phù hợp cải thiện hồ sơ người dùng.
++  \+ Tích hợp Mistral AI phân tích feedback và nhận diện điểm yếu.
++  \+ Tự động kiểm duyệt nội dung (Content Moderation) dự án.
+ 
+   \- Các chức năng sau chưa được triển khai trong phiên bản hiện tại:  
+   \+ Tích hợp video call.  
+-  \+ Tích hợp AI Matching nâng cao dựa trên Machine Learning.  
+   \+ Tích hợp mạng xã hội bên thứ ba.  
+   \+ Hệ thống tuyển dụng doanh nghiệp quy mô lớn.
+ 
+@@ -247,7 +249,8 @@
+ \- Xác thực tài khoản học sinh sinh viên.  
+ \- Quản lý hồ sơ cá nhân.  
+ \- Quản lý dự án.  
+-\- Swipe và Matching.  
++\- Swipe và Matching
++  + Tích hợp thuật toán AI Matching nâng cao (PyTorch & Milvus)..  
+ \- Quản lý công việc.  
+ \- Theo dõi tiến độ.  
+ \- Đánh giá thành viên.  
+@@ -547,7 +550,7 @@
+ | :---: | ----- | ----- | ----- | ----- |
+ | 1 | Swipe card | Vuốt phải (Like) hoặc trái (Pass) | Ghi nhận tín hiệu, cập nhật pool, kiểm tra match |   |
+ |  | Super like | Nhấn vào icon hình sao | Bỏ vào hàng đợi của người được superlike, đổi nền để biết có người vừa super like |  |
+-|  | Thêm vào hàng đợi | Bỏ profile vào hàng đợi để quyết định sau | Profile hàng đợi sẽ tồn tại trong 3h sau đó bị xóa |  |
++|  | Thêm vào hàng đợi | Bỏ profile vào hàng đợi để quyết định sau | Profile hàng đợi sẽ tồn tại trong 24h sau đó bị xóa (Queue TTL=24h) |  |
+ | 2 | Tạo Match | — (tự động khi 2 phía Like) | Tạo match record, mở kênh chat, gửi thông báo 2 bên | Tự động |
+ | 3 | Xem danh sách Match | Vào tab Matches | Hiển thị danh sách match với thời gian còn lại để liên lạc lần đầu |   |
+ | 4  | Unmatch | Chọn Unmatch trong chat | Ẩn chat, đưa card vào blacklist tạm thời |   |
+@@ -563,13 +566,13 @@
+ | ----- | :---- |
+ | Tên task (\*) | \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ |
+ | Mô tả chi tiết | \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ |
+-| Giao cho (Assignee) (\*) | Chọn thành viên trong dự án |
++| Giao cho (Assignees) (\*) | Chọn một hoặc nhiều thành viên trong dự án |
+ |  | \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ |
+ | Trạng thái   |  |
+ | Ngày bắt đầu (\*) | DD/MM/YYYY |
+ | Deadline (\*) | DD/MM/YYYY |
+ | Nhãn (Tag) | \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ |
+-| File đính kèm | Tải lên (tối đa 10MB/file, tối đa 5 file) |
++| File đính kèm | Tải lên (tối đa 5MB/file, tối đa 5 file) |
+ 
+ **QĐ-07: Quy định quản lý Task:**
+ 
+@@ -579,7 +582,7 @@
+ 
+ \- Deadline phải bắt đầu sau lúc tạo task và không vượt quá ngày kết thúc dự án.
+ 
+-\- Thành viên được giao task có thể cập nhật trạng thái: To Do → In Progress → and need review. Chỉ Owner mới có quyền chuyển sang trạng thái Closed.
++\- Thành viên được giao task có thể cập nhật trạng thái: To Do → In Progress → and need review. Chỉ Owner mới có quyền chuyển sang trạng thái Closed. Lưu ý: Một task có thể được giao cho nhiều thành viên cùng lúc (Multi-assignee).
+ 
+ \- Hệ thống gửi nhắc nhở tự động khi task còn 2 ngày đến deadline (thông báo in-app và email).
+ 
+@@ -2243,31 +2246,88 @@
+ 
+ # CHƯƠNG 5: THIẾT KẾ HỆ THỐNG
+ 
+-1. ## Tổng quan về mô hình hoá yêu cầu
++## 5.1 Tổng quan về mô hình kiến trúc
+ 
+-   
++Hệ thống Hi Buddy được thiết kế dựa trên kiến trúc Client-Server hiện đại, chia tách rõ ràng giữa Front-end (Mobile App) và Back-end (API Services). Để đáp ứng các yêu cầu về tính năng AI (Hybrid Matching) và realtime (Chat), hệ thống kết hợp kiến trúc dịch vụ (Service-Oriented) với các thành phần chuyên biệt.
+ 
+-   1. ### Mô hình kiến trúc
++### 5.1.1 Sơ đồ kiến trúc
+ 
+-   2. ### Sơ đồ kiến trúc
+-
+-2. ## Mô tả các thành phần trong hệ thống
++Kiến trúc tổng thể của hệ thống bao gồm 3 tầng chính:
++- **Tầng Client (Presentation Layer):** Ứng dụng Android xây dựng bằng Kotlin và Jetpack Compose, xử lý giao diện người dùng và tương tác local.
++- **Tầng Service (Business Logic Layer):** Hệ thống API xây dựng bằng FastAPI (Python) chạy trên Uvicorn, cung cấp các dịch vụ RESTful API và WebSocket cho realtime chat.
++- **Tầng Data (Data Layer):** 
++  - PostgreSQL lưu trữ dữ liệu có cấu trúc (User, Project, Task, Match...).
++  - Milvus Vector Database lưu trữ vector nhúng (embeddings) cho thuật toán AI.
++  - Redis đóng vai trò Cache và quản lý Session/Pub-Sub cho WebSocket.
++
++## 5.2 Mô tả các thành phần trong hệ thống
++
++### 5.2.1 Android Client
++- Xây dựng theo mô hình MVVM (Model-View-ViewModel) kết hợp với Clean Architecture.
++- Sử dụng Retrofit để giao tiếp API và OkHttp cho WebSocket.
++- Room Database cho bộ nhớ đệm nội bộ trên thiết bị.
++
++### 5.2.2 Backend Service (FastAPI)
++- **Auth Service:** Quản lý vòng đời xác thực OAuth2, tạo và quay vòng Refresh/Access Token (Sliding Window), xác thực email tổ chức học thuật bằng OTP.
++- **Matching Service:** Cốt lõi của hệ thống, xử lý điểm số kết hợp (Hybrid Score) từ Milvus (Cosine Similarity của AI) và điểm đánh giá kỹ năng/vai trò truyền thống.
++- **Chat & Realtime Service:** Xử lý điều phối luồng tin nhắn qua WebSocket, tự động gán ID tin nhắn để loại bỏ trùng lặp từ phía Client.
++- **Moderation Service:** Quản lý quy trình khiếu nại dự án, tự động ẩn (hide) dự án nếu bị cờ (flag) quá số lần quy định, dành cho Admin.
++
++### 5.2.3 Data Storage & AI Models
++- **PostgreSQL:** Quản lý Relationship thông qua SQLAlchemy ORM và Alembic để migration.
++- **Milvus:** Lưu trữ các vector 384 chiều.
++- **PyTorch & Sentence-Transformer:** Mô hình ngôn ngữ `all-MiniLM-L6-v2` chuyển đổi văn bản tự do (bio, mô tả dự án) thành vector để xử lý tìm kiếm theo ngữ nghĩa.
+ 
+ # CHƯƠNG 6: THIẾT KẾ DỮ LIỆU
+ 
+-1. ## Sơ đồ lớp
++## 6.1 Sơ đồ lớp cơ sở dữ liệu
+ 
+-2. ## Danh sách các lớp đối tượng
++Cơ sở dữ liệu của Hi Buddy được chuẩn hóa cao để hỗ trợ mở rộng, bảo mật và truy xuất dữ liệu cực nhanh.
+ 
+-3. ## Danh sách các quan hệ
++## 6.2 Danh sách các lớp đối tượng và quan hệ
+ 
+-4. ## Mô tả từng lớp đối tượng
++### 6.2.1 User và UserProfile (Quan hệ 1-1)
++- **User:** Chứa thông tin đăng nhập cốt lõi (ID, Email, Role, Trạng thái sinh viên). Tách biệt với profile để tăng tốc quá trình xác thực token.
++- **UserProfile:** Chứa thông tin hiển thị (Tên, Tiểu sử, Avatar, Chế độ matching - CONTRIBUTOR/OWNER/BOTH, và `embedding_id` tham chiếu đến Milvus).
+ 
+-# CHƯƠNG 7: THIẾT KẾ GIAO DIỆN
++### 6.2.2 Project và ProjectRoleSlot (Quan hệ 1-N)
++- **Project:** Đại diện cho một dự án, lưu `owner_id`, mô tả, trạng thái (RECRUITING, FLAGGED, COMPLETED).
++- **ProjectRoleSlot:** Các vị trí cần tuyển dụng trong một dự án (Ví dụ: "Frontend Developer" với số lượng `count` và đã điền `filled`).
++
++### 6.2.3 SwipeAction và Match (Quan hệ N-1)
++- **SwipeAction:** Ghi nhận mọi thao tác vuốt (LIKE, PASS).
++- **Match:** Được sinh ra khi có tương tác LIKE từ cả hai phía (Contributor và Owner). Liên kết trực tiếp giữa Contributor ID và Project ID.
+ 
+-1. ## Danh sách các màn hình
++### 6.2.4 Chat và Message (Quan hệ 1-N)
++- **Chat:** Tương ứng 1-1 với một Match. Là một phòng trò chuyện giữa ứng viên và dự án.
++- **Message:** Các tin nhắn cá nhân trong phòng chat, chứa `client_message_id` để chống gửi lặp (Replay/Deduplication).
++
++## 6.3 Cơ chế đảm bảo tính toàn vẹn (Integrity Constraints)
++- **Cascade Delete:** Xóa Project sẽ gỡ bỏ các RoleSlot, SwipeAction và Match tương ứng.
++- **Token Hash:** Refresh token không được lưu dạng raw mà phải băm (SHA-256) tại cột `refresh_tokens`.
++
++# CHƯƠNG 7: THIẾT KẾ GIAO DIỆN
+ 
+-2. ## Mô tả các màn hình
++## 7.1 Nguyên tắc thiết kế (UI/UX Principles)
++- **Material Design 3:** Ứng dụng Jetpack Compose với bảng màu động, tạo sự nhất quán trên hệ điều hành Android.
++- **Card-Based UI cho Swipe:** Màn hình chính sử dụng dạng thẻ (Tinder-like) giúp tối ưu thao tác một tay (vuốt trái bỏ qua, vuốt phải kết nối).
++- **Tập trung nội dung:** Phân cấp thông tin rõ ràng, đặt kỹ năng (Skills) và độ phù hợp (Match Percentage) lên vùng dễ nhìn nhất.
++
++## 7.2 Danh sách và mô tả các màn hình chính
++
++### 7.2.1 Nhóm màn hình Xác thực và Khởi tạo
++- **Màn hình Đăng nhập/Đăng ký:** Hỗ trợ Email/Mật khẩu truyền thống và Google Single Sign-On.
++- **Màn hình Xác thực OTP:** Giao diện nhập 6 chữ số để xác nhận email định dạng giáo dục (.edu).
++- **Màn hình Onboarding (Thiết lập Profile):** Chọn Vai trò, Nhập tiểu sử cá nhân và Chọn kỹ năng từ danh sách gợi ý.
++
++### 7.2.2 Nhóm màn hình Tính năng Cốt lõi
++- **Màn hình Khám phá (Discover / Swipe):** Hiển thị thẻ Project hoặc Thẻ Ứng viên (tùy role). Thể hiện tỷ lệ phù hợp tính bằng AI và danh sách kỹ năng khớp nhau.
++- **Màn hình Quản lý Dự án (Project Dashboard):** Dành cho Owner. Hiển thị tiến độ tuyển dụng (Filled/Total slots), danh sách người đã thích dự án và quản lý trạng thái dự án.
++- **Màn hình Quản lý Công việc (Task Board):** Giao diện Kanban kéo thả đơn giản, cho phép chia việc, đặt thời hạn và theo dõi trạng thái công việc (To Do, In Progress, Done).
++
++### 7.2.3 Nhóm màn hình Tương tác
++- **Màn hình Hộp thư (Matches & Chat List):** Hiển thị danh sách các Match thành công và các đoạn hội thoại hiện tại, cùng với trạng thái Online theo thời gian thực (Real-time Presence).
++- **Màn hình Trò chuyện (Chat Room):** Giao diện nhắn tin, báo đã xem, hiển thị trạng thái đang gửi/lỗi mạng đối với các message thông qua WebSocket.
+ 
+ # CHƯƠNG 8: TỔNG KẾT
+ 

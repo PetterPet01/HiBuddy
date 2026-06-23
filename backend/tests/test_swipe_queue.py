@@ -9,10 +9,12 @@ from app.models.catalog import ProjectRoleSkillRequirement, SkillCatalog
 from app.services.swipe_service import _build_project_queue_card
 
 @pytest.mark.asyncio
-async def test_build_project_queue_card_eager_loads_skill_requirements():
+async def test_build_project_queue_card_eager_loads_skill_requirements(db):
     # Use unique usernames/emails to avoid conflicts with previous test runs or seed data
     suffix = str(uuid4())[:8]
-    async with async_session() as db:
+    async with db as session:
+        # Ensure we use the db session for all test logic
+        db = session
         # Create a test user (owner)
         from app.models.profile import UserProfile
 

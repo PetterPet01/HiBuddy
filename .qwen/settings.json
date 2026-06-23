@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(diff *)"
+    ]
+  },
+  "$version": 5
+}
