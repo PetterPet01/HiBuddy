@@ -87,6 +87,37 @@ def _user_skill_level(user_skills: dict[str, str], required_skill: str) -> int:
     return best
 
 
+def _get_user_reputation_and_experience_with_boost(user: User) -> tuple[float, float]:
+    """Calculate boosted reputation and experience scores on-the-fly for matching.
+
+    This does NOT write back to the database. It is purely for score calculation
+    to avoid penalizing new users who haven't completed projects or received ratings.
+    """
+    profile = getattr(user, "profile", None)
+    projects_completed = getattr(profile, "projects_completed", 0) if profile else 0
+    raw_reputation = getattr(profile, "reputation_score", 0.0) if profile else 0.0
+
+    # Calculate days since account creation
+    created_at = getattr(user, "created_at", None)
+    days_old = _days_ago(created_at) if created_at else 999.0
+
+    is_newbie = (days_old <= 30.0) or (projects_completed == 0 and raw_reputation == 0.0)
+
+    if is_newbie:
+        # Boost reputation to a default of 3.8/5.0 if currently lower
+        reputation_score = max(raw_reputation, 3.8)
+        # Boost experience to a default of 3 completed projects if currently lower
+        experience_score = max(float(projects_completed), 3.0)
+    else:
+        reputation_score = raw_reputation
+        experience_score = float(projects_completed)
+
+    reputation_pct = min(reputation_score / 5.0, 1.0) * 100
+    experience_pct = min(experience_score / 10.0, 1.0) * 100
+
+    return reputation_pct, experience_pct
+
+
 def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
     user_roles = {normalize_name(role.role_name) for role in getattr(user, "roles", [])}
     slot_role = normalize_name(slot.role_name)
@@ -119,8 +150,7 @@ def _slot_score(user: User, slot: ProjectRoleSlot) -> tuple[float, dict]:
                 missing_skills.append(skill_name)
         skill_score = earned / total * 100 if total else 60.0
 
-    availability_score = 100.0 if slot.filled < slot.count else 0.0
-    score = role_score * 0.70 + skill_score * 0.25 + availability_score * 0.05
+    score = role_score * 0.80 + skill_score * 0.20
     return score, {
         "role": slot.role_name,
         "role_fit": round(role_score, 1),
@@ -150,34 +180,27 @@ def calculate_project_score_details(
         *re.findall(r"[a-z0-9]+", (project.description or "").lower()),
     }
     interest_score = _jaccard(interests, project_terms) * 100 if interests else 50.0
-    profile = getattr(user, "profile", None)
-    mode = (profile.mode if profile else "BOTH").upper()
-    commitment = {
-        "CONTRIBUTOR": {"CASUAL": 100, "MODERATE": 80, "INTENSIVE": 55},
-        "OWNER": {"CASUAL": 50, "MODERATE": 80, "INTENSIVE": 100},
-        "BOTH": {"CASUAL": 80, "MODERATE": 100, "INTENSIVE": 80},
-    }.get(mode, {}).get((project.commitment_level or "MODERATE").upper(), 60)
-    owner_reputation = (
-        float(owner.profile.reputation_score)
-        if owner and owner.profile
-        else 3.0
-    )
-    quality = min(owner_reputation / 5.0, 1.0) * 100
+
+    if owner:
+        owner_reputation_pct, _ = _get_user_reputation_and_experience_with_boost(owner)
+        owner_verified_bonus = 15.0 if getattr(owner, "verified_student", False) else 0.0
+        quality = min(owner_reputation_pct + owner_verified_bonus, 100.0)
+    else:
+        quality = 60.0
+
     age_days = _days_ago(project.created_at)
     recency = 100 if age_days <= 7 else 70 if age_days <= 14 else 40 if age_days <= 30 else 10
     factors = {
         "role_and_skills": round(slot_fit, 1),
         "interest": round(interest_score, 1),
-        "commitment": float(commitment),
         "owner_quality": round(quality, 1),
         "recency": float(recency),
     }
     score = (
-        factors["role_and_skills"] * 0.82
-        + factors["interest"] * 0.05
-        + factors["commitment"] * 0.05
-        + factors["owner_quality"] * 0.05
-        + factors["recency"] * 0.03
+        factors["role_and_skills"] * 0.80
+        + factors["interest"] * 0.08
+        + factors["owner_quality"] * 0.08
+        + factors["recency"] * 0.04
     )
     explanation = {
         "matched_role": slot.role_name if slot else None,
@@ -195,15 +218,13 @@ def calculate_user_score_details(
     project_score, explanation, slot = calculate_project_score_details(
         target_user, project, owner
     )
-    profile = target_user.profile
-    reputation = min((profile.reputation_score if profile else 3.0) / 5.0, 1.0) * 100
-    experience = min((profile.projects_completed if profile else 0) / 10.0, 1.0) * 100
-    verified = 100.0 if target_user.verified_student else 0.0
-    score = project_score * 0.75 + reputation * 0.12 + experience * 0.08 + verified * 0.05
+    reputation_pct, experience_pct = _get_user_reputation_and_experience_with_boost(target_user)
+    verified = 100.0 if getattr(target_user, "verified_student", False) else 0.0
+    score = project_score * 0.70 + reputation_pct * 0.12 + experience_pct * 0.08 + verified * 0.10
     explanation["factors"].update(
         {
-            "reputation": round(reputation, 1),
-            "experience": round(experience, 1),
+            "reputation": round(reputation_pct, 1),
+            "experience": round(experience_pct, 1),
             "verified_student": verified,
         }
     )
