@@ -509,7 +509,9 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
         return None
 
     owner_projects = await _get_owner_projects(db, user)
-    match_score = calculate_user_score(user, target_user, profile, owner_projects)
+    match_score, explanation, matched_slot = calculate_user_score_details(
+        user, target_user, None
+    )
 
     return {
         "user_id": str(profile.user_id),
@@ -548,6 +550,9 @@ async def _build_user_queue_card(db: AsyncSession, user: User, user_id: UUID) ->
         "reputation_score": _visible_reputation_score(profile),
         "projects_completed": profile.projects_completed,
         "match_score": round(match_score, 1),
+        "score_explanation": explanation,
+        "matched_role": matched_slot.role_name if matched_slot else None,
+        "rank": _match_rank_label(match_score),
     }
 
 
@@ -571,7 +576,9 @@ async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UU
     )
     total_filled = sum(s.filled for s in project.role_slots)
     total_slots = sum(s.count for s in project.role_slots)
-    match_score = calculate_project_score(user, project, owner)
+    match_score, explanation, matched_slot = calculate_project_score_details(
+        user, project, owner
+    )
 
     return {
         "project_id": str(project.id),
@@ -598,7 +605,22 @@ async def _build_project_queue_card(db: AsyncSession, user: User, project_id: UU
         "total_slots": total_slots,
         "filled_slots": total_filled,
         "match_score": round(match_score, 1),
+        "score_explanation": explanation,
+        "matched_role": matched_slot.role_name if matched_slot else None,
+        "rank": _match_rank_label(match_score),
     }
+
+
+def _match_rank_label(score: float) -> str:
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Very Good"
+    if score >= 50:
+        return "Good"
+    if score >= 30:
+        return "Fair"
+    return "Low"
 
 
 def _as_aware_utc(value: datetime) -> datetime:
