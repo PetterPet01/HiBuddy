@@ -540,10 +540,11 @@ class ChatViewModel : ViewModel() {
             chatRepository.createProjectInvitation(matchId, roleSlotId, message?.takeIf { it.isNotBlank() }).fold(
                 onSuccess = { invitation ->
                     upsertInvitation(invitation)
+                    val requestMode = _uiState.value.invitationOptions?.action == "REQUEST"
                     _uiState.update {
                         it.copy(
                             isInvitationActionLoading = false,
-                            actionMessage = "Invitation sent"
+                            actionMessage = if (requestMode) "Join request sent" else "Invitation sent"
                         )
                     }
                     loadInvitationOptions()

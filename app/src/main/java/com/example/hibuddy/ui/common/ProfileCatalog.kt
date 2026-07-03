@@ -8,6 +8,19 @@ import androidx.compose.runtime.remember
 import com.example.hibuddy.ServiceLocator
 
 object ProfileCatalog {
+    val fieldOptions = listOf(
+        "EdTech",
+        "Climate Tech",
+        "HealthTech",
+        "FinTech",
+        "AI/ML",
+        "Mobile",
+        "Web",
+        "Gaming",
+        "IoT",
+        "Other"
+    )
+
     val roleOptions = listOf(
         "Project Owner",
         "Project Manager",

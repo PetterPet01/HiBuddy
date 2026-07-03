@@ -39,6 +39,8 @@ class TokenManager(context: Context) {
     }
     private val _isLoggedIn = MutableStateFlow(hasSession() && isEmailVerified())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+    private val _currentUserId = MutableStateFlow(getUserId().orEmpty())
+    val currentUserId: StateFlow<String> = _currentUserId.asStateFlow()
 
     fun saveTokens(accessToken: String, refreshToken: String) {
         prefs.edit()
@@ -55,10 +57,12 @@ class TokenManager(context: Context) {
     fun clearTokens() {
         prefs.edit().clear().apply()
         _isLoggedIn.value = false
+        _currentUserId.value = ""
     }
 
     fun saveUserId(userId: String) {
         prefs.edit().putString("user_id", userId).apply()
+        _currentUserId.value = userId
     }
 
     fun getUserId(): String? = prefs.getString("user_id", null)

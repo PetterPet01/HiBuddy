@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -31,6 +30,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hibuddy.ui.components.DatePickerField
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun RegisterScreen(
@@ -60,13 +63,23 @@ fun RegisterScreen(
 
     val passwordError =
         password.isNotBlank() && !isPasswordValid
+    val fullNameErrorMessage = fullNameValidationMessage(fullName)
+    val usernameErrorMessage = usernameValidationMessage(username)
+    val emailErrorMessage = emailValidationMessage(email)
+    val dateOfBirthErrorMessage = dateOfBirthValidationMessage(dateOfBirth)
+    val phoneErrorMessage = phoneValidationMessage(phone)
 
     val canSubmit = fullName.isNotBlank() &&
+            fullNameErrorMessage == null &&
             username.isNotBlank() &&
+            usernameErrorMessage == null &&
             email.isNotBlank() &&
+            emailErrorMessage == null &&
             dateOfBirth.isNotBlank() &&
+            dateOfBirthErrorMessage == null &&
             password.isNotBlank() &&
             confirmPassword.isNotBlank() &&
+            phoneErrorMessage == null &&
             !passwordsMismatch &&
             isPasswordValid &&
             agreeTerms
@@ -90,7 +103,18 @@ fun RegisterScreen(
             },
             label = "Full name",
             leadingIcon = Icons.Filled.Person,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            isError = fullNameErrorMessage != null,
+            supportingText = {
+                Text(
+                    text = fullNameErrorMessage ?: "Letters and spaces only.",
+                    color = if (fullNameErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         )
 
         AuthTextField(
@@ -101,7 +125,18 @@ fun RegisterScreen(
             },
             label = "Username",
             leadingIcon = Icons.Filled.Person,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            isError = usernameErrorMessage != null,
+            supportingText = {
+                Text(
+                    text = usernameErrorMessage ?: "3+ chars. Letters, numbers, . , _ @ only. No spaces.",
+                    color = if (usernameErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         )
 
         AuthTextField(
@@ -115,7 +150,18 @@ fun RegisterScreen(
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next
-            )
+            ),
+            isError = emailErrorMessage != null,
+            supportingText = {
+                Text(
+                    text = emailErrorMessage ?: "Use a valid email with @ and domain.",
+                    color = if (emailErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         )
 
         DatePickerField(
@@ -124,7 +170,18 @@ fun RegisterScreen(
                 dateOfBirth = it
                 if (uiState.error != null) viewModel.clearError()
             },
-            label = "Date of birth"
+            label = "Date of birth",
+            isError = dateOfBirthErrorMessage != null,
+            supportingText = {
+                Text(
+                    text = dateOfBirthErrorMessage ?: "You must be at least 18 years old.",
+                    color = if (dateOfBirthErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         )
 
         AuthTextField(
@@ -138,7 +195,18 @@ fun RegisterScreen(
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Phone,
                 imeAction = ImeAction.Next
-            )
+            ),
+            isError = phoneErrorMessage != null,
+            supportingText = {
+                Text(
+                    text = phoneErrorMessage ?: "Use 10 digits starting with 0, or +84 plus 9 digits.",
+                    color = if (phoneErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         )
 
         AuthTextField(
@@ -237,7 +305,11 @@ fun RegisterScreen(
             Text(
                 text = "I agree to the Terms of Service",
                 modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (agreeTerms) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -273,5 +345,104 @@ fun RegisterScreen(
             action = "Sign in",
             onClick = onNavigateBack
         )
+    }
+}
+
+private fun fullNameValidationMessage(value: String): String? {
+    val fullName = value.trim()
+    if (fullName.isBlank()) return null
+    if (fullName.length < 2) {
+        return "Full name is too short."
+    }
+    if (fullName.any { !it.isLetter() && !it.isWhitespace() }) {
+        return "Full name must contain letters only."
+    }
+    return null
+}
+
+private fun usernameValidationMessage(value: String): String? {
+    val username = value.trim()
+    if (username.isBlank()) return null
+    if (username.length < 3) {
+        return "Username must be at least 3 characters."
+    }
+    if (username.any { it.isWhitespace() }) {
+        return "Username cannot contain spaces."
+    }
+    if (!Regex("""^[A-Za-z0-9._,@]+$""").matches(username)) {
+        return "Username can only contain letters, numbers, . , _ @."
+    }
+    return null
+}
+
+private fun emailValidationMessage(value: String): String? {
+    val email = value.trim()
+    if (email.isBlank()) return null
+    if (!Regex("""^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$""").matches(email)) {
+        return "Email must include @ and a valid domain."
+    }
+    return null
+}
+
+private fun dateOfBirthValidationMessage(value: String): String? {
+    if (value.isBlank()) return null
+
+    val formatter = SimpleDateFormat("dd/MM/yyyy", Locale.US).apply {
+        isLenient = false
+    }
+    val birthDate = try {
+        formatter.parse(value.trim())
+    } catch (_: ParseException) {
+        return "Date of birth must be in DD/MM/YYYY format."
+    } ?: return "Date of birth must be in DD/MM/YYYY format."
+
+    val birth = Calendar.getInstance().apply { time = birthDate }
+    val today = Calendar.getInstance()
+    val earliestAllowed = Calendar.getInstance().apply {
+        set(1900, Calendar.JANUARY, 1, 0, 0, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    if (!birth.after(earliestAllowed)) {
+        return "Date of birth must be later than 01/01/1900."
+    }
+    if (
+        birth.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+        birth.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) ||
+        birth.after(today)
+    ) {
+        return "Date of birth must be before today."
+    }
+
+    var age = today.get(Calendar.YEAR) - birth.get(Calendar.YEAR)
+    val birthdayHasNotPassed =
+        today.get(Calendar.MONTH) < birth.get(Calendar.MONTH) ||
+                (
+                        today.get(Calendar.MONTH) == birth.get(Calendar.MONTH) &&
+                                today.get(Calendar.DAY_OF_MONTH) < birth.get(Calendar.DAY_OF_MONTH)
+                        )
+    if (birthdayHasNotPassed) {
+        age -= 1
+    }
+
+    return if (age < 18) {
+        "You must be at least 18 years old."
+    } else {
+        null
+    }
+}
+
+private fun phoneValidationMessage(value: String): String? {
+    val phone = value.trim()
+    if (phone.isBlank()) return null
+
+    if (!Regex("""^\+?\d+$""").matches(phone)) {
+        return "Phone must contain digits only, with optional +84 prefix."
+    }
+
+    return if (!Regex("""^(0\d{9}|\+84\d{9})$""").matches(phone)) {
+        "Phone must be 10 digits starting with 0, or +84 plus 9 digits."
+    } else {
+        null
     }
 }

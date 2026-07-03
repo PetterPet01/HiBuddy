@@ -170,6 +170,7 @@ fun ChatScreen(
                 },
                 onRefresh = { viewModel.refreshMessages() },
                 canInvite = uiState.invitationOptions?.canInvite == true,
+                inviteAction = uiState.invitationOptions?.action,
                 onInvite = {
                     showMenu = false
                     val slots = uiState.invitationOptions?.openRoleSlots.orEmpty()
@@ -239,6 +240,7 @@ fun ChatScreen(
     if (showInviteDialog) {
         InviteProjectDialog(
             projectTitle = uiState.invitationOptions?.projectTitle.orEmpty(),
+            action = uiState.invitationOptions?.action,
             roleSlots = uiState.invitationOptions?.openRoleSlots.orEmpty(),
             selectedRoleSlotId = selectedRoleSlotId,
             message = inviteMessage,
@@ -297,6 +299,7 @@ private fun ChatTopBar(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     canInvite: Boolean,
+    inviteAction: String?,
     onInvite: () -> Unit,
     onReport: () -> Unit,
     onBlock: () -> Unit
@@ -358,8 +361,9 @@ private fun ChatTopBar(
                     modifier = Modifier.background(ChatPalette.SurfaceElevated)
                 ) {
                     if (canInvite) {
+                        val requestMode = inviteAction == "REQUEST"
                         DropdownMenuItem(
-                            text = { Text("Invite to Project", color = ChatPalette.TextPrimary) },
+                            text = { Text(if (requestMode) "Ask to Join Project" else "Invite to Project", color = ChatPalette.TextPrimary) },
                             onClick = onInvite,
                             leadingIcon = {
                                 Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = ChatPalette.TextSecondary)
@@ -585,6 +589,7 @@ private fun ProjectInvitationCard(
 @Composable
 private fun InviteProjectDialog(
     projectTitle: String,
+    action: String?,
     roleSlots: List<InvitationRoleSlotResponse>,
     selectedRoleSlotId: String?,
     message: String,
@@ -594,12 +599,19 @@ private fun InviteProjectDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val requestMode = action == "REQUEST"
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Invite to Project", color = ChatPalette.TextPrimary) },
+        title = { Text(if (requestMode) "Ask to Join Project" else "Invite to Project", color = ChatPalette.TextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(projectTitle.ifBlank { "Project" }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ChatPalette.TextPrimary)
+                Text(
+                    if (requestMode) "Choose the role you want to join as. The project owner can accept this request."
+                    else "Choose the role this contributor will join as.",
+                    fontSize = 12.sp,
+                    color = ChatPalette.TextSecondary
+                )
                 if (roleSlots.isEmpty()) {
                     Text("No open role slots remaining.", fontSize = 13.sp, color = ChatPalette.Warning)
                 } else {
@@ -636,7 +648,7 @@ private fun InviteProjectDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = !isLoading && selectedRoleSlotId != null && roleSlots.isNotEmpty()) {
-                Text("Send Invite", color = ChatPalette.Accent)
+                Text(if (requestMode) "Send Request" else "Send Invite", color = ChatPalette.Accent)
             }
         },
         dismissButton = {

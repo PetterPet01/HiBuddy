@@ -21,11 +21,19 @@ import com.example.hibuddy.data.remote.dto.SkillRequirementRequest
 import com.example.hibuddy.ui.components.DatePickerField
 import com.example.hibuddy.ui.theme.hiBuddyTextFieldColors
 import com.example.hibuddy.ui.common.ProfileCatalog
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class RoleSlotEntry(
     val roleName: String = "",
     val count: Int = 1,
-    val skillRequirements: String = ""
+    val skillRequirements: List<SkillEntry> = listOf(SkillEntry())
+)
+
+data class SkillEntry(
+    val skillName: String = "",
+    val level: String = "BEGINNER"
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -50,20 +58,40 @@ fun CreateProjectScreen(
     var additionalRequirements by remember { mutableStateOf("") }
     var memberBenefits by remember { mutableStateOf("") }
     var roleSlots by remember { mutableStateOf(listOf(RoleSlotEntry())) }
+    var customRoleInput by remember { mutableStateOf("") }
 
     var fieldExpanded by remember { mutableStateOf(false) }
     var workModeExpanded by remember { mutableStateOf(false) }
     var commitmentExpanded by remember { mutableStateOf(false) }
 
-    val fields = listOf("EdTech", "Climate Tech", "HealthTech", "FinTech", "AI/ML", "Mobile", "Web", "Gaming", "IoT", "Other")
+    val fields = ProfileCatalog.fieldOptions
     val workModes = listOf("ONLINE" to "Online", "OFFLINE" to "Offline", "HYBRID" to "Hybrid")
     val commitments = listOf("CASUAL" to "Casual", "MODERATE" to "Moderate", "INTENSIVE" to "Intensive")
     val roleOptions by ProfileCatalog.rememberRoleOptions()
     val roleSkillMap = ProfileCatalog.roleSkillMap
+    val skillLevels = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED")
+
+    fun parseDate(value: String): Date? = runCatching {
+        SimpleDateFormat("dd/MM/yyyy", Locale.US).parse(value)
+    }.getOrNull()
+
+    val startDateError = when {
+        startDate.isBlank() -> null
+        parseDate(startDate) == null -> "Invalid date"
+        parseDate(startDate)?.before(Date()) == true -> "Start date must be after today"
+        else -> null
+    }
+    val endDateError = when {
+        endDate.isBlank() -> null
+        parseDate(endDate) == null -> "Invalid date"
+        startDate.isNotBlank() && parseDate(startDate) != null && parseDate(endDate)?.before(parseDate(startDate)) == true -> "End date must be after start date"
+        else -> null
+    }
 
     LaunchedEffect(uiState.createdProject) {
         uiState.createdProject?.let {
             onProjectCreated(it.id)
+            viewModel.clearCreatedProject()
         }
     }
 
@@ -160,6 +188,12 @@ fun CreateProjectScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
+            if (startDateError != null) {
+                Text(startDateError, color = colorScheme.error, fontSize = 12.sp)
+            }
+            if (endDateError != null) {
+                Text(endDateError, color = colorScheme.error, fontSize = 12.sp)
+            }
 
             OutlinedTextField(
                 value = maxMembers,
@@ -241,15 +275,42 @@ fun CreateProjectScreen(
                             value = slot.roleName,
                             options = roleOptions,
                             onValueChange = { newRole ->
-                                val suggestedSkills = roleSkillMap[newRole].orEmpty()
+                                val suggested = roleSkillMap[newRole].orEmpty().map { SkillEntry(it) }
                                 roleSlots = roleSlots.toMutableList().also {
                                     it[index] = it[index].copy(
                                         roleName = newRole,
-                                        skillRequirements = suggestedSkills.joinToString(", ")
+                                        skillRequirements = if (suggested.isNotEmpty()) suggested else listOf(SkillEntry())
                                     )
                                 }
                             }
                         )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = customRoleInput,
+                            onValueChange = { customRoleInput = it },
+                            label = { Text("Add new role name") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = textFieldColors()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val value = customRoleInput.trim()
+                                if (value.isNotBlank()) {
+                                    roleSlots = roleSlots.toMutableList().also {
+                                        it[index] = it[index].copy(
+                                            roleName = value,
+                                            skillRequirements = listOf(SkillEntry())
+                                        )
+                                    }
+                                    customRoleInput = ""
+                                }
+                            },
+                            enabled = customRoleInput.isNotBlank()
+                        ) {
+                            Text("Add role")
+                        }
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
@@ -265,16 +326,65 @@ fun CreateProjectScreen(
                             )
                         }
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = slot.skillRequirements,
-                            onValueChange = { newSkills ->
-                                roleSlots = roleSlots.toMutableList().also { it[index] = it[index].copy(skillRequirements = newSkills) }
-                            },
-                            label = { Text("Skill Requirements (comma-separated, optional)") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            colors = textFieldColors()
-                        )
+                        Text("Skill requirements", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        slot.skillRequirements.forEachIndexed { skillIndex, skillEntry ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = skillEntry.skillName,
+                                    onValueChange = { value ->
+                                        roleSlots = roleSlots.toMutableList().also { slots ->
+                                            val updated = slots[index].skillRequirements.toMutableList()
+                                            updated[skillIndex] = updated[skillIndex].copy(skillName = value)
+                                            slots[index] = slots[index].copy(skillRequirements = updated)
+                                        }
+                                    },
+                                    label = { Text("Skill") },
+                                    modifier = Modifier.weight(1.2f),
+                                    singleLine = true,
+                                    colors = textFieldColors()
+                                )
+                                SkillLevelDropdown(
+                                    value = skillEntry.level,
+                                    options = skillLevels,
+                                    modifier = Modifier.weight(0.8f),
+                                    onValueChange = { level ->
+                                        roleSlots = roleSlots.toMutableList().also { slots ->
+                                            val updated = slots[index].skillRequirements.toMutableList()
+                                            updated[skillIndex] = updated[skillIndex].copy(level = level)
+                                            slots[index] = slots[index].copy(skillRequirements = updated)
+                                        }
+                                    }
+                                )
+                                IconButton(
+                                    onClick = {
+                                        roleSlots = roleSlots.toMutableList().also { slots ->
+                                            val updated = slots[index].skillRequirements.toMutableList()
+                                            if (updated.size > 1) {
+                                                updated.removeAt(skillIndex)
+                                            } else {
+                                                updated[skillIndex] = SkillEntry()
+                                            }
+                                            slots[index] = slots[index].copy(skillRequirements = updated)
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Remove skill", tint = colorScheme.error)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            TextButton(
+                                onClick = {
+                                    roleSlots = roleSlots.toMutableList().also { slots ->
+                                        val updated = slots[index].skillRequirements.toMutableList()
+                                        updated += SkillEntry()
+                                        slots[index] = slots[index].copy(skillRequirements = updated)
+                                    }
+                                }
+                            ) { Text("Add skill") }
+                        }
                     }
                 }
             }
@@ -324,11 +434,9 @@ fun CreateProjectScreen(
                                 slot.roleName,
                                 slot.count,
                                 slot.skillRequirements
-                                    .split(",")
-                                    .map(String::trim)
-                                    .filter(String::isNotBlank)
-                                    .distinctBy(String::lowercase)
-                                    .map { SkillRequirementRequest(it) }
+                                    .filter { it.skillName.isNotBlank() }
+                                    .distinctBy { it.skillName.lowercase() }
+                                    .map { SkillRequirementRequest(it.skillName.trim(), it.level) }
                             )
                         },
                         additionalRequirements = additionalRequirements.ifBlank { null },
@@ -338,6 +446,7 @@ fun CreateProjectScreen(
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !uiState.isLoading && title.isNotBlank() && description.isNotBlank()
                         && startDate.isNotBlank() && endDate.isNotBlank()
+                        && startDateError == null && endDateError == null
                         && roleSlots.all { it.roleName.isNotBlank() },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colorScheme.primary,
@@ -428,6 +537,44 @@ private fun SearchableRoleDropdown(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SkillLevelDropdown(
+    value: String,
+    options: List<String>,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Level") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            singleLine = true,
+            colors = textFieldColors()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { level ->
+                DropdownMenuItem(
+                    text = { Text(level.lowercase().replaceFirstChar { it.uppercase() }) },
+                    onClick = {
+                        onValueChange(level)
+                        expanded = false
+                    }
+                )
             }
         }
     }

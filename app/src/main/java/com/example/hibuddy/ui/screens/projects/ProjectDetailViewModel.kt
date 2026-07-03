@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.hibuddy.ServiceLocator
 import com.example.hibuddy.data.remote.dto.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,7 @@ data class ProjectDetailUiState(
     val tasks: List<TaskResponse> = emptyList(),
     val dashboard: DashboardResponse? = null,
     val applicants: List<ApplicantResponse> = emptyList(),
-    val currentUserId: String = ServiceLocator.authRepository.getUserId() ?: "",
+    val currentUserId: String = "",
     val error: String? = null,
     val message: String? = null
 )
@@ -29,6 +30,23 @@ class ProjectDetailViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProjectDetailUiState())
     val uiState: StateFlow<ProjectDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            ServiceLocator.authRepository.currentUserId.collectLatest { userId ->
+                val previousState = _uiState.value
+                if (previousState.currentUserId == userId) return@collectLatest
+
+                val currentProject = previousState.project
+                _uiState.value = previousState.copy(
+                    currentUserId = userId,
+                    applicants = if (currentProject?.ownerId == userId) previousState.applicants else emptyList()
+                )
+
+                currentProject?.id?.let(::loadAll)
+            }
+        }
+    }
 
     fun loadProject(projectId: String) {
         viewModelScope.launch {

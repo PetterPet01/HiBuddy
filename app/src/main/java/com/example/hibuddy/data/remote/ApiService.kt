@@ -51,6 +51,13 @@ interface ApiService {
     @POST("api/v1/upload/student-card")
     suspend fun uploadStudentCard(@Part file: MultipartBody.Part): MediaUploadResponse
 
+    @Multipart
+    @POST("api/v1/upload/task-attachment/{taskId}")
+    suspend fun uploadTaskAttachment(
+        @Path("taskId") taskId: String,
+        @Part file: MultipartBody.Part
+    ): MediaUploadResponse
+
     @POST("api/v1/fcm/register")
     suspend fun registerFcmToken(@Body request: FcmTokenRequest): Map<String, Any>
 
@@ -174,6 +181,15 @@ interface ApiService {
         @Query("assignee_id") assigneeId: String? = null
     ): List<TaskResponse>
 
+    @PUT("api/v1/tasks/{taskId}")
+    suspend fun updateTask(
+        @Path("taskId") taskId: String,
+        @Body request: UpdateTaskRequest
+    ): TaskResponse
+
+    @DELETE("api/v1/tasks/{taskId}")
+    suspend fun deleteTask(@Path("taskId") taskId: String): GenericResponse
+
     @PATCH("api/v1/tasks/{taskId}/status")
     suspend fun updateTaskStatus(
         @Path("taskId") taskId: String,
@@ -181,7 +197,10 @@ interface ApiService {
     ): GenericResponse
 
     @POST("api/v1/tasks/{taskId}/checkout")
-    suspend fun checkoutTask(@Path("taskId") taskId: String): CheckoutResponse
+    suspend fun checkoutTask(
+        @Path("taskId") taskId: String,
+        @Body request: TaskSubmissionRequest
+    ): CheckoutResponse
 
     @POST("api/v1/tasks/{taskId}/confirm-checkout")
     suspend fun confirmCheckout(@Path("taskId") taskId: String): GenericResponse
