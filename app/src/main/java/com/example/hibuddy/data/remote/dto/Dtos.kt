@@ -83,7 +83,10 @@ data class GenericResponse(
 data class MediaUploadResponse(
     @SerializedName("avatar_url") val avatarUrl: String? = null,
     @SerializedName("image_url") val imageUrl: String? = null,
-    @SerializedName("thumbnail_url") val thumbnailUrl: String? = null
+    @SerializedName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerializedName("file_url") val fileUrl: String? = null,
+    @SerializedName("file_name") val fileName: String? = null,
+    @SerializedName("content_type") val contentType: String? = null
 )
 
 data class FcmTokenRequest(
@@ -284,6 +287,41 @@ data class UserCardResponse(
     @SerializedName("score_explanation") val scoreExplanation: Map<String, Any>? = null
 )
 
+data class UserProjectHistoryResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    val role: String,
+    @SerializedName("joined_at") val joinedAt: String,
+    @SerializedName("is_owner") val isOwner: Boolean = false
+)
+
+data class UserFeedbackResponse(
+    @SerializedName("project_id") val projectId: String,
+    @SerializedName("project_title") val projectTitle: String,
+    @SerializedName("evaluator_name") val evaluatorName: String,
+    @SerializedName("overall_score") val overallScore: Double,
+    @SerializedName("feedback_text") val feedbackText: String? = null,
+    @SerializedName("created_at") val createdAt: String
+)
+
+data class UserDetailResponse(
+    @SerializedName("user_id") val userId: String,
+    @SerializedName("display_name") val displayName: String,
+    @SerializedName("avatar_url") val avatarUrl: String?,
+    @SerializedName("verified_student") val verifiedStudent: Boolean,
+    val university: String?,
+    val bio: String?,
+    val roles: List<RoleResponse>,
+    val skills: List<SkillResponse>,
+    val location: String?,
+    @SerializedName("github_url") val githubUrl: String?,
+    @SerializedName("reputation_score") val reputationScore: Double,
+    @SerializedName("projects_completed") val projectsCompleted: Int,
+    @SerializedName("match_score") val matchScore: Double,
+    @SerializedName("project_history") val projectHistory: List<UserProjectHistoryResponse> = emptyList(),
+    @SerializedName("received_feedbacks") val receivedFeedbacks: List<UserFeedbackResponse> = emptyList()
+)
+
 data class ProjectCardResponse(
     @SerializedName("project_id") val projectId: String,
     val title: String,
@@ -392,6 +430,12 @@ data class SwipeStatsResponse(
     @SerializedName("daily_superlikes_remaining") val dailySuperlikesRemaining: Int
 )
 
+data class TaskAttachmentDto(
+    val url: String,
+    val name: String? = null,
+    @SerializedName("content_type") val contentType: String? = null
+)
+
 data class CreateTaskRequest(
     val title: String,
     val description: String? = null,
@@ -400,7 +444,26 @@ data class CreateTaskRequest(
     val priority: String = "MEDIUM",
     @SerializedName("start_date") val startDate: String,
     val deadline: String,
-    val tag: String? = null
+    val tag: String? = null,
+    @SerializedName("attachment_urls") val attachmentUrls: List<TaskAttachmentDto> = emptyList()
+)
+
+data class UpdateTaskRequest(
+    val title: String? = null,
+    val description: String? = null,
+    @SerializedName("assignee_id") val assigneeId: String? = null,
+    @SerializedName("role_related") val roleRelated: String? = null,
+    val priority: String? = null,
+    @SerializedName("start_date") val startDate: String? = null,
+    val deadline: String? = null,
+    val tag: String? = null,
+    @SerializedName("attachment_urls") val attachmentUrls: List<TaskAttachmentDto>? = null
+)
+
+data class TaskSubmissionRequest(
+    @SerializedName("submission_note") val submissionNote: String? = null,
+    @SerializedName("submission_links") val submissionLinks: List<String> = emptyList(),
+    @SerializedName("submission_attachments") val submissionAttachments: List<TaskAttachmentDto> = emptyList()
 )
 
 data class TaskResponse(
@@ -416,6 +479,10 @@ data class TaskResponse(
     @SerializedName("start_date") val startDate: String,
     val deadline: String,
     val tag: String?,
+    @SerializedName("attachment_urls") val attachmentUrls: List<TaskAttachmentDto> = emptyList(),
+    @SerializedName("submission_note") val submissionNote: String? = null,
+    @SerializedName("submission_links") val submissionLinks: List<String> = emptyList(),
+    @SerializedName("submission_attachments") val submissionAttachments: List<TaskAttachmentDto> = emptyList(),
     @SerializedName("checkout_at") val checkoutAt: String?,
     @SerializedName("checkout_confirmed_at") val checkoutConfirmedAt: String?,
     @SerializedName("checkout_status") val checkoutStatus: String?,
@@ -531,6 +598,7 @@ data class ProjectInvitationOptionsResponse(
     val reason: String? = null,
     @SerializedName("project_id") val projectId: String? = null,
     @SerializedName("project_title") val projectTitle: String? = null,
+    val action: String? = null,
     @SerializedName("open_role_slots") val openRoleSlots: List<InvitationRoleSlotResponse> = emptyList()
 )
 

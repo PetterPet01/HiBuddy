@@ -386,7 +386,10 @@ fun ProfileScreen(
                 ) {
                     ProfileStatColumn("${currentProfile.projectsCompleted}", "Projects")
                     ProfileStatColumn("${uniqueRoles.size}", "Roles")
-                    ProfileStatColumn(String.format("%.1f", currentProfile.reputationScore), "Rep Score")
+                    ProfileStatColumn(
+                        if (currentProfile.projectsCompleted <= 0) "—" else String.format("%.1f", currentProfile.reputationScore),
+                        "Rep Score"
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))

@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.hibuddy.data.remote.dto.UserCardResponse
 import com.example.hibuddy.ui.screens.UserSwipeCardStatic
 
 @Composable
@@ -74,6 +79,22 @@ fun UserDetailScreen(
                 }
             }
             uiState.profile != null -> {
+                val profile = uiState.profile!!
+                val card = UserCardResponse(
+                    userId = profile.userId,
+                    displayName = profile.displayName,
+                    avatarUrl = profile.avatarUrl,
+                    verifiedStudent = profile.verifiedStudent,
+                    university = profile.university,
+                    bio = profile.bio,
+                    roles = profile.roles,
+                    skills = profile.skills,
+                    location = profile.location,
+                    githubUrl = profile.githubUrl,
+                    reputationScore = profile.reputationScore,
+                    projectsCompleted = profile.projectsCompleted,
+                    matchScore = profile.matchScore
+                )
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -82,12 +103,41 @@ fun UserDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     UserSwipeCardStatic(
-                        card = uiState.profile!!,
+                        card = card,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(640.dp)
                     )
-                    Spacer(Modifier.size(8.dp))
+
+                    Card(colors = CardDefaults.cardColors(containerColor = colorScheme.surface)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Project history", fontWeight = FontWeight.Bold)
+                            if (profile.projectHistory.isEmpty()) {
+                                Text("No project history yet", color = colorScheme.onSurfaceVariant)
+                            } else {
+                                profile.projectHistory.forEach { item ->
+                                    Text("• ${item.projectTitle} - ${item.role}", fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Card(colors = CardDefaults.cardColors(containerColor = colorScheme.surface)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Feedback from teammates", fontWeight = FontWeight.Bold)
+                            if (profile.receivedFeedbacks.isEmpty()) {
+                                Text("No feedback yet", color = colorScheme.onSurfaceVariant)
+                            } else {
+                                profile.receivedFeedbacks.take(5).forEach { fb ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("${fb.projectTitle} by ${fb.evaluatorName}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Score: ${fb.overallScore}", fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
+                                        fb.feedbackText?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

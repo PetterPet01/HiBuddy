@@ -91,6 +91,8 @@ fun DiscoverScreen(
     viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory),
     onCreateProject: () -> Unit = {},
     onOpenQueue: () -> Unit = {},
+    onOpenProject: (String) -> Unit = {},
+    onOpenUser: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colorScheme = MaterialTheme.colorScheme
@@ -220,7 +222,8 @@ fun DiscoverScreen(
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
                             onSuperLike = { viewModel.swipe("SUPER_LIKE") },
-                            onQueueDrop = { viewModel.queueCurrentCard() }
+                            onQueueDrop = { viewModel.queueCurrentCard() },
+                            onOpenUser = onOpenUser
                         )
                     } else {
                         SwipeableProjectCard(
@@ -242,7 +245,8 @@ fun DiscoverScreen(
                             onSwipeLeft = { viewModel.swipe("PASS") },
                             onSwipeRight = { viewModel.swipe("LIKE") },
                             onSuperLike = { viewModel.swipe("SUPER_LIKE") },
-                            onQueueDrop = { viewModel.queueCurrentCard() }
+                            onQueueDrop = { viewModel.queueCurrentCard() },
+                            onOpenProject = onOpenProject
                         )
                     }
                 }
@@ -775,6 +779,7 @@ private fun SwipeableUserCard(
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
     onQueueDrop: () -> Unit,
+    onOpenUser: (String) -> Unit = {},
 ) {
     SwipeableCardFrame(
         cardKey = card.userId,
@@ -793,7 +798,12 @@ private fun SwipeableUserCard(
         onSuperLike = onSuperLike,
         onQueueDrop = onQueueDrop,
     ) {
-        UserSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
+        UserSwipeCardStatic(
+            card = card,
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable { onOpenUser(card.userId) }
+        )
     }
 }
 
@@ -890,7 +900,7 @@ fun UserSwipeCardStatic(card: UserCardResponse, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatChip(icon = "✅", value = "${card.projectsCompleted}", label = "Projects")
-                StatChip(icon = "⭐", value = "${card.reputationScore}", label = "Rep Score")
+                StatChip(icon = "⭐", value = if (card.projectsCompleted <= 0) "—" else String.format("%.1f", card.reputationScore), label = "Rep Score")
                 StatChip(icon = "📍", value = card.location?.split(" ")?.firstOrNull() ?: "—", label = "Location")
             }
         }
@@ -925,6 +935,7 @@ private fun SwipeableProjectCard(
     onSwipeRight: () -> Unit,
     onSuperLike: () -> Unit,
     onQueueDrop: () -> Unit,
+    onOpenProject: (String) -> Unit = {},
 ) {
     SwipeableCardFrame(
         cardKey = card.projectId,
@@ -943,7 +954,12 @@ private fun SwipeableProjectCard(
         onSuperLike = onSuperLike,
         onQueueDrop = onQueueDrop,
     ) {
-        ProjectSwipeCardStatic(card = card, modifier = Modifier.fillMaxSize())
+        ProjectSwipeCardStatic(
+            card = card,
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable { onOpenProject(card.projectId) }
+        )
     }
 }
 
@@ -985,7 +1001,7 @@ fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modif
 
         Column(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.size(30.dp).clip(CircleShape).background(accentColor).border(1.dp, colorScheme.surface, CircleShape), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accentColor).border(1.dp, colorScheme.surface, CircleShape), contentAlignment = Alignment.Center) {
                     if (!card.ownerAvatar.isNullOrBlank()) {
                         AsyncImage(
                             model = card.ownerAvatar,
@@ -994,10 +1010,12 @@ fun ProjectSwipeCardStatic(card: ProjectCardResponse, modifier: Modifier = Modif
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, color = avatarTextColor)
+                        Text(card.ownerName.firstOrNull()?.uppercase() ?: "?", fontSize = 16.sp, color = avatarTextColor)
                     }
                 }
-                Text("by ${card.ownerName}", fontSize = 13.sp, color = colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(card.ownerName, fontSize = 13.sp, color = colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                }
                 Spacer(Modifier.weight(1f))
                 val slotsLeft = card.totalSlots - card.filledSlots
                 Text("$slotsLeft slots left", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (slotsLeft <= 1) HiBuddyColors.warning else HiBuddyColors.success)
@@ -1099,9 +1117,24 @@ fun EmptyStackView(isPeopleMode: Boolean, onCreateProject: () -> Unit = {}) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(40.dp)) {
         Text(if (isPeopleMode) "🎉" else "🚀", fontSize = 64.sp)
         Spacer(Modifier.height(16.dp))
-        Text("You've seen everyone!", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = colorScheme.onBackground)
+        Text(
+            if (isPeopleMode) "You've seen everyone!" else "No approved recruiting projects right now",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
         Spacer(Modifier.height(8.dp))
-        Text("Check back later or update your profile to expand your pool.", fontSize = 14.sp, color = colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text(
+            if (isPeopleMode) {
+                "Check back later or update your profile to expand your pool."
+            } else {
+                "Contributor mode only shows recruiting projects that are approved, recruiting, and still open."
+            },
+            fontSize = 14.sp,
+            color = colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
         if (isPeopleMode) {
             Spacer(Modifier.height(20.dp))
             Button(

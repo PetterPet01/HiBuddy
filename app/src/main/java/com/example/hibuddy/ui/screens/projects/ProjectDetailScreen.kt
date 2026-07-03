@@ -1,6 +1,7 @@
 package com.example.hibuddy.ui.screens.projects
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +29,7 @@ import coil.compose.AsyncImage
 fun ProjectDetailScreen(
     projectId: String,
     onBack: () -> Unit,
+    onOpenUser: (String) -> Unit = {},
     viewModel: ProjectDetailViewModel = viewModel(
         key = "project_$projectId",
         factory = ProjectDetailViewModel.factory(projectId)
@@ -103,6 +105,7 @@ fun ProjectDetailScreen(
                 roleSlots = activeProject.roleSlots,
                 isOwner = isOwner == true,
                 isActionLoading = uiState.isActionLoading,
+                onOpenUser = onOpenUser,
                 onAddApplicant = { userId, roleName, roleSlotId ->
                     viewModel.addMember(userId, roleName, roleSlotId)
                 }
@@ -287,6 +290,7 @@ private fun MembersTab(
     roleSlots: List<RoleSlotResponse>,
     isOwner: Boolean,
     isActionLoading: Boolean,
+    onOpenUser: (String) -> Unit,
     onAddApplicant: (userId: String, roleName: String, roleSlotId: String) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -307,7 +311,8 @@ private fun MembersTab(
             val memberTextColor = if (memberColor.luminance() > 0.5f) Color(0xFF15161F) else Color.White
             Card(
                 colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.clickable { onOpenUser(member.userId) }
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(14.dp),

@@ -1,6 +1,19 @@
 package com.example.hibuddy.ui.common
 
 object ProfileCatalog {
+    val fieldOptions = listOf(
+        "EdTech",
+        "Climate Tech",
+        "HealthTech",
+        "FinTech",
+        "AI/ML",
+        "Mobile",
+        "Web",
+        "Gaming",
+        "IoT",
+        "Other"
+    )
+
     val roleOptions = listOf(
         "Project Owner",
         "Project Manager",

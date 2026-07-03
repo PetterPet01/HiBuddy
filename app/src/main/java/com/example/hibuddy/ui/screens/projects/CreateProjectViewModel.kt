@@ -65,6 +65,7 @@ class CreateProjectViewModel : ViewModel() {
     }
 
     fun clearError() { _uiState.value = _uiState.value.copy(error = null) }
+    fun clearCreatedProject() { _uiState.value = _uiState.value.copy(createdProject = null) }
 
     companion object {
         val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {

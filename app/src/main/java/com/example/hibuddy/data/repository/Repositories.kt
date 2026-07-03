@@ -15,7 +15,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class ProfileRepository(private val api: ApiService) {
     suspend fun getMyProfile(): Result<ProfileResponse> = apiResult { api.getMyProfile() }
-    suspend fun getUserProfile(userId: String): Result<UserCardResponse> = apiResult { api.getUserProfile(userId) }
+    suspend fun getUserProfile(userId: String): Result<UserDetailResponse> = apiResult { api.getUserProfile(userId) }
     suspend fun updateProfile(request: ProfileUpdateRequest): Result<ProfileResponse> = apiResult { api.updateMyProfile(request) }
     suspend fun hideProfile(): Result<GenericResponse> = apiResult { api.hideProfile() }
     suspend fun unhideProfile(): Result<GenericResponse> = apiResult { api.unhideProfile() }
@@ -69,25 +69,36 @@ class SwipeRepository(private val api: ApiService) {
     suspend fun swipeAction(request: SwipeActionRequest): Result<SwipeActionResponse> = apiResult { api.swipeAction(request) }
     suspend fun getQueue(): Result<QueueResponse> = apiResult { api.getQueue() }
     suspend fun addToQueue(request: QueueAddRequest): Result<QueueAddResponse> = apiResult { api.addToQueue(request) }
-    suspend fun decideQueueItem(id: String, action: String): Result<SwipeActionResponse> = runCatching {
+    suspend fun decideQueueItem(id: String, action: String): Result<SwipeActionResponse> = apiResult {
         api.decideQueueItem(id, QueueDecisionRequest(action))
     }
-    suspend fun removeQueueItem(id: String): Result<GenericResponse> = runCatching { api.removeQueueItem(id) }
-    suspend fun getMatches(): Result<List<MatchResponse>> = runCatching { api.getMatches() }
-    suspend fun unmatch(matchId: String): Result<GenericResponse> = runCatching { api.unmatch(matchId) }
-    suspend fun getApplicants(projectId: String): Result<List<ApplicantResponse>> = runCatching { api.getApplicants(projectId) }
-    suspend fun getSwipeStats(): Result<SwipeStatsResponse> = runCatching { api.getSwipeStats() }
+    suspend fun removeQueueItem(id: String): Result<GenericResponse> = apiResult { api.removeQueueItem(id) }
+    suspend fun getMatches(): Result<List<MatchResponse>> = apiResult { api.getMatches() }
+    suspend fun unmatch(matchId: String): Result<GenericResponse> = apiResult { api.unmatch(matchId) }
+    suspend fun getApplicants(projectId: String): Result<List<ApplicantResponse>> = apiResult { api.getApplicants(projectId) }
+    suspend fun getSwipeStats(): Result<SwipeStatsResponse> = apiResult { api.getSwipeStats() }
 }
 
 class TaskRepository(private val api: ApiService) {
     suspend fun createTask(projectId: String, request: CreateTaskRequest): Result<TaskResponse> = apiResult { api.createTask(projectId, request) }
     suspend fun getTasks(projectId: String, status: String? = null): Result<List<TaskResponse>> = apiResult { api.getTasks(projectId, status) }
+    suspend fun updateTask(taskId: String, request: UpdateTaskRequest): Result<TaskResponse> = apiResult { api.updateTask(taskId, request) }
+    suspend fun deleteTask(taskId: String): Result<GenericResponse> = apiResult { api.deleteTask(taskId) }
     suspend fun updateTaskStatus(taskId: String, status: String): Result<GenericResponse> = apiResult { api.updateTaskStatus(taskId, TaskStatusUpdateRequest(status)) }
-    suspend fun checkoutTask(taskId: String): Result<CheckoutResponse> = apiResult { api.checkoutTask(taskId) }
+    suspend fun checkoutTask(taskId: String, request: TaskSubmissionRequest): Result<CheckoutResponse> = apiResult { api.checkoutTask(taskId, request) }
     suspend fun confirmCheckout(taskId: String): Result<GenericResponse> = apiResult { api.confirmCheckout(taskId) }
     suspend fun getDashboard(projectId: String): Result<DashboardResponse> = apiResult { api.getDashboard(projectId) }
     suspend fun evaluateMember(projectId: String, memberId: String, request: EvaluationRequest): Result<EvaluationResponse> = runCatching {
         api.evaluateMember(projectId, memberId, request)
+    }
+    suspend fun uploadTaskAttachment(
+        taskId: String,
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String = "task-attachment"
+    ): Result<MediaUploadResponse> = runCatching {
+        val body = bytes.toRequestBody(mimeType.toMediaType())
+        api.uploadTaskAttachment(taskId, MultipartBody.Part.createFormData("file", fileName, body))
     }
 }
 

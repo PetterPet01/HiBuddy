@@ -11,6 +11,7 @@ class AuthRepository(
     private val tokenManager: TokenManager
 ) {
     val authState: StateFlow<Boolean> = tokenManager.isLoggedIn
+    val currentUserId: StateFlow<String> = tokenManager.currentUserId
 
     suspend fun register(request: RegisterRequest): Result<TokenResponse> = apiResult {
         val response = api.register(request)

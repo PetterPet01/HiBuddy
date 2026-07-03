@@ -324,6 +324,12 @@ fun HiBuddyApp() {
                     },
                     onOpenQueue = {
                         navController.navigate(Routes.QUEUE)
+                    },
+                    onOpenProject = { projectId ->
+                        navController.navigate(Routes.projectDetail(projectId))
+                    },
+                    onOpenUser = { userId ->
+                        navController.navigate(Routes.userDetail(userId))
                     }
                 )
             }
@@ -460,7 +466,10 @@ fun HiBuddyApp() {
             val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
             ProjectDetailScreen(
                 projectId = projectId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenUser = { userId ->
+                    navController.navigate(Routes.userDetail(userId))
+                }
             )
         }
 
