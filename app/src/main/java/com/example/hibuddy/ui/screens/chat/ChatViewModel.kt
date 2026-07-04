@@ -669,7 +669,7 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    fun reportUser(userId: String, reason: String, description: String? = null) {
+    fun reportUser(userId: String, reason: String, description: String? = null, evidenceUrl: String? = null) {
         if (userId.isBlank()) {
             _uiState.update { it.copy(error = "Unable to identify this user") }
             return
@@ -682,6 +682,7 @@ class ChatViewModel : ViewModel() {
                         reported_id = userId,
                         reason = reason,
                         description = description,
+                        evidenceUrl = evidenceUrl,
                         contextType = "CHAT",
                         contextId = _uiState.value.matchId
                     )

@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.profile import UserProfile, UserRole, UserSkill, UserInterest, UserCompletedCourse
 from app.models.project import Project, ProjectRoleSlot, ProjectMember
 from app.models.swipe import SwipeAction, Match
-from app.models.task import Task, TaskCheckoutHistory, ProjectEvaluation
+from app.models.task import Task, TaskAssignment, TaskCheckoutHistory, ProjectEvaluation
 from app.models.chat import Chat, Message, Notification
 from app.models.catalog import (
     ProjectRoleSkillRequirement,
@@ -706,84 +706,84 @@ async def _seed_members(db: AsyncSession):
 
 async def _seed_tasks(db: AsyncSession):
     tasks = [
-        Task(id=T1, project_id=P4, assignee_id=U2, creator_id=U1,
+        Task(id=T1, project_id=P4, creator_id=U1,
              title="Design system component library", description="Create a comprehensive Figma component library with auto-layout, variants, and documentation for all platform UI elements.",
              role_related="UI/UX Designer", priority="HIGH", status="CLOSED",
              start_date=days_ago(30), deadline=days_ago(10),
              tag="Design", checkout_at=days_ago(12), checkout_confirmed_at=days_ago(10),
              checkout_status="EARLY", reminder_sent=False),
 
-        Task(id=T2, project_id=P4, assignee_id=U4, creator_id=U1,
+        Task(id=T2, project_id=P4, creator_id=U1,
              title="GitHub OAuth integration", description="Implement OAuth2 login with GitHub to automatically pull repository data for portfolio generation.",
              role_related="Frontend Developer", priority="HIGH", status="CLOSED",
              start_date=days_ago(28), deadline=days_ago(5),
              tag="Backend", checkout_at=days_ago(6), checkout_confirmed_at=days_ago(5),
              checkout_status="ON_TIME", reminder_sent=False),
 
-        Task(id=T3, project_id=P4, assignee_id=U2, creator_id=U1,
+        Task(id=T3, project_id=P4, creator_id=U1,
              title="Landing page redesign", description="Redesign the marketing landing page with better CTAs, hero section, and pricing table.",
              role_related="UI/UX Designer", priority="MEDIUM", status="DONE_REVIEW",
              start_date=days_ago(20), deadline=days_from_now(2),
              tag="Design", checkout_at=days_ago(1), checkout_confirmed_at=None,
              checkout_status="EARLY", reminder_sent=False),
 
-        Task(id=T4, project_id=P4, assignee_id=U4, creator_id=U1,
+        Task(id=T4, project_id=P4, creator_id=U1,
              title="Analytics dashboard", description="Build an analytics dashboard showing portfolio views, project clicks, and visitor demographics.",
              role_related="Frontend Developer", priority="MEDIUM", status="IN_PROGRESS",
              start_date=days_ago(15), deadline=days_from_now(5),
              tag="Feature", checkout_at=None, checkout_confirmed_at=None,
              checkout_status=None, reminder_sent=False),
 
-        Task(id=T5, project_id=P4, assignee_id=U4, creator_id=U1,
+        Task(id=T5, project_id=P4, creator_id=U1,
              title="SEO optimization", description="Implement meta tags, open graph, structured data, and sitemap generation for all portfolio pages.",
              role_related="Frontend Developer", priority="LOW", status="TODO",
              start_date=days_from_now(1), deadline=days_from_now(14),
              tag="SEO", checkout_at=None, checkout_confirmed_at=None,
              checkout_status=None, reminder_sent=False),
 
-        Task(id=T6, project_id=P4, assignee_id=U2, creator_id=U1,
+        Task(id=T6, project_id=P4, creator_id=U1,
              title="User onboarding flow", description="Design a 3-step onboarding wizard for first-time users connecting their GitHub account.",
              role_related="UI/UX Designer", priority="HIGH", status="TODO",
              start_date=days_from_now(3), deadline=days_from_now(10),
              tag="Design", checkout_at=None, checkout_confirmed_at=None,
              checkout_status=None, reminder_sent=True),
 
-        Task(id=T7, project_id=P5, assignee_id=U7, creator_id=U5,
+        Task(id=T7, project_id=P5, creator_id=U5,
              title="Vietnamese tokenizer v2", description="Improve the word segmentation tokenizer to handle compound words and slang better. Target >95% accuracy on VNTQ dataset.",
              role_related="Python Developer", priority="HIGH", status="CLOSED",
              start_date=days_ago(50), deadline=days_ago(20),
              tag="NLP", checkout_at=days_ago(22), checkout_confirmed_at=days_ago(20),
              checkout_status="EARLY", reminder_sent=False),
 
-        Task(id=T8, project_id=P5, assignee_id=U8, creator_id=U5,
+        Task(id=T8, project_id=P5, creator_id=U5,
              title="Sentiment analysis dataset", description="Curate and label a dataset of 10,000 Vietnamese sentences for sentiment analysis training.",
              role_related="Python Developer", priority="HIGH", status="CLOSED",
              start_date=days_ago(45), deadline=days_ago(15),
              tag="Data", checkout_at=days_ago(17), checkout_confirmed_at=days_ago(15),
              checkout_status="LATE", reminder_sent=False),
 
-        Task(id=T9, project_id=P5, assignee_id=U7, creator_id=U5,
+        Task(id=T9, project_id=P5, creator_id=U5,
              title="Named Entity Recognition model", description="Fine-tune a transformer model for Vietnamese NER with 7 entity types (PERSON, ORG, LOC, DATE, EVENT, PRODUCT, MISC).",
              role_related="Python Developer", priority="MEDIUM", status="CLOSED",
              start_date=days_ago(40), deadline=days_ago(10),
              tag="ML", checkout_at=days_ago(12), checkout_confirmed_at=days_ago(10),
              checkout_status="ON_TIME", reminder_sent=False),
 
-        Task(id=T10, project_id=P5, assignee_id=U8, creator_id=U5,
+        Task(id=T10, project_id=P5, creator_id=U5,
              title="API documentation", description="Write comprehensive API docs with usage examples for all NLP functions.",
              role_related="Python Developer", priority="LOW", status="CLOSED",
              start_date=days_ago(30), deadline=days_ago(5),
              tag="Docs", checkout_at=days_ago(3), checkout_confirmed_at=days_ago(2),
              checkout_status="LATE", reminder_sent=False),
 
-        Task(id=T11, project_id=P3, assignee_id=U2, creator_id=U6,
+        Task(id=T11, project_id=P3, creator_id=U6,
              title="Restaurant partner onboarding flow", description="Design the UI for restaurant owners to register, upload menu, and manage their business profile.",
              role_related="UI/UX Designer", priority="HIGH", status="TODO",
              start_date=days_ago(15), deadline=days_from_now(10),
              tag="Design", checkout_at=None, checkout_confirmed_at=None,
              checkout_status=None, reminder_sent=False),
 
-        Task(id=T12, project_id=P3, assignee_id=U2, creator_id=U6,
+        Task(id=T12, project_id=P3, creator_id=U6,
              title="Wireframe the recommendation engine UI", description="Create wireframes showing how personalized dish recommendations appear to users based on their taste profile.",
              role_related="UI/UX Designer", priority="MEDIUM", status="IN_PROGRESS",
              start_date=days_ago(10), deadline=days_from_now(7),
@@ -791,6 +791,23 @@ async def _seed_tasks(db: AsyncSession):
              checkout_status=None, reminder_sent=False),
     ]
     db.add_all(tasks)
+    await db.flush()
+
+    task_assignments = [
+        TaskAssignment(task_id=T1, assignee_id=U2),
+        TaskAssignment(task_id=T2, assignee_id=U4),
+        TaskAssignment(task_id=T3, assignee_id=U2),
+        TaskAssignment(task_id=T4, assignee_id=U4),
+        TaskAssignment(task_id=T5, assignee_id=U4),
+        TaskAssignment(task_id=T6, assignee_id=U2),
+        TaskAssignment(task_id=T7, assignee_id=U7),
+        TaskAssignment(task_id=T8, assignee_id=U8),
+        TaskAssignment(task_id=T9, assignee_id=U7),
+        TaskAssignment(task_id=T10, assignee_id=U8),
+        TaskAssignment(task_id=T11, assignee_id=U2),
+        TaskAssignment(task_id=T12, assignee_id=U2),
+    ]
+    db.add_all(task_assignments)
     await db.flush()
 
     histories = [
@@ -1040,10 +1057,11 @@ async def _seed_trust_safety(db: AsyncSession):
                 reporter_id=U2,
                 reported_id=U7,
                 reason="Harassment",
-                description="Seeded pending report for testing evidence review and reasoned resolution.",
+                description="Seeded pending report: User repeatedly sent inappropriate messages and threatened project sabotage. Attached screenshot for review.",
                 status="PENDING",
-                context_type="CHAT",
-                context_id=str(CH3),
+                context_type="PROJECT",
+                context_id=str(P1),
+                evidence_url="https://example.com/evidence/screenshot_u7_harassment.png",
                 created_at=days_ago(1),
             ),
             UserBlock(

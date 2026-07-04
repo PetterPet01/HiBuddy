@@ -49,12 +49,11 @@ $$\text{Draft} \implies \text{Sending} \implies \text{Sent (Stored in DB)} \impl
 2.  **Transmission**: The client emits the message JSON via the active WebSocket.
 3.  **Deduplication & Storage**: The FastAPI server receives the payload. It runs a transaction checking if a message with that `client_message_id` already exists in PostgreSQL (to prevent duplicate entries under bad connection retries). It inserts the message with `read=False`.
 4.  **Active Route (User Online)**: If the recipient's connection is active in the `ConnectionManager`, the server forwards the message instantly. The recipient's client acknowledges receipt by emitting a `read_receipt` or `delivery_receipt` packet back over the socket.
-5.  **Passive Route (User Offline - Push Notifications)**:
+5.  **Passive Route (User Offline - Push Notifications & REST Sync)**:
     *   If the recipient has no active WebSocket connection, the socket broadcast fails.
-    *   The server automatically invokes the **Firebase Cloud Messaging (FCM)** service (`backend/app/services/fcm_service.py`).
-    *   It compiles a secure data payload (message body, sender name, chat ID) and posts a gRPC request to Google's FCM servers via the `firebase-admin` SDK.
-    *   Google routes the push notification to the user's Android phone, which wakes up the client to download the message background-style.
-    *   If FCM is unavailable or the user hasn't registered a device token, the system sends an email notification as a fallback using SMTP (`backend/app/services/email_service.py`).
+    *   **The REST API Sync**: The ultimate source of truth is the PostgreSQL database. When the offline user later opens the app, their client calls the `/api/v1/chat/{match_id}/messages` or `/api/v1/chat/inbox` REST endpoints to fetch all messages they missed and store them in their local SQLite cache.
+    *   **Tier 1 Fallback - Firebase Cloud Messaging (FCM)**: To prompt the user to open the app (or to wake the app up in the background to pre-fetch via the REST API), the server invokes `fcm_service.py` to send a push notification.
+    *   **Tier 2 Fallback - Email Notification**: If FCM is unavailable or the user hasn't registered a device token, the system sends an email notification via SMTP (`email_service.py`) alerting them of the new message.
 
 ---
 

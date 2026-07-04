@@ -120,6 +120,8 @@ fun ChatScreen(
     var showReportDialog by remember { mutableStateOf(false) }
     var showInviteDialog by remember { mutableStateOf(false) }
     var reportReason by remember { mutableStateOf("") }
+    var reportDescription by remember { mutableStateOf("") }
+    var reportEvidenceUrl by remember { mutableStateOf("") }
     var blockReason by remember { mutableStateOf("") }
     var inviteMessage by remember { mutableStateOf("") }
     var selectedRoleSlotId by remember { mutableStateOf<String?>(null) }
@@ -276,10 +278,16 @@ fun ChatScreen(
             isLoading = uiState.isModerationActionInProgress,
             reason = reportReason,
             onReasonChange = { reportReason = it },
+            description = reportDescription,
+            onDescriptionChange = { reportDescription = it },
+            evidenceUrl = reportEvidenceUrl,
+            onEvidenceUrlChange = { reportEvidenceUrl = it },
             onDismiss = { showReportDialog = false },
             onConfirm = {
-                viewModel.reportUser(uiState.targetUserId, reportReason, "Reported from chat")
+                viewModel.reportUser(uiState.targetUserId, reportReason, reportDescription.ifBlank { null }, reportEvidenceUrl.ifBlank { null })
                 reportReason = ""
+                reportDescription = ""
+                reportEvidenceUrl = ""
                 showReportDialog = false
             }
         )
@@ -925,6 +933,10 @@ private fun ReportUserDialog(
     isLoading: Boolean,
     reason: String,
     onReasonChange: (String) -> Unit,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
+    evidenceUrl: String,
+    onEvidenceUrlChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -942,10 +954,26 @@ private fun ReportUserDialog(
                 OutlinedTextField(
                     value = reason,
                     onValueChange = onReasonChange,
-                    label = { Text("Reason") },
+                    label = { Text("Reason (e.g. Harassment)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = onDescriptionChange,
+                    label = { Text("Detailed Description") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 4
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = evidenceUrl,
+                    onValueChange = onEvidenceUrlChange,
+                    label = { Text("Evidence URL (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
             }
         },
