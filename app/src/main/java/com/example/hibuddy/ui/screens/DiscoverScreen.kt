@@ -151,6 +151,7 @@ fun DiscoverScreen(
         ) {
             DiscoverHeader(
                 isPeopleMode = uiState.mode == "OWNER",
+                showToggle = uiState.profileMode == "BOTH",
                 onToggle = {
                     if (!interactionBlocked) {
                         val newMode = if (uiState.mode == "CONTRIBUTOR") "OWNER" else "CONTRIBUTOR"
@@ -389,6 +390,7 @@ private fun QueueCornerButton(
 @Composable
 fun DiscoverHeader(
     isPeopleMode: Boolean,
+    showToggle: Boolean,
     onToggle: () -> Unit,
     onCreateProject: () -> Unit = {},
 ) {
@@ -414,29 +416,49 @@ fun DiscoverHeader(
             Spacer(Modifier.width(1.dp))
         }
 
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = colorScheme.surfaceVariant,
-            modifier = Modifier.clickable { onToggle() }
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+        if (showToggle) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = colorScheme.surfaceVariant,
+                modifier = Modifier.clickable { onToggle() }
             ) {
-                Text(
-                    text = if (isPeopleMode) "👑 Owner Mode" else "🛠️ Contributor Mode",
-                    fontSize = 13.sp,
-                    color = if (isPeopleMode) HiBuddyColors.warning else HiBuddyColors.success,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    Icons.Filled.Refresh,
-                    contentDescription = "Swap Mode",
-                    tint = colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = if (isPeopleMode) "👑 Owner Mode" else "🛠️ Contributor Mode",
+                        fontSize = 13.sp,
+                        color = if (isPeopleMode) HiBuddyColors.warning else HiBuddyColors.success,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Swap Mode",
+                        tint = colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = colorScheme.surfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = if (isPeopleMode) "👑 Owner Mode" else "🛠️ Contributor Mode",
+                        fontSize = 13.sp,
+                        color = if (isPeopleMode) HiBuddyColors.warning else HiBuddyColors.success,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

@@ -27,13 +27,15 @@ data class DiscoverUiState(
     val currentCardIndex: Int = 0,
     val error: String? = null,
     val matchedProjectId: String? = null,
-    val matchedUserName: String? = null
+    val matchedUserName: String? = null,
+    val profileMode: String? = null
 )
 
 class DiscoverViewModel : ViewModel() {
 
     private val swipeRepository = ServiceLocator.swipeRepository
     private val projectRepository = ServiceLocator.projectRepository
+    private val profileRepository = ServiceLocator.profileRepository
 
     private val _uiState = MutableStateFlow(
         DiscoverUiState(
@@ -48,39 +50,66 @@ class DiscoverViewModel : ViewModel() {
 
     fun loadCards() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            val mode = _uiState.value.mode
-            if (mode == "OWNER" && _uiState.value.selectedOwnerProjectId == null) {
-                _uiState.value = _uiState.value.copy(isLoading = false)
-                loadOwnerProjects()
-                return@launch
+            if (_uiState.value.profileMode == null) {
+                _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+                profileRepository.getMyProfile().fold(
+                    onSuccess = { profile ->
+                        val userMode = profile.mode
+                        var currentMode = _uiState.value.mode
+                        if (userMode == "OWNER" || userMode == "CONTRIBUTOR") {
+                            currentMode = userMode
+                            ServiceLocator.discoverMode = currentMode
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            profileMode = userMode,
+                            mode = currentMode
+                        )
+                        loadCardsInternal()
+                    },
+                    onFailure = { e ->
+                        _uiState.value = _uiState.value.copy(profileMode = "BOTH")
+                        loadCardsInternal()
+                    }
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+                loadCardsInternal()
             }
-            swipeRepository.discoverCards(
-                mode = mode,
-                projectId = _uiState.value.selectedOwnerProjectId
-            ).fold(
-                onSuccess = { response ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isLoadingMore = false,
-                        userCards = response.userCards.filterNot { it.userId in swipedUserIds || it.userId in queuedUserIds },
-                        projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds || it.projectId in queuedProjectIds },
-                        dailyLikesRemaining = response.dailyLikesRemaining,
-                        dailySuperlikesRemaining = response.dailySuperlikesRemaining,
-                        nextCursor = response.nextCursor,
-                        currentCardIndex = 0
-                    )
-                },
-                onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isLoadingMore = false,
-                        error = e.message
-                    )
-                }
-            )
         }
         loadQueueSummary()
+    }
+
+    private suspend fun loadCardsInternal() {
+        val mode = _uiState.value.mode
+        if (mode == "OWNER" && _uiState.value.selectedOwnerProjectId == null) {
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            loadOwnerProjects()
+            return
+        }
+        swipeRepository.discoverCards(
+            mode = mode,
+            projectId = _uiState.value.selectedOwnerProjectId
+        ).fold(
+            onSuccess = { response ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isLoadingMore = false,
+                    userCards = response.userCards.filterNot { it.userId in swipedUserIds || it.userId in queuedUserIds },
+                    projectCards = response.projectCards.filterNot { it.projectId in swipedProjectIds || it.projectId in queuedProjectIds },
+                    dailyLikesRemaining = response.dailyLikesRemaining,
+                    dailySuperlikesRemaining = response.dailySuperlikesRemaining,
+                    nextCursor = response.nextCursor,
+                    currentCardIndex = 0
+                )
+            },
+            onFailure = { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isLoadingMore = false,
+                    error = e.message
+                )
+            }
+        )
     }
 
     private fun loadMoreCards() {
