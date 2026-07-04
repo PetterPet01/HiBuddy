@@ -54,7 +54,12 @@ class DiscoverViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(isLoading = true, error = null)
                 profileRepository.getMyProfile().fold(
                     onSuccess = { profile ->
-                        val userMode = profile.mode
+                        val rawMode = profile.mode.uppercase()
+                        val userMode = when (rawMode) {
+                            "PROJECT_OWNER", "PROJECT OWNER", "OWNER" -> "OWNER"
+                            "CONTRIBUTOR" -> "CONTRIBUTOR"
+                            else -> "BOTH"
+                        }
                         var currentMode = _uiState.value.mode
                         if (userMode == "OWNER" || userMode == "CONTRIBUTOR") {
                             currentMode = userMode
@@ -67,7 +72,8 @@ class DiscoverViewModel : ViewModel() {
                         loadCardsInternal()
                     },
                     onFailure = { e ->
-                        _uiState.value = _uiState.value.copy(profileMode = "BOTH")
+                        // Safe fallback: lock to current mode, do not grant BOTH
+                        _uiState.value = _uiState.value.copy(profileMode = _uiState.value.mode)
                         loadCardsInternal()
                     }
                 )
