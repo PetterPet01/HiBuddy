@@ -473,7 +473,7 @@ data class CreateTaskRequest(
 data class UpdateTaskRequest(
     val title: String? = null,
     val description: String? = null,
-    @SerializedName("assignee_id") val assigneeId: String? = null,
+    @SerializedName("assignee_ids") val assigneeIds: List<String>? = null,
     @SerializedName("role_related") val roleRelated: String? = null,
     val priority: String? = null,
     @SerializedName("start_date") val startDate: String? = null,

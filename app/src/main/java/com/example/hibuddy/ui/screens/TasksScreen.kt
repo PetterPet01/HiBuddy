@@ -646,7 +646,7 @@ private fun TaskEditDialog(
     val members = project?.members.orEmpty()
     var title by remember(task.id) { mutableStateOf(task.title) }
     var description by remember(task.id) { mutableStateOf(task.description.orEmpty()) }
-    var assigneeId by remember(task.id) { mutableStateOf(task.assigneeId) }
+    var assigneeIds by remember(task.id) { mutableStateOf(task.assigneeIds.toSet()) }
     var priority by remember(task.id) { mutableStateOf(task.priority) }
     var startDate by remember(task.id) { mutableStateOf(task.startDate.take(10).split("-").reversed().joinToString("/")) }
     var deadline by remember(task.id) { mutableStateOf(task.deadline.take(10).split("-").reversed().joinToString("/")) }
@@ -725,10 +725,10 @@ private fun TaskEditDialog(
                     onExpandedChange = { assigneeExpanded = it }
                 ) {
                     OutlinedTextField(
-                        value = members.find { it.userId == assigneeId }?.displayName.orEmpty(),
+                        value = members.filter { it.userId in assigneeIds }.joinToString { it.displayName },
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Assignee") },
+                        label = { Text("Assignees") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = assigneeExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
@@ -736,9 +736,18 @@ private fun TaskEditDialog(
                         members.forEach { member ->
                             DropdownMenuItem(
                                 text = { Text("${member.displayName} - ${member.role}") },
+                                leadingIcon = {
+                                    Checkbox(
+                                        checked = member.userId in assigneeIds,
+                                        onCheckedChange = null
+                                    )
+                                },
                                 onClick = {
-                                    assigneeId = member.userId
-                                    assigneeExpanded = false
+                                    assigneeIds = if (member.userId in assigneeIds) {
+                                        assigneeIds - member.userId
+                                    } else {
+                                        assigneeIds + member.userId
+                                    }
                                 }
                             )
                         }
@@ -841,7 +850,7 @@ private fun TaskEditDialog(
                         UpdateTaskRequest(
                             title = title.trim(),
                             description = description.trim().ifBlank { null },
-                            assigneeId = assigneeId,
+                            assigneeIds = assigneeIds.toList(),
                             roleRelated = roleRelated.trim().ifBlank { null },
                             priority = priority,
                             startDate = startDate,
@@ -851,7 +860,7 @@ private fun TaskEditDialog(
                         )
                     )
                 },
-                enabled = title.isNotBlank() && assigneeId.isNotBlank() && startDate.isNotBlank() && deadline.isNotBlank() && !isUploading
+                enabled = title.isNotBlank() && assigneeIds.isNotEmpty() && startDate.isNotBlank() && deadline.isNotBlank() && !isUploading
             ) {
                 Text("Save")
             }
