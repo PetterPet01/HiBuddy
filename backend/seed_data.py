@@ -66,6 +66,7 @@ P3  = uuid.UUID("20000000-0000-0000-0000-000000000003")
 P4  = uuid.UUID("20000000-0000-0000-0000-000000000004")
 P5  = uuid.UUID("20000000-0000-0000-0000-000000000005")
 P6  = uuid.UUID("20000000-0000-0000-0000-000000000006")
+P7  = uuid.UUID("20000000-0000-0000-0000-000000000007")
 
 SLOT1 = uuid.UUID("30000000-0000-0000-0000-000000000001")
 SLOT2 = uuid.UUID("30000000-0000-0000-0000-000000000002")
@@ -77,6 +78,7 @@ SLOT7 = uuid.UUID("30000000-0000-0000-0000-000000000007")
 SLOT8 = uuid.UUID("30000000-0000-0000-0000-000000000008")
 SLOT9 = uuid.UUID("30000000-0000-0000-0000-000000000009")
 SLOT10 = uuid.UUID("30000000-0000-0000-0000-000000000010")
+SLOT11 = uuid.UUID("30000000-0000-0000-0000-000000000011")
 
 MEM1  = uuid.UUID("40000000-0000-0000-0000-000000000001")
 MEM2  = uuid.UUID("40000000-0000-0000-0000-000000000002")
@@ -89,6 +91,7 @@ MEM8  = uuid.UUID("40000000-0000-0000-0000-000000000008")
 MEM9  = uuid.UUID("40000000-0000-0000-0000-000000000009")
 MEM10 = uuid.UUID("40000000-0000-0000-0000-000000000010")
 MEM11 = uuid.UUID("40000000-0000-0000-0000-000000000011")
+MEM12 = uuid.UUID("40000000-0000-0000-0000-000000000012")
 
 T1  = uuid.UUID("50000000-0000-0000-0000-000000000001")
 T2  = uuid.UUID("50000000-0000-0000-0000-000000000002")
@@ -196,7 +199,7 @@ async def seed(engine):
 # ═══════════════════════════════════════════════════════════════════════════
 
 _user_count = lambda: 11
-_project_count = lambda: 6
+_project_count = lambda: 7
 _task_count = lambda: 12
 _swipe_count = lambda: 18
 _match_count = lambda: 4
@@ -605,6 +608,21 @@ async def _seed_projects(db: AsyncSession):
             member_benefits="Moderation workflow testing",
             created_at=days_ago(1),
         ),
+        Project(
+            id=P7, owner_id=U1,
+            title="Crypto Scam - Free Money", field="Finance",
+            description="Join now to make $1000 a day without any effort. Click this suspicious link! We guarantee 100% returns on your investment in just a week.",
+            specific_goal="Scam innocent users",
+            work_mode="ONLINE", commitment_level="CASUAL",
+            start_date=days_from_now(1), end_date=days_from_now(30),
+            max_members=5, status="RECRUITING", review_status="FLAGGED",
+            moderation_categories=["spam", "financial_scam"],
+            moderation_reasons=["Automated moderation flagged this for scam and spam keywords"],
+            moderation_checked_at=days_ago(0),
+            additional_requirements="None",
+            member_benefits="Free money",
+            created_at=days_ago(0),
+        ),
     ]
     db.add_all(projects)
     await db.flush()
@@ -630,6 +648,8 @@ async def _seed_projects(db: AsyncSession):
                         skill_requirements={"requirements": "Python, PyTorch, HuggingFace"}),
         ProjectRoleSlot(id=SLOT10, project_id=P6, role_name="Android Developer", count=2, filled=0,
                         skill_requirements={"Kotlin": "INTERMEDIATE", "Jetpack Compose": "INTERMEDIATE"}),
+        ProjectRoleSlot(id=SLOT11, project_id=P7, role_name="Victim", count=4, filled=0,
+                        skill_requirements=None),
     ]
     db.add_all(slots)
     await db.flush()
@@ -695,6 +715,7 @@ async def _seed_members(db: AsyncSession):
         ProjectMember(id=MEM9,  project_id=P5, user_id=U8, role="Python Developer", is_owner=False, joined_at=days_ago(50)),
         ProjectMember(id=MEM10, project_id=P3, user_id=U2, role="UI/UX Designer", is_owner=False, joined_at=days_ago(18)),
         ProjectMember(id=MEM11, project_id=P6, user_id=U1, role="Project Owner", is_owner=True, joined_at=days_ago(1)),
+        ProjectMember(id=MEM12, project_id=P7, user_id=U1, role="Project Owner", is_owner=True, joined_at=days_ago(0)),
     ]
     db.add_all(members)
     await db.flush()
