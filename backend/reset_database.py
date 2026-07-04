@@ -32,11 +32,14 @@ from app.models.profile import (
     UserRole,
     UserSkill,
 )
+from app.models.catalog import UserRoleSkill
+from app.models.catalog import RoleCatalog, SkillCatalog, RoleSkillCatalog
 from app.models.project import Project, ProjectMember, ProjectRoleSlot
 from app.models.swipe import Match, SwipeAction
 from app.models.task import ProjectEvaluation, Task, TaskCheckoutHistory
 from app.models.trust_safety import Report, UserBlock
 from app.models.user import User
+from app.models.operations import AdminAuditLog, OutboxEvent
 from seed_data import (
     CH1,
     CH2,
@@ -102,6 +105,8 @@ TABLES_BY_DOMAIN: dict[str, tuple[Model, ...]] = {
         RefreshToken,
         FCMToken,
         UserBlock,
+        AdminAuditLog,
+        OutboxEvent,
         Report,
         UserCompletedCourse,
         UserInterest,
@@ -109,6 +114,10 @@ TABLES_BY_DOMAIN: dict[str, tuple[Model, ...]] = {
         UserRole,
         UserProfile,
         User,
+        UserRoleSkill,
+        RoleCatalog,
+        SkillCatalog,
+        RoleSkillCatalog,
     ),
 }
 
@@ -122,6 +131,8 @@ DELETE_ORDER: tuple[Model, ...] = (
     UserBlock,
     Report,
     TaskCheckoutHistory,
+    AdminAuditLog,
+    OutboxEvent,
     ProjectEvaluation,
     Task,
     Match,
@@ -132,6 +143,10 @@ DELETE_ORDER: tuple[Model, ...] = (
     UserCompletedCourse,
     UserInterest,
     UserSkill,
+    UserRoleSkill,
+    RoleSkillCatalog,
+    SkillCatalog,
+    RoleCatalog,
     UserRole,
     UserProfile,
     User,

@@ -1,0 +1,261 @@
+%%{init: { "flowchart": { "curve": "basis", "nodeSpacing": 30, "rankSpacing": 55 }}}%%
+flowchart TB
+%% ---------- Actors ----------
+KHACH["🧍<br/>Khách"]:::actor
+QTV["🧍<br/>Quản trị viên"]:::actor
+NTG["🧍<br/>Người tham gia"]:::actor
+CDUAN["🧍<br/>Chủ dự án"]:::actor
+AI["🤖⚙️<br/>Hệ thống / AI Engine"]:::actor
+
+%% ========== 1. Quản lý tài khoản ==========
+subgraph ACCOUNT["Quản lý tài khoản"]
+direction TB
+DK(["Đăng ký"]):::usecase
+DN(["Đăng nhập"]):::usecase
+XTE(["Xác thực email<br/>(OTP)"]):::usecase
+QMK(["Quên mật khẩu"]):::usecase
+GOOGLE(["Đăng nhập / Đăng ký<br/>Google OAuth"]):::usecase
+DK ~~~ DN
+XTE ~~~ QMK ~~~ GOOGLE
+end
+
+%% ========== 2. Quản lý hệ thống ==========
+subgraph SYSTEM["Quản lý hệ thống"]
+direction TB
+QLHT(["Quản lý hệ thống"]):::usecase
+XYR(["Xử lý report"]):::usecase
+DUYETDA(["Duyệt project<br/>bởi Admin"]):::usecase
+KTA(["Khóa / Xóa tài khoản"]):::usecase
+GDT(["Xóa project"]):::usecase
+AUDIT(["Ghi log<br/>kiểm toán"]):::usecase
+QLHT ~~~ XYR ~~~ DUYETDA
+KTA ~~~ GDT ~~~ AUDIT
+end
+
+%% ========== 3. Trust & Safety ==========
+subgraph TRUST["Trust & Safety"]
+direction TB
+BCTN(["Báo cáo vi phạm<br/>(User / Project)"]):::usecase
+CHAN(["Chặn người dùng"]):::usecase
+AUTO_FLAG(["Tự động gắn cờ<br/>(Auto-flagging)"]):::usecase
+BCTN ~~~ CHAN ~~~ AUTO_FLAG
+end
+
+%% ========== 4. Quản lý profile ==========
+subgraph PROFILE["Quản lý profile"]
+direction TB
+QLP(["Quản lý profile"]):::usecase
+XEMP(["Xem profile"]):::usecase
+CNMP(["Chỉnh sửa profile"]):::usecase
+CNPP(["Cập nhật profile"]):::usecase
+ANP(["Ẩn profile"]):::usecase
+HIAN(["Hiện profile"]):::usecase
+QLKY(["Quản lý kỹ năng"]):::usecase
+QLST(["Quản lý sở thích"]):::usecase
+QLVT(["Quản lý vai trò"]):::usecase
+XEMFB(["Xem tóm tắt<br/>feedback"]):::usecase
+UPDATE_EMB(["Cập nhật AI<br/>Vector Embeddings"]):::usecase
+QLP ~~~ XEMP ~~~ CNMP
+CNPP ~~~ ANP ~~~ HIAN
+QLKY ~~~ QLST ~~~ QLVT
+XEMFB ~~~ UPDATE_EMB
+end
+
+%% ========== 5. Phát triển kỹ năng (Skill Development) ==========
+subgraph SKILL["Phát triển kỹ năng"]
+direction TB
+XTG(["Xem gợi ý<br/>khóa học"]):::usecase
+XEMKH(["Xem chi tiết<br/>khóa học"]):::usecase
+DGGP(["Bỏ qua gợi ý<br/>(Dismiss)"]):::usecase
+LAMKH(["Làm mới gợi ý"]):::usecase
+XTMT(["Xem gợi ý<br/>mentor"]):::usecase
+GEN_COURSE(["Gợi ý khóa học<br/>& Mentor"]):::usecase
+XTG ~~~ XEMKH ~~~ DGGP
+LAMKH ~~~ XTMT ~~~ GEN_COURSE
+end
+
+%% ========== 6. Swipe & Matching ==========
+subgraph SWIPE["Swipe & Matching"]
+direction TB
+GEN_DECK(["Tạo danh sách gợi ý<br/>(Hybrid Matching)"]):::usecase
+SWC(["Swipe card"]):::usecase
+PASS(["Pass"]):::usecase
+LIKE(["Like"]):::usecase
+TAMH(["Tạo match"]):::usecase
+CHAT(["Chat sau match"]):::usecase
+UNM(["Unmatch"]):::usecase
+ONL(["Xem trạng thái<br/>online"]):::usecase
+TYPING(["Xem typing<br/>indicator"]):::usecase
+GEN_DECK ~~~ SWC ~~~ PASS
+LIKE ~~~ TAMH ~~~ CHAT
+UNM ~~~ ONL ~~~ TYPING
+end
+
+%% ========== 7. Quản lý Project ==========
+subgraph PROJECT["Quản lý Project"]
+direction TB
+QLDA(["Quản lý project"]):::usecase
+XEMDA(["Xem project"]):::usecase
+DANG(["Đăng project<br/>(Thiết lập Slot/Skill)"]):::usecase
+DONG(["Đóng project"]):::usecase
+CAPNHAT(["Cập nhật project"]):::usecase
+XEMUD(["Xem ứng viên"]):::usecase
+PHEDUYET(["Phê duyệt<br/>thành viên"]):::usecase
+TUCHOI_UD(["Từ chối<br/>ứng viên"]):::usecase
+THAMGIA(["Tham gia dự án"]):::usecase
+YCAU(["Gửi yêu cầu<br/>tham gia (Apply)"]):::usecase
+MOI(["Gửi lời mời dự án"]):::usecase
+ROIDA(["Rời khỏi dự án"]):::usecase
+QLDA ~~~ XEMDA ~~~ DANG
+DONG ~~~ CAPNHAT ~~~ XEMUD
+PHEDUYET ~~~ TUCHOI_UD ~~~ THAMGIA
+YCAU ~~~ MOI ~~~ ROIDA
+end
+
+%% ========== 8. Quản lý Task ==========
+subgraph TASK["Quản lý Task"]
+direction TB
+QLT(["Quản lý task"]):::usecase
+TAT(["Tạo task"]):::usecase
+SUA(["Sửa task"]):::usecase
+DONGT(["Đóng task"]):::usecase
+PHANCONG(["Phân công task"]):::usecase
+KANBAN(["Theo dõi tiến độ<br/>(Kanban)"]):::usecase
+CAPNHATT(["Cập nhật<br/>trạng thái task"]):::usecase
+BAOCAOHT(["Báo cáo<br/>hoàn thành"]):::usecase
+QLT ~~~ TAT ~~~ SUA
+DONGT ~~~ PHANCONG ~~~ KANBAN
+CAPNHATT ~~~ BAOCAOHT
+end
+
+%% ========== 9. Đánh giá & Feedback ==========
+subgraph FEEDBACK["Đánh giá & Feedback (Sau dự án)"]
+direction TB
+DANHGIAD(["Đánh giá thành viên<br/>(Project Evaluation)"]):::usecase
+GUITP(["Gửi feedback<br/>ẩn danh"]):::usecase
+PHANTICH(["Phân tích<br/>feedback bằng AI"]):::usecase
+DANHGIAD ~~~ GUITP ~~~ PHANTICH
+end
+
+%% ========== Relationships ==========
+%% Guest
+KHACH --> DK
+KHACH --> DN
+KHACH --> GOOGLE
+DK -. include .-> XTE
+DK -. include .-> GOOGLE
+
+%% Admin
+QTV --> DN
+QTV --> QLHT
+QLHT -. include .-> XYR
+QLHT -. include .-> DUYETDA
+QLHT -. extend .-> KTA
+QLHT -. extend .-> GDT
+QLHT --> AUDIT
+
+%% Participant - Account
+NTG --> DN
+NTG --> GOOGLE
+DN -. extend .-> QMK
+
+%% Participant - Trust & Safety
+NTG --> BCTN
+NTG --> CHAN
+
+%% Participant - Profile
+NTG --> ANP
+NTG --> HIAN
+NTG --> QLP
+QLP -. include .-> XEMP
+XEMP -. extend .-> CNMP
+CNMP -. extend .-> CNPP
+XEMP -. extend .-> QLKY
+XEMP -. extend .-> QLST
+XEMP -. extend .-> QLVT
+XEMP -. extend .-> XEMFB
+%% System trigger on profile update
+CNPP -. trigger .-> UPDATE_EMB
+
+%% Participant - Skill Development
+NTG --> XTG
+XTG -. extend .-> XEMKH
+XTG -. extend .-> DGGP
+XTG -. extend .-> LAMKH
+NTG --> XTMT
+
+%% Participant - Swipe & Matching
+NTG --> SWC
+SWC -. extend .-> PASS
+SWC -. extend .-> LIKE
+SWC -. extend .-> ONL
+LIKE -. include .-> TAMH
+TAMH -. include .-> CHAT
+CHAT -. extend .-> UNM
+CHAT -. extend .-> TYPING
+CHAT -. extend .-> MOI
+
+%% Participant - Project
+NTG --> THAMGIA
+THAMGIA -. extend .-> XEMDA
+THAMGIA -. extend .-> YCAU
+NTG --> ROIDA
+
+%% Participant - Task
+NTG --> CAPNHATT
+CAPNHATT -. extend .-> BAOCAOHT
+
+%% Participant - Feedback
+NTG --> GUITP
+
+%% Project Owner - Account
+CDUAN --> DN
+CDUAN --> GOOGLE
+
+%% Project Owner - Profile
+CDUAN --> ANP
+CDUAN --> HIAN
+CDUAN --> QLP
+
+%% Project Owner - Project
+CDUAN --> QLDA
+QLDA -. include .-> XEMDA
+QLDA -. extend .-> DANG
+QLDA -. extend .-> DONG
+XEMDA -. extend .-> CAPNHAT
+XEMDA -. extend .-> XEMUD
+XEMUD -. include .-> PHEDUYET
+XEMUD -. extend .-> TUCHOI_UD
+CDUAN --> MOI
+
+%% Project Owner - Task
+CDUAN --> QLT
+QLT -. extend .-> TAT
+QLT -. extend .-> SUA
+QLT -. extend .-> DONGT
+QLT -. extend .-> KANBAN
+TAT -. include .-> PHANCONG
+
+%% Project Owner - Feedback
+CDUAN --> DANHGIAD
+DONG -. trigger .-> DANHGIAD
+
+%% Hệ thống / AI Engine
+AI --> GEN_DECK
+AI --> UPDATE_EMB
+AI --> PHANTICH
+AI --> AUTO_FLAG
+AI --> GEN_COURSE
+
+%% ========== Styles ==========
+classDef actor fill:#f9d77e,stroke:#b8860b,stroke-width:2px,color:#333,font-weight:bold
+classDef usecase fill:#fff,stroke:#666,stroke-width:1.2px,color:#111
+style ACCOUNT fill:#fff,stroke:#333,stroke-width:1.2px
+style SYSTEM fill:#fff,stroke:#333,stroke-width:1.2px
+style TRUST fill:#fff,stroke:#333,stroke-width:1.2px
+style PROFILE fill:#fff,stroke:#333,stroke-width:1.2px
+style SKILL fill:#fff,stroke:#333,stroke-width:1.2px
+style SWIPE fill:#fff,stroke:#333,stroke-width:1.2px
+style PROJECT fill:#fff,stroke:#333,stroke-width:1.2px
+style TASK fill:#fff,stroke:#333,stroke-width:1.2px
+style FEEDBACK fill:#fff,stroke:#333,stroke-width:1.2px
